@@ -1,2 +1,0 @@
-/usr/bin/ar qc libcore.a CMakeFiles/core.dir/VoxelData.cpp.o CMakeFiles/core.dir/Chunk.cpp.o CMakeFiles/core.dir/World.cpp.o CMakeFiles/core.dir/ChunkManager.cpp.o
-/usr/bin/ranlib libcore.a

@@ -1,2 +1,0 @@
-/usr/bin/ar qc libgeneration.a CMakeFiles/generation.dir/NoiseGenerator.cpp.o CMakeFiles/generation.dir/TerrainGenerator.cpp.o CMakeFiles/generation.dir/CaveGenerator.cpp.o CMakeFiles/generation.dir/BiomeGenerator.cpp.o CMakeFiles/generation.dir/StructureGenerator.cpp.o
-/usr/bin/ranlib libgeneration.a
