@@ -1,0 +1,2 @@
+/usr/bin/ar qc libutil.a CMakeFiles/util.dir/Config.cpp.o CMakeFiles/util.dir/ThreadPool.cpp.o CMakeFiles/util.dir/Vector3.cpp.o CMakeFiles/util.dir/FileIO.cpp.o
+/usr/bin/ranlib libutil.a
