@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/dyg.dir/src/main.cpp.o -o dyg  src/core/libcore.a src/generation/libgeneration.a src/physics/libphysics.a src/util/libutil.a src/core/libcore.a src/util/libutil.a 
