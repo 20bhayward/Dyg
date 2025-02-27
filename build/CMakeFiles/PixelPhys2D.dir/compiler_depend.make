@@ -853,6 +853,9 @@ CMakeFiles/PixelPhys2D.dir/src/UI.cpp.o: /home/bhayward/Dyg/src/UI.cpp \
 CMakeFiles/PixelPhys2D.dir/src/World.cpp.o: /home/bhayward/Dyg/src/World.cpp \
   /home/bhayward/Dyg/include/Materials.h \
   /home/bhayward/Dyg/include/World.h \
+  /usr/include/GL/gl.h \
+  /usr/include/GL/glew.h \
+  /usr/include/GL/glu.h \
   /usr/include/alloca.h \
   /usr/include/asm-generic/errno-base.h \
   /usr/include/asm-generic/errno.h \
