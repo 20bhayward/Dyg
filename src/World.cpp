@@ -9,7 +9,7 @@ namespace PixelPhys {
 
 // Chunk implementation
 
-Chunk::Chunk() : m_isDirty(true) {
+Chunk::Chunk(int posX, int posY) : m_isDirty(true), m_posX(posX), m_posY(posY) {
     // Initialize chunk with empty cells
     m_grid.resize(WIDTH * HEIGHT, MaterialType::Empty);
     
@@ -21,7 +21,15 @@ MaterialType Chunk::get(int x, int y) const {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
         return MaterialType::Empty;
     }
-    return m_grid[y * WIDTH + x];
+    // Position-based material access for pixel-perfect alignment
+    int idx = y * WIDTH + x;
+    
+    // Make absolutely sure we're in bounds
+    if (idx < 0 || idx >= static_cast<int>(m_grid.size())) {
+        return MaterialType::Empty;
+    }
+    
+    return m_grid[idx];
 }
 
 void Chunk::set(int x, int y, MaterialType material) {
@@ -29,18 +37,39 @@ void Chunk::set(int x, int y, MaterialType material) {
         return;
     }
     
-    MaterialType oldMaterial = m_grid[y * WIDTH + x];
+    // Position-based material access for pixel-perfect alignment
+    int idx = y * WIDTH + x;
+    
+    // Make absolutely sure we're in bounds
+    if (idx < 0 || idx >= static_cast<int>(m_grid.size())) {
+        return;
+    }
+    
+    MaterialType oldMaterial = m_grid[idx];
     if (oldMaterial != material) {
-        m_grid[y * WIDTH + x] = material;
+        // Always replace the existing material rather than placing on top
+        m_grid[idx] = material;
         m_isDirty = true;
         
-        // Update pixel data for this cell
-        int idx = (y * WIDTH + x) * 4;
+        // Update pixel data for this cell with pixel-perfect alignment
+        int pixelIdx = idx * 4;
+        
+        // Ensure we're in bounds for the pixel data too
+        if (pixelIdx < 0 || pixelIdx + 3 >= static_cast<int>(m_pixelData.size())) {
+            return;
+        }
+        
         const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
-        m_pixelData[idx] = props.r;     // R
-        m_pixelData[idx+1] = props.g;   // G
-        m_pixelData[idx+2] = props.b;   // B
-        m_pixelData[idx+3] = 255;       // A (fully opaque)
+        
+        // Use deterministic position-based variation for consistent textures
+        // This ensures aligned materials have consistent textures rather than random
+        int posHash = ((x * 13) + (y * 7)) % 32;
+        int variation = (posHash % 7) - 3;
+        
+        m_pixelData[pixelIdx] = std::max(0, std::min(255, static_cast<int>(props.r) + variation));   // R
+        m_pixelData[pixelIdx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + variation)); // G
+        m_pixelData[pixelIdx+2] = std::max(0, std::min(255, static_cast<int>(props.b) + variation)); // B
+        m_pixelData[pixelIdx+3] = props.transparency;  // A (use material transparency)
     }
 }
 
@@ -49,9 +78,16 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
         return;
     }
     
+    // Always start dirty - will be reset at end if nothing moved
+    m_isDirty = true;
+    
     // We need to avoid updating a cell twice in the same frame
     // So we create a temporary copy of the grid to read from
     std::vector<MaterialType> oldGrid = m_grid;
+    
+    // Handle material interactions (fire spreading, etc.)
+    // Add this before the normal updates to prioritize reactive interactions
+    handleMaterialInteractions(oldGrid);
     
     // Use a checkerboard update pattern (even cells first, then odd cells)
     // This helps prevent artifacts when multiple cells want to move to the same location
@@ -74,6 +110,58 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
             
             // Sand and other powders
             if (props.isPowder) {
+                // Check if material is enclosed (trapped on all sides)
+                bool isEnclosed = true;
+                
+                // Check surrounding cells
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        // Skip self
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        // For boundary cells, check neighboring chunks
+                        MaterialType neighborMaterial = MaterialType::Empty;
+                        
+                        if (nx < 0) {
+                            // Left chunk boundary
+                            if (chunkLeft) {
+                                neighborMaterial = chunkLeft->get(WIDTH-1, ny);
+                            }
+                        } 
+                        else if (nx >= WIDTH) {
+                            // Right chunk boundary
+                            if (chunkRight) {
+                                neighborMaterial = chunkRight->get(0, ny);
+                            }
+                        }
+                        else if (ny >= HEIGHT) {
+                            // Bottom chunk boundary
+                            if (chunkBelow) {
+                                neighborMaterial = chunkBelow->get(nx, 0);
+                            }
+                        }
+                        else if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                            // Within this chunk
+                            neighborMaterial = oldGrid[ny * WIDTH + nx];
+                        }
+                        
+                        // If there's an empty space, the material is not enclosed
+                        if (neighborMaterial == MaterialType::Empty) {
+                            isEnclosed = false;
+                            break;
+                        }
+                    }
+                    if (!isEnclosed) break;
+                }
+                
+                // If the material is enclosed, treat it as a solid (skip physics)
+                if (isEnclosed) {
+                    continue;
+                }
+                
                 // Check if at bottom of chunk and can fall to chunk below
                 if (y+1 >= HEIGHT) {
                     if (chunkBelow && chunkBelow->get(x, 0) == MaterialType::Empty) {
@@ -88,6 +176,32 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                     m_grid[idx] = MaterialType::Empty;
                     m_grid[(y+1) * WIDTH + x] = material;
                     continue;
+                } 
+                // If there's a particle below that's also a powder, check if it's settled
+                else if (y+1 < HEIGHT) {
+                    MaterialType belowMaterial = oldGrid[(y+1) * WIDTH + x];
+                    if (belowMaterial != MaterialType::Empty && 
+                        MATERIAL_PROPERTIES[static_cast<std::size_t>(belowMaterial)].isPowder) {
+                        // Check if powder below has support
+                        bool hasSupport = false;
+                        if (y+2 < HEIGHT) {
+                            if (oldGrid[(y+2) * WIDTH + x] != MaterialType::Empty) {
+                                hasSupport = true;
+                            }
+                            if (x > 0 && oldGrid[(y+2) * WIDTH + (x-1)] != MaterialType::Empty) {
+                                hasSupport = true;
+                            }
+                            if (x+1 < WIDTH && oldGrid[(y+2) * WIDTH + (x+1)] != MaterialType::Empty) {
+                                hasSupport = true;
+                            }
+                        }
+                        
+                        // If the powder below doesn't have support, mark this chunk as dirty
+                        // to ensure we'll continue updating it
+                        if (!hasSupport) {
+                            m_isDirty = true;
+                        }
+                    }
                 }
                 
                 // Try to fall diagonally
@@ -134,6 +248,58 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
             
             // Water and other liquids
             else if (props.isLiquid) {
+                // Check if material is enclosed (trapped on all sides)
+                bool isEnclosed = true;
+                
+                // Check surrounding cells
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        // Skip self
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        // For boundary cells, check neighboring chunks
+                        MaterialType neighborMaterial = MaterialType::Empty;
+                        
+                        if (nx < 0) {
+                            // Left chunk boundary
+                            if (chunkLeft) {
+                                neighborMaterial = chunkLeft->get(WIDTH-1, ny);
+                            }
+                        } 
+                        else if (nx >= WIDTH) {
+                            // Right chunk boundary
+                            if (chunkRight) {
+                                neighborMaterial = chunkRight->get(0, ny);
+                            }
+                        }
+                        else if (ny >= HEIGHT) {
+                            // Bottom chunk boundary
+                            if (chunkBelow) {
+                                neighborMaterial = chunkBelow->get(nx, 0);
+                            }
+                        }
+                        else if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                            // Within this chunk
+                            neighborMaterial = oldGrid[ny * WIDTH + nx];
+                        }
+                        
+                        // If there's an empty space, the material is not enclosed
+                        if (neighborMaterial == MaterialType::Empty) {
+                            isEnclosed = false;
+                            break;
+                        }
+                    }
+                    if (!isEnclosed) break;
+                }
+                
+                // If the material is enclosed, treat it as a solid (skip physics)
+                if (isEnclosed) {
+                    continue;
+                }
+                
                 // Check if at bottom of chunk and can fall to chunk below
                 if (y+1 >= HEIGHT) {
                     if (chunkBelow && chunkBelow->get(x, 0) == MaterialType::Empty) {
@@ -421,20 +587,79 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                 }
             }
             
-            // Gases (rise up)
+            // Gases (rise up) - Improved gas physics
             else if (props.isGas) {
-                // Try to rise straight up
-                if (y > 0 && oldGrid[(y-1) * WIDTH + x] == MaterialType::Empty) {
+                // Different behavior for different gases
+                bool isSteam = (material == MaterialType::Steam);
+                bool isSmoke = (material == MaterialType::Smoke);
+                
+                // Gases can sometimes dissipate (especially steam)
+                int dissipationChance = isSteam ? 5 : (isSmoke ? 10 : 50);
+                if (m_rng() % 100 < dissipationChance) {
+                    // The gas dissipates
                     m_grid[idx] = MaterialType::Empty;
-                    m_grid[(y-1) * WIDTH + x] = material;
+                    continue;
                 }
-                // Try to spread left or right
-                else {
+                
+                // Gases try to rise quickly for steam, medium for smoke, slower for others
+                int riseChance = isSteam ? 95 : (isSmoke ? 90 : 80);
+                
+                // Try to rise upward with appropriate speed
+                if (y > 0 && m_rng() % 100 < riseChance) {
+                    // Try to rise directly upward
+                    if (oldGrid[(y-1) * WIDTH + x] == MaterialType::Empty) {
+                        m_grid[idx] = MaterialType::Empty;
+                        m_grid[(y-1) * WIDTH + x] = material;
+                        continue;
+                    }
+                    
+                    // If upward is blocked, check diagonally up
+                    bool diagonalMoved = false;
+                    
+                    // Deterministic pattern but seems random
+                    if ((x + y) % 2 == 0) {
+                        // Try up-left first
+                        if (x > 0 && oldGrid[(y-1) * WIDTH + (x-1)] == MaterialType::Empty) {
+                            m_grid[idx] = MaterialType::Empty;
+                            m_grid[(y-1) * WIDTH + (x-1)] = material;
+                            diagonalMoved = true;
+                        }
+                        // Then up-right
+                        else if (x+1 < WIDTH && oldGrid[(y-1) * WIDTH + (x+1)] == MaterialType::Empty) {
+                            m_grid[idx] = MaterialType::Empty;
+                            m_grid[(y-1) * WIDTH + (x+1)] = material;
+                            diagonalMoved = true;
+                        }
+                    } else {
+                        // Try up-right first
+                        if (x+1 < WIDTH && oldGrid[(y-1) * WIDTH + (x+1)] == MaterialType::Empty) {
+                            m_grid[idx] = MaterialType::Empty;
+                            m_grid[(y-1) * WIDTH + (x+1)] = material;
+                            diagonalMoved = true;
+                        }
+                        // Then up-left
+                        else if (x > 0 && oldGrid[(y-1) * WIDTH + (x-1)] == MaterialType::Empty) {
+                            m_grid[idx] = MaterialType::Empty;
+                            m_grid[(y-1) * WIDTH + (x-1)] = material;
+                            diagonalMoved = true;
+                        }
+                    }
+                    
+                    if (diagonalMoved) {
+                        continue;
+                    }
+                }
+                
+                // If rise failed, try horizontal spread (gases like to fill available space)
+                // Chance of spreading is different for each gas
+                int spreadChance = isSteam ? 40 : (isSmoke ? 60 : 50);
+                
+                if (m_rng() % 100 < spreadChance) {
                     bool spreadLeft = false;
                     bool spreadRight = false;
                     
-                    // Randomly choose direction
-                    if ((x % 2) == 0) {
+                    // Deterministic direction choice to avoid bias
+                    if ((x + y) % 2 == 0) {
                         // Try left
                         if (x > 0 && oldGrid[y * WIDTH + (x-1)] == MaterialType::Empty) {
                             m_grid[idx] = MaterialType::Empty;
@@ -462,23 +687,57 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                         }
                     }
                     
-                    // If we spread, we're done with this cell
                     if (spreadLeft || spreadRight) {
                         continue;
                     }
-                    
-                    // Try diagonal spreading
-                    if (y > 0) {
-                        // Try left-up diagonal
-                        if (x > 0 && oldGrid[(y-1) * WIDTH + (x-1)] == MaterialType::Empty) {
-                            m_grid[idx] = MaterialType::Empty;
-                            m_grid[(y-1) * WIDTH + (x-1)] = material;
-                            continue;
+                }
+                
+                // Special case: if steam touches water, convert to water
+                if (isSteam) {
+                    // Check all surrounding cells for water
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            int nx = x + dx;
+                            int ny = y + dy;
+                            
+                            if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                                if (oldGrid[ny * WIDTH + nx] == MaterialType::Water) {
+                                    // Contact with water causes steam to condensate
+                                    if (m_rng() % 100 < 30) { // 30% chance to condensate
+                                        m_grid[idx] = MaterialType::Empty;
+                                    }
+                                    break;
+                                }
+                            }
                         }
-                        // Try right-up diagonal
-                        else if (x+1 < WIDTH && oldGrid[(y-1) * WIDTH + (x+1)] == MaterialType::Empty) {
+                    }
+                }
+                // Special case: smoke near fire
+                else if (isSmoke) {
+                    // Check if near fire - if so, smoke rises faster
+                    bool nearFire = false;
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            int nx = x + dx;
+                            int ny = y + dy;
+                            
+                            if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                                if (oldGrid[ny * WIDTH + nx] == MaterialType::Fire) {
+                                    nearFire = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (nearFire) break;
+                    }
+                    
+                    // Smoke near fire has a chance to move upward even if no empty space
+                    if (nearFire && y > 0 && m_rng() % 100 < 30) {
+                        // Enhanced rising due to heat - can displace air
+                        MaterialType aboveMaterial = oldGrid[(y-1) * WIDTH + x];
+                        if (aboveMaterial == MaterialType::Empty) {
                             m_grid[idx] = MaterialType::Empty;
-                            m_grid[(y-1) * WIDTH + (x+1)] = material;
+                            m_grid[(y-1) * WIDTH + x] = material;
                             continue;
                         }
                     }
@@ -852,20 +1111,131 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                 }
             }
             
-            // Gases (rise up)
+            // Gases (rise up) - Improved gas physics (second pass)
             else if (props.isGas) {
-                // Try to rise straight up
-                if (y > 0 && m_grid[(y-1) * WIDTH + x] == MaterialType::Empty) {
-                    m_grid[idx] = MaterialType::Empty;
-                    m_grid[(y-1) * WIDTH + x] = material;
+                // Check if material is enclosed (trapped on all sides)
+                bool isEnclosed = true;
+                
+                // Check surrounding cells
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        // Skip self
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        // For boundary cells, check neighboring chunks
+                        MaterialType neighborMaterial = MaterialType::Empty;
+                        
+                        if (nx < 0) {
+                            // Left chunk boundary
+                            if (chunkLeft) {
+                                neighborMaterial = chunkLeft->get(WIDTH-1, ny);
+                            }
+                        } 
+                        else if (nx >= WIDTH) {
+                            // Right chunk boundary
+                            if (chunkRight) {
+                                neighborMaterial = chunkRight->get(0, ny);
+                            }
+                        }
+                        else if (ny >= HEIGHT) {
+                            // Bottom chunk boundary
+                            if (chunkBelow) {
+                                neighborMaterial = chunkBelow->get(nx, 0);
+                            }
+                        }
+                        else if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                            // Within this chunk
+                            neighborMaterial = oldGrid[ny * WIDTH + nx];
+                        }
+                        
+                        // If there's an empty space, the material is not enclosed
+                        if (neighborMaterial == MaterialType::Empty) {
+                            isEnclosed = false;
+                            break;
+                        }
+                    }
+                    if (!isEnclosed) break;
                 }
-                // Try to spread left or right
-                else {
+                
+                // If the material is enclosed, treat it as a solid (skip physics)
+                if (isEnclosed) {
+                    continue;
+                }
+                
+                // Different behavior for different gases
+                bool isSteam = (material == MaterialType::Steam);
+                bool isSmoke = (material == MaterialType::Smoke);
+                
+                // Gases can sometimes dissipate (especially steam)
+                int dissipationChance = isSteam ? 5 : (isSmoke ? 10 : 50);
+                if (m_rng() % 100 < dissipationChance) {
+                    // The gas dissipates
+                    m_grid[idx] = MaterialType::Empty;
+                    continue;
+                }
+                
+                // Gases try to rise quickly for steam, medium for smoke, slower for others
+                int riseChance = isSteam ? 95 : (isSmoke ? 90 : 80);
+                
+                // Try to rise upward with appropriate speed
+                if (y > 0 && m_rng() % 100 < riseChance) {
+                    // Try to rise directly upward
+                    if (m_grid[(y-1) * WIDTH + x] == MaterialType::Empty) {
+                        m_grid[idx] = MaterialType::Empty;
+                        m_grid[(y-1) * WIDTH + x] = material;
+                        continue;
+                    }
+                    
+                    // If upward is blocked, check diagonally up
+                    bool diagonalMoved = false;
+                    
+                    // Deterministic pattern but seems random
+                    if ((x + y) % 2 == 0) {
+                        // Try up-left first
+                        if (x > 0 && m_grid[(y-1) * WIDTH + (x-1)] == MaterialType::Empty) {
+                            m_grid[idx] = MaterialType::Empty;
+                            m_grid[(y-1) * WIDTH + (x-1)] = material;
+                            diagonalMoved = true;
+                        }
+                        // Then up-right
+                        else if (x+1 < WIDTH && m_grid[(y-1) * WIDTH + (x+1)] == MaterialType::Empty) {
+                            m_grid[idx] = MaterialType::Empty;
+                            m_grid[(y-1) * WIDTH + (x+1)] = material;
+                            diagonalMoved = true;
+                        }
+                    } else {
+                        // Try up-right first
+                        if (x+1 < WIDTH && m_grid[(y-1) * WIDTH + (x+1)] == MaterialType::Empty) {
+                            m_grid[idx] = MaterialType::Empty;
+                            m_grid[(y-1) * WIDTH + (x+1)] = material;
+                            diagonalMoved = true;
+                        }
+                        // Then up-left
+                        else if (x > 0 && m_grid[(y-1) * WIDTH + (x-1)] == MaterialType::Empty) {
+                            m_grid[idx] = MaterialType::Empty;
+                            m_grid[(y-1) * WIDTH + (x-1)] = material;
+                            diagonalMoved = true;
+                        }
+                    }
+                    
+                    if (diagonalMoved) {
+                        continue;
+                    }
+                }
+                
+                // If rise failed, try horizontal spread (gases like to fill available space)
+                // Chance of spreading is different for each gas
+                int spreadChance = isSteam ? 40 : (isSmoke ? 60 : 50);
+                
+                if (m_rng() % 100 < spreadChance) {
                     bool spreadLeft = false;
                     bool spreadRight = false;
                     
-                    // Randomly choose direction
-                    if ((x % 2) == 0) {
+                    // Deterministic direction choice to avoid bias
+                    if ((x + y) % 2 == 0) {
                         // Try left
                         if (x > 0 && m_grid[y * WIDTH + (x-1)] == MaterialType::Empty) {
                             m_grid[idx] = MaterialType::Empty;
@@ -893,23 +1263,57 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                         }
                     }
                     
-                    // If we spread, we're done with this cell
                     if (spreadLeft || spreadRight) {
                         continue;
                     }
-                    
-                    // Try diagonal spreading
-                    if (y > 0) {
-                        // Try left-up diagonal
-                        if (x > 0 && m_grid[(y-1) * WIDTH + (x-1)] == MaterialType::Empty) {
-                            m_grid[idx] = MaterialType::Empty;
-                            m_grid[(y-1) * WIDTH + (x-1)] = material;
-                            continue;
+                }
+                
+                // Special case: if steam touches water, convert to water
+                if (isSteam) {
+                    // Check all surrounding cells for water
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            int nx = x + dx;
+                            int ny = y + dy;
+                            
+                            if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                                if (m_grid[ny * WIDTH + nx] == MaterialType::Water) {
+                                    // Contact with water causes steam to condensate
+                                    if (m_rng() % 100 < 30) { // 30% chance to condensate
+                                        m_grid[idx] = MaterialType::Empty;
+                                    }
+                                    break;
+                                }
+                            }
                         }
-                        // Try right-up diagonal
-                        else if (x+1 < WIDTH && m_grid[(y-1) * WIDTH + (x+1)] == MaterialType::Empty) {
+                    }
+                }
+                // Special case: smoke near fire
+                else if (isSmoke) {
+                    // Check if near fire - if so, smoke rises faster
+                    bool nearFire = false;
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            int nx = x + dx;
+                            int ny = y + dy;
+                            
+                            if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                                if (m_grid[ny * WIDTH + nx] == MaterialType::Fire) {
+                                    nearFire = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (nearFire) break;
+                    }
+                    
+                    // Smoke near fire has a chance to move upward even if no empty space
+                    if (nearFire && y > 0 && m_rng() % 100 < 30) {
+                        // Enhanced rising due to heat - can displace air
+                        MaterialType aboveMaterial = m_grid[(y-1) * WIDTH + x];
+                        if (aboveMaterial == MaterialType::Empty) {
                             m_grid[idx] = MaterialType::Empty;
-                            m_grid[(y-1) * WIDTH + (x+1)] = material;
+                            m_grid[(y-1) * WIDTH + x] = material;
                             continue;
                         }
                     }
@@ -1024,17 +1428,382 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
     m_isDirty = anyMovement;
 }
 
+void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& oldGrid) {
+    // Distribution for random checks
+    std::uniform_int_distribution<int> chanceDist(0, 99);
+    
+    // Iterate through the grid to find interactions
+    for (int y = 0; y < HEIGHT; ++y) {
+        for (int x = 0; x < WIDTH; ++x) {
+            int idx = y * WIDTH + x;
+            MaterialType material = oldGrid[idx];
+            
+            // Skip empty cells
+            if (material == MaterialType::Empty) {
+                continue;
+            }
+            
+            // Fire interactions
+            if (material == MaterialType::Fire) {
+                // 1. Fire has a chance to go out
+                if (chanceDist(m_rng) < 5) {  // 5% chance to go out
+                    // Leave charred material or smoke
+                    if (chanceDist(m_rng) < 30) {
+                        m_grid[idx] = MaterialType::Smoke;
+                    } else {
+                        m_grid[idx] = MaterialType::Empty;
+                    }
+                    continue;
+                }
+                
+                // 2. Fire can spread to nearby flammable materials
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        // Skip self
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        // Check bounds
+                        if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) {
+                            continue;
+                        }
+                        
+                        int nIdx = ny * WIDTH + nx;
+                        MaterialType nearbyMaterial = oldGrid[nIdx];
+                        
+                        // Check if target material is flammable
+                        if (nearbyMaterial != MaterialType::Empty) {
+                            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(nearbyMaterial)];
+                            
+                            if (props.isFlammable) {
+                                // Different ignition chances for different materials
+                                int ignitionChance = 0;
+                                
+                                if (nearbyMaterial == MaterialType::Wood) {
+                                    ignitionChance = 15; // 15% chance to ignite wood
+                                } else if (nearbyMaterial == MaterialType::Oil) {
+                                    ignitionChance = 40; // 40% chance to ignite oil
+                                } else if (nearbyMaterial == MaterialType::Grass) {
+                                    ignitionChance = 25; // 25% chance to ignite grass
+                                }
+                                
+                                // Roll for ignition
+                                if (chanceDist(m_rng) < ignitionChance) {
+                                    m_grid[nIdx] = MaterialType::Fire;
+                                }
+                            }
+                            
+                            // Special case: fire creates steam when touching water
+                            if (nearbyMaterial == MaterialType::Water && chanceDist(m_rng) < 20) {
+                                m_grid[nIdx] = MaterialType::Steam;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Oil + Fire interactions (already handled in fire spreading)
+            
+            // Water + Fire interactions
+            if (material == MaterialType::Water) {
+                // Water can extinguish nearby fire
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        // Skip self
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        // Check bounds
+                        if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) {
+                            continue;
+                        }
+                        
+                        int nIdx = ny * WIDTH + nx;
+                        MaterialType nearbyMaterial = oldGrid[nIdx];
+                        
+                        // Water extinguishes fire with high probability
+                        if (nearbyMaterial == MaterialType::Fire) {
+                            if (chanceDist(m_rng) < 70) {  // 70% chance to extinguish
+                                if (chanceDist(m_rng) < 40) {  // 40% chance to create steam
+                                    m_grid[nIdx] = MaterialType::Steam;
+                                } else {
+                                    m_grid[nIdx] = MaterialType::Empty;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Smoke + Water interactions
+            if (material == MaterialType::Smoke) {
+                // Check for water nearby - smoke dissipates faster near water
+                bool nearWater = false;
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                            if (oldGrid[ny * WIDTH + nx] == MaterialType::Water) {
+                                nearWater = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (nearWater) break;
+                }
+                
+                // Smoke dissipates faster near water
+                if (nearWater && chanceDist(m_rng) < 20) {
+                    m_grid[idx] = MaterialType::Empty;
+                }
+            }
+            
+            // Fix oil disappearing bug - reduce evaporation chances
+            if (material == MaterialType::Oil) {
+                // Make sure oil doesn't disappear randomly
+                // Check if this oil is part of a larger body to make it more stable
+                bool hasNeighboringOil = false;
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        if (dx == 0 && dy == 0) continue; // Skip self
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
+                            if (oldGrid[ny * WIDTH + nx] == MaterialType::Oil) {
+                                hasNeighboringOil = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (hasNeighboringOil) break;
+                }
+                
+                // Make isolated oil droplets more stable
+                if (!hasNeighboringOil) {
+                    // Create a stable film of oil (only happens in rare cases)
+                    bool hasGroundBelow = false;
+                    if (y + 1 < HEIGHT) {
+                        MaterialType belowMaterial = oldGrid[(y+1) * WIDTH + x];
+                        if (belowMaterial != MaterialType::Empty && 
+                            belowMaterial != MaterialType::Water &&
+                            belowMaterial != MaterialType::Oil) {
+                            hasGroundBelow = true;
+                        }
+                    }
+                    
+                    // If we have ground below, make it more sticky (stable)
+                    if (hasGroundBelow) {
+                        // Oil remains in place - do nothing special
+                    }
+                }
+            }
+        }
+    }
+}
+
 void Chunk::updatePixelData() {
+    // Setup random number generator for color variations
+    static std::mt19937 colorGen(std::random_device{}());
+    static std::uniform_int_distribution<int> colorVar(-20, 20);
+    static std::uniform_real_distribution<float> fireIntensity(0.7f, 1.3f);
+    
     for (int y = 0; y < HEIGHT; ++y) {
         for (int x = 0; x < WIDTH; ++x) {
             MaterialType material = m_grid[y * WIDTH + x];
             int idx = (y * WIDTH + x) * 4;
             const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
             
-            m_pixelData[idx] = props.r;     // R
-            m_pixelData[idx+1] = props.g;   // G
-            m_pixelData[idx+2] = props.b;   // B
-            m_pixelData[idx+3] = 255;       // A (fully opaque)
+            // Apply color variation based on material type
+            if (material == MaterialType::Empty) {
+                // Empty space is transparent
+                m_pixelData[idx] = 0;
+                m_pixelData[idx+1] = 0;
+                m_pixelData[idx+2] = 0;
+                m_pixelData[idx+3] = 0;
+            }
+            else if (material == MaterialType::Fire) {
+                // Fire has more dramatic color variation
+                float intensity = fireIntensity(colorGen);
+                m_pixelData[idx] = std::min(255, static_cast<int>(props.r * intensity));
+                m_pixelData[idx+1] = std::min(255, static_cast<int>(props.g * (intensity * 0.8f)));
+                m_pixelData[idx+2] = std::min(255, static_cast<int>(props.b * (intensity * 0.6f)));
+                m_pixelData[idx+3] = props.transparency;
+            }
+            else if (material == MaterialType::Smoke || material == MaterialType::Steam) {
+                // Smoke and steam have variable opacity
+                int alpha = 120 + colorVar(colorGen) % 40;
+                m_pixelData[idx] = props.r;
+                m_pixelData[idx+1] = props.g;
+                m_pixelData[idx+2] = props.b;
+                m_pixelData[idx+3] = std::max(80, std::min(200, alpha));
+            }
+            else if (material == MaterialType::Grass) {
+                // Create extremely detailed Noita-like grass with individual pixel-perfect blades
+                
+                // Position-based deterministic pattern for grass blade shapes
+                // Use absolute position for consistent patterns
+                int worldX = x; // Just use absolute coordinates
+                int worldY = y;
+                
+                // Create various grass blade patterns
+                bool tallBlade = (worldX % 5 == 0 && worldY % 4 == 0);  // Tall sparse blades
+                bool mediumBlade = ((worldX + 2) % 5 == 0 && worldY % 3 == 0); // Medium blades
+                bool shortBlade = ((worldX + 1) % 3 == 0 && worldY % 2 == 0);  // Common short blades
+                bool tinyBlade = ((worldX * worldY) % 7 == 0);  // Tiny grass details
+                
+                // Check neighbors to ensure grass blades are connected to ground
+                bool isTopOfGrass = false;
+                if (y < HEIGHT-1) {
+                    MaterialType below = m_grid[(y+1) * WIDTH + x];
+                    if (below == MaterialType::Grass || below == MaterialType::TopSoil || below == MaterialType::Dirt) {
+                        isTopOfGrass = true;
+                    }
+                }
+                
+                int rVar, gVar, bVar;
+                
+                if (tallBlade && isTopOfGrass) {
+                    // Tall grass blade tips (darker green)
+                    rVar = -20;
+                    gVar = 20; // Very vibrant green
+                    bVar = -15;
+                } else if (mediumBlade && isTopOfGrass) {
+                    // Medium grass blades (medium green)
+                    rVar = -15;
+                    gVar = 10;
+                    bVar = -10;
+                } else if (shortBlade) {
+                    // Short grass blades (lighter green)
+                    rVar = -10;
+                    gVar = 5;
+                    bVar = -5;
+                } else if (tinyBlade) {
+                    // Tiny details (yellowish-green)
+                    rVar = 5;
+                    gVar = 5;
+                    bVar = -15;
+                } else {
+                    // Base grass variation with position-based consistency
+                    int grassHash = (worldX * 41 + worldY * 23) % 20;
+                    rVar = (grassHash % 10) - 5;
+                    gVar = (grassHash % 12) - 2; // Bias toward more green
+                    bVar = (grassHash % 8) - 4;
+                }
+                
+                m_pixelData[idx] = std::max(0, std::min(255, static_cast<int>(props.r) + rVar));
+                m_pixelData[idx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + gVar));
+                m_pixelData[idx+2] = std::max(0, std::min(255, static_cast<int>(props.b) + bVar));
+                m_pixelData[idx+3] = props.transparency;
+            }
+            else if (material == MaterialType::Stone || material == MaterialType::Gravel) {
+                // Stone and gravel - create pixel-perfect pattern like Noita
+                // Hash based on position to create consistent patterns
+                int posHash = (x * 263 + y * 71) % 100;
+                
+                // Get pattern variation based on position
+                bool patternDot = ((x + y) % 3 == 0);
+                bool patternStripe = (x % 4 == 0 || y % 4 == 0);
+                
+                // Apply more distinct variations to create noticeable patterns
+                int redVar, greenVar, blueVar;
+                
+                if (patternDot) {
+                    // Create darker spots
+                    redVar = -15;
+                    greenVar = -15;
+                    blueVar = -15;
+                } else if (patternStripe) {
+                    // Create light stripes
+                    redVar = 10;
+                    greenVar = 10;
+                    blueVar = 10;
+                } else {
+                    // Normal subtle variation
+                    redVar = (posHash % 15) - 7;
+                    greenVar = ((posHash * 3) % 15) - 7;
+                    blueVar = ((posHash * 7) % 15) - 7;
+                }
+                
+                m_pixelData[idx] = std::max(0, std::min(255, static_cast<int>(props.r) + redVar));
+                m_pixelData[idx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + greenVar));
+                m_pixelData[idx+2] = std::max(0, std::min(255, static_cast<int>(props.b) + blueVar));
+                m_pixelData[idx+3] = props.transparency;
+            }
+            else if (material == MaterialType::Dirt || material == MaterialType::TopSoil) {
+                // Dirt and topsoil - create more Noita-like granular texture
+                int posHash = (x * 131 + y * 37) % 100;
+                
+                // Create granular patterns
+                bool isDarkGrain = ((x*x + y*y) % 5 == 0);
+                bool isLightGrain = ((x+y) % 7 == 0);
+                
+                int rVar, gVar, bVar;
+                
+                if (isDarkGrain) {
+                    // Dark grains scattered throughout
+                    rVar = -20;
+                    gVar = -15;
+                    bVar = -10;
+                } else if (isLightGrain) {
+                    // Light sandy specks
+                    rVar = 15;
+                    gVar = 10;
+                    bVar = 5;
+                } else {
+                    // Normal dirt variation
+                    rVar = (posHash % 20) - 10;
+                    gVar = (posHash % 15) - 7;
+                    bVar = (posHash % 10) - 5;
+                }
+                
+                m_pixelData[idx] = std::max(0, std::min(255, static_cast<int>(props.r) + rVar));
+                m_pixelData[idx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + gVar));
+                m_pixelData[idx+2] = std::max(0, std::min(255, static_cast<int>(props.b) + bVar));
+                m_pixelData[idx+3] = props.transparency;
+            }
+            else if (material == MaterialType::Water || material == MaterialType::Oil) {
+                // Check if liquid is settled (surrounded by other materials)
+                bool isSettled = true;
+                
+                // Check below and sides to determine if settled
+                if (y+1 < HEIGHT && m_grid[(y+1) * WIDTH + x] == MaterialType::Empty)
+                    isSettled = false;
+                if (x > 0 && m_grid[y * WIDTH + (x-1)] == MaterialType::Empty)
+                    isSettled = false;
+                if (x+1 < WIDTH && m_grid[y * WIDTH + (x+1)] == MaterialType::Empty)
+                    isSettled = false;
+                
+                if (isSettled) {
+                    // Fixed color for settled liquid - no variation
+                    m_pixelData[idx] = props.r;
+                    m_pixelData[idx+1] = props.g;
+                    m_pixelData[idx+2] = props.b;
+                    m_pixelData[idx+3] = props.transparency;
+                } else {
+                    // Moving liquid has color variations
+                    int waterVar = colorVar(colorGen) / 3;
+                    m_pixelData[idx] = std::max(0, std::min(255, static_cast<int>(props.r) + waterVar / 2));
+                    m_pixelData[idx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + waterVar));
+                    m_pixelData[idx+2] = std::max(0, std::min(255, static_cast<int>(props.b) + waterVar * 2));
+                    m_pixelData[idx+3] = props.transparency;
+                }
+            }
+            else {
+                // Default material with some variation
+                int var = colorVar(colorGen) / 2;
+                m_pixelData[idx] = std::max(0, std::min(255, static_cast<int>(props.r) + var));
+                m_pixelData[idx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + var));
+                m_pixelData[idx+2] = std::max(0, std::min(255, static_cast<int>(props.b) + var));
+                m_pixelData[idx+3] = props.transparency;
+            }
         }
     }
 }
@@ -1047,10 +1816,15 @@ World::World(int width, int height) :
     m_chunksX(std::ceil(static_cast<float>(width) / Chunk::WIDTH)),
     m_chunksY(std::ceil(static_cast<float>(height) / Chunk::HEIGHT))
 {
-    // Create the world's chunks
+    // Create the world's chunks with their proper positions for pixel-perfect alignment
     m_chunks.resize(m_chunksX * m_chunksY);
-    for (int i = 0; i < m_chunksX * m_chunksY; ++i) {
-        m_chunks[i] = std::make_unique<Chunk>();
+    for (int y = 0; y < m_chunksY; ++y) {
+        for (int x = 0; x < m_chunksX; ++x) {
+            int idx = y * m_chunksX + x;
+            int chunkPosX = x * Chunk::WIDTH;
+            int chunkPosY = y * Chunk::HEIGHT;
+            m_chunks[idx] = std::make_unique<Chunk>(chunkPosX, chunkPosY);
+        }
     }
     
     // Initialize pixel data for the whole world
@@ -1097,7 +1871,50 @@ void World::set(int x, int y, MaterialType material) {
     m_pixelData[idx] = props.r;     // R
     m_pixelData[idx+1] = props.g;   // G
     m_pixelData[idx+2] = props.b;   // B
-    m_pixelData[idx+3] = 255;       // A (fully opaque)
+    m_pixelData[idx+3] = props.transparency; // Use material's transparency value
+}
+
+// Helper function to ensure liquids settle properly
+void World::levelLiquids() {
+    // This function will look for isolated liquid pixels and make them fall
+    for (int y = m_height - 2; y >= 0; y--) {  // Start from bottom-1, going up
+        for (int x = 0; x < m_width; x++) {
+            MaterialType material = get(x, y);
+            
+            // Only process liquids
+            if (material != MaterialType::Water && material != MaterialType::Oil) {
+                continue;
+            }
+            
+            // Check if there's an empty space below
+            if (y < m_height - 1 && get(x, y + 1) == MaterialType::Empty) {
+                // Make it fall one tile down
+                set(x, y, MaterialType::Empty);
+                set(x, y + 1, material);
+            } 
+            // If can't fall, try to find a lower neighboring space
+            else {
+                // If there's a cell of the same liquid to the left/right and empty space on the other side
+                // This helps make liquid surfaces flat
+                if (x > 0 && x < m_width - 1) {
+                    // Check left side - if same liquid to left and empty diagonally down-left
+                    if (get(x - 1, y) == material && 
+                        y < m_height - 1 && get(x - 1, y + 1) == MaterialType::Empty) {
+                        // Move this liquid particle left-down
+                        set(x, y, MaterialType::Empty);
+                        set(x - 1, y + 1, material);
+                    }
+                    // Check right side - if same liquid to right and empty diagonally down-right
+                    else if (get(x + 1, y) == material && 
+                             y < m_height - 1 && get(x + 1, y + 1) == MaterialType::Empty) {
+                        // Move this liquid particle right-down
+                        set(x, y, MaterialType::Empty);
+                        set(x + 1, y + 1, material);
+                    }
+                }
+            }
+        }
+    }
 }
 
 void World::update() {
@@ -1145,6 +1962,141 @@ void World::update() {
     }
 }
 
+// Improved liquid flow algorithm
+bool Chunk::isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, int y) {
+    // Count how many liquid cells are connected to this one
+    int liquidCount = 0;
+    
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) continue;
+            
+            int nx = x + dx;
+            int ny = y + dy;
+            
+            if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) continue;
+            
+            MaterialType cellMaterial = grid[ny * WIDTH + nx];
+            if (cellMaterial == MaterialType::Water || cellMaterial == MaterialType::Oil) {
+                liquidCount++;
+            }
+        }
+    }
+    
+    return liquidCount > 0;
+}
+
+void World::updatePlayer(float dt) {
+    // Constants for player physics
+    const float GRAVITY = 400.0f;    // Gravity force
+    // Warning fix: these are now set directly in respective functions
+    // const float PLAYER_SPEED = 200.0f; // Moved to movePlayerLeft/movePlayerRight
+    // const float JUMP_FORCE = 350.0f;  // Moved to playerJump
+    const float FRICTION = 0.8f;      // Horizontal friction
+    
+    // Apply gravity
+    m_playerVelY += GRAVITY * dt;
+    
+    // Limit fall speed
+    if (m_playerVelY > 500.0f) {
+        m_playerVelY = 500.0f;
+    }
+    
+    // Update position based on velocity
+    float newX = m_playerX + m_playerVelX * dt;
+    float newY = m_playerY + m_playerVelY * dt;
+    
+    // Check for collision with world
+    int playerWidth = 10;   // Player is 10x20 pixels
+    int playerHeight = 20;
+    
+    // Check if we're on ground
+    m_playerOnGround = false;
+    for (int x = -playerWidth/2; x <= playerWidth/2; x++) {
+        int checkX = static_cast<int>(newX) + x;
+        int checkY = static_cast<int>(newY) + playerHeight/2 + 1;
+        
+        if (checkX >= 0 && checkX < m_width && checkY >= 0 && checkY < m_height) {
+            MaterialType material = get(checkX, checkY);
+            if (material != MaterialType::Empty && material != MaterialType::Grass) {
+                // We hit ground - exclude grass so player can move through it
+                newY = checkY - playerHeight/2 - 1;
+                m_playerVelY = 0;
+                m_playerOnGround = true;
+                break;
+            }
+        }
+    }
+    
+    // Check for head collision
+    for (int x = -playerWidth/2; x <= playerWidth/2; x++) {
+        int checkX = static_cast<int>(newX) + x;
+        int checkY = static_cast<int>(newY) - playerHeight/2 - 1;
+        
+        if (checkX >= 0 && checkX < m_width && checkY >= 0 && checkY < m_height) {
+            MaterialType material = get(checkX, checkY);
+            if (material != MaterialType::Empty && material != MaterialType::Grass) {
+                // We hit ceiling - exclude grass so player can move through it
+                newY = checkY + playerHeight/2 + 2;
+                m_playerVelY = 0;
+                break;
+            }
+        }
+    }
+    
+    // Check for horizontal collision
+    for (int y = -playerHeight/2; y <= playerHeight/2; y++) {
+        // Check right side
+        int checkX = static_cast<int>(newX) + playerWidth/2 + 1;
+        int checkY = static_cast<int>(newY) + y;
+        
+        if (checkX >= 0 && checkX < m_width && checkY >= 0 && checkY < m_height) {
+            MaterialType material = get(checkX, checkY);
+            if (material != MaterialType::Empty && material != MaterialType::Grass) {
+                // We hit right wall - exclude grass so player can move through it
+                newX = checkX - playerWidth/2 - 1;
+                m_playerVelX = 0;
+                break;
+            }
+        }
+        
+        // Check left side
+        checkX = static_cast<int>(newX) - playerWidth/2 - 1;
+        if (checkX >= 0 && checkX < m_width && checkY >= 0 && checkY < m_height) {
+            MaterialType material = get(checkX, checkY);
+            if (material != MaterialType::Empty && material != MaterialType::Grass) {
+                // We hit left wall - exclude grass so player can move through it
+                newX = checkX + playerWidth/2 + 2;
+                m_playerVelX = 0;
+                break;
+            }
+        }
+    }
+    
+    // Apply friction when on ground
+    if (m_playerOnGround) {
+        m_playerVelX *= FRICTION;
+    }
+    
+    // Clamp position to world bounds
+    newX = std::max(playerWidth/2.0f, std::min(newX, m_width - playerWidth/2.0f));
+    newY = std::max(playerHeight/2.0f, std::min(newY, m_height - playerHeight/2.0f));
+    
+    // Update position
+    m_playerX = static_cast<int>(newX);
+    m_playerY = static_cast<int>(newY);
+    
+    // Make surrounding chunks dirty for player area
+    int chunkX, chunkY, localX, localY;
+    worldToChunkCoords(m_playerX, m_playerY, chunkX, chunkY, localX, localY);
+    
+    // Mark player's chunk as dirty
+    Chunk* chunk = getChunkAt(chunkX, chunkY);
+    if (chunk) {
+        chunk->setDirty(true);
+    }
+}
+
 void World::generate(unsigned int seed) {
     // Set up the random number generator with the seed
     m_rng.seed(seed);
@@ -1155,6 +2107,12 @@ void World::generate(unsigned int seed) {
             set(x, y, MaterialType::Empty);
         }
     }
+    
+    // Reset player position to the top middle of the world
+    m_playerX = m_width / 2;
+    m_playerY = 100;  // Start a bit lower so player can see more of the expanded world
+    m_playerVelX = 0.0f;
+    m_playerVelY = 0.0f;
     
     // Generate terrain using perlin-like noise for smoother results
     // We'll use a simple approximation of noise here
@@ -1213,7 +2171,13 @@ void World::generateTerrain() {
     double phaseOffset3 = phaseOffsetDist(m_rng);
     
     // Generate the height map by combining different frequencies
+    // For a larger world, use more varied terrain with multiple biomes
     for (int x = 0; x < m_width; ++x) {
+        // Use a gentler biome variation that doesn't create extreme differences
+        // This prevents narrow strips of land
+        double biomeFactor = sin(static_cast<double>(x) / m_width * 1.5) * 0.3 + 0.7; // 0.4-1.0 range
+        // Adjust amplitudes more subtly for smoother transitions
+        amp1 = static_cast<int>(amp1 * biomeFactor);
         // Use noise functions with different phases
         // Primary terrain shape (smoother, gentler)
         double angle1 = static_cast<double>(x) / m_width * freq1 * 6.28318530718 + phaseOffset1;
@@ -1282,31 +2246,259 @@ void World::generateTerrain() {
         heightMap = smoothedMap;
     }
     
-    // Fill in the terrain based on the height map
+    // Create distributions for material depth variations - smaller values for tighter pixels
+    std::uniform_int_distribution<int> grassVariation(0, 1);      // Very thin grass layer
+    std::uniform_int_distribution<int> topsoilVariation(2, 5);    // Thinner topsoil layer
+    std::uniform_int_distribution<int> dirtDepthDist(10, 25);     // Still deep but more suitable for tighter pixels
+    std::uniform_int_distribution<int> stoneStartVariation(-5, 5); // Less variation where stone starts
+    
+    // Create distributions for color variation
+    std::uniform_int_distribution<int> colorVariation(-15, 15);
+    
+    // Fill in the terrain based on the height map, creating layered biome
     for (int x = 0; x < m_width; ++x) {
         int groundLevel = heightMap[x];
         
-        // Main ground (stone)
-        for (int y = groundLevel; y < m_height; ++y) {
-            if (y >= 0 && y < m_height) {
-                set(x, y, MaterialType::Stone);
+        // For realistic ground layering with dynamic depths
+        int grassDepth = grassVariation(m_rng);
+        int topsoilDepth = topsoilVariation(m_rng);
+        int dirtDepth = dirtDepthDist(m_rng);
+        int stoneVariation = stoneStartVariation(m_rng);
+        
+        // Calculate layer positions
+        int grassTop = groundLevel - grassDepth;
+        int topsoilTop = groundLevel;
+        int dirtTop = groundLevel + topsoilDepth;
+        int stoneTop = groundLevel + topsoilDepth + dirtDepth + stoneVariation;
+        
+        // Fill in each layer with varying colors
+        for (int y = 0; y < m_height; ++y) {
+            if (y < 0 || y >= m_height) continue;
+            
+            // For color variation per pixel
+            int rVar = colorVariation(m_rng);
+            int gVar = colorVariation(m_rng);
+            int bVar = colorVariation(m_rng);
+            
+            MaterialType material;
+            
+            // Determine material type based on depth
+            if (y < grassTop) {
+                // Above ground (air)
+                continue; // Skip - already Empty
+            } else if (y < topsoilTop) {
+                // Grass layer
+                material = MaterialType::Grass;
+            } else if (y < dirtTop) {
+                // Topsoil layer
+                material = MaterialType::TopSoil;
+            } else if (y < stoneTop) {
+                // Dirt layer
+                material = MaterialType::Dirt;
+                
+                // Create clearly defined, pixel-perfect gravel pockets in dirt
+                // Use absolute world coordinates for consistency
+                int wx = x;
+                int wy = y;
+                
+                // Use much lower frequencies to create larger, more visible patterns
+                // This creates more clearly defined, coherent gravel pockets
+                float primaryNoise = sin(wx * 0.01f) * sin(wy * 0.012f);
+                float secondaryNoise = sin((wx * 0.018f + wy * 0.015f) * 0.8f);
+                
+                // Combine noise patterns for more organic shapes
+                float combinedNoise = primaryNoise * 0.6f + secondaryNoise * 0.4f;
+                
+                // Scale to 0-1 range with better distribution
+                combinedNoise = (combinedNoise + 1.0f) / 2.0f;
+                
+                // Make gravel pockets much smaller and less common
+                // Use much tighter thresholds to reduce prevalence
+                if (combinedNoise > 0.72f && combinedNoise < 0.76f) {
+                    // Check for boundary pixels to ensure clean edges
+                    bool isOnBoundary = false;
+                    
+                    // Examine all neighboring pixels
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dy == 0) continue;
+                            
+                            // Calculate same noise for neighbors
+                            float nPrimary = sin((wx+dx) * 0.01f) * sin((wy+dy) * 0.012f);
+                            float nSecondary = sin(((wx+dx) * 0.018f + (wy+dy) * 0.015f) * 0.8f);
+                            float nCombined = nPrimary * 0.6f + nSecondary * 0.4f;
+                            nCombined = (nCombined + 1.0f) / 2.0f;
+                            
+                            // Check if neighbor is outside gravel pocket threshold
+                            if (nCombined <= 0.68f || nCombined >= 0.78f) {
+                                isOnBoundary = true;
+                                break;
+                            }
+                        }
+                        if (isOnBoundary) break;
+                    }
+                    
+                    // Set to gravel for non-boundary pixels
+                    material = MaterialType::Gravel;
+                    
+                    // Create smoother transitions at boundaries
+                    // Using deterministic pattern based on coordinates
+                    if (isOnBoundary) {
+                        // Use a more sophisticated pattern for edge smoothing
+                        int edgePattern = (wx * 3 + wy * 5) % 7;
+                        if (edgePattern < 3) { // ~43% chance to revert to dirt
+                            material = MaterialType::Dirt;
+                        }
+                    }
+                }
+            } else {
+                // Stone layer (with occasional variation)
+                material = MaterialType::Stone;
+                
+                // Create more defined, pixel-perfect mineral veins in stone
+                // Use absolute world coordinates for consistent patterns across the world
+                int wx = x;
+                int wy = y;
+                
+                // Use lower frequencies for the main noise patterns to create larger,
+                // more coherent ore veins and material deposits
+                float noiseValue1 = sin(wx * 0.008f + wy * 0.012f) * sin(wy * 0.01f + wx * 0.007f);
+                float noiseValue2 = sin(wx * 0.015f + wy * 0.02f) * cos(wx * 0.018f + wy * 0.014f);
+                
+                // Combine noise values with different weights for varied patterns
+                float combinedNoise = noiseValue1 * 0.7f + noiseValue2 * 0.3f;
+                
+                // Scale to 0-1 range for thresholding
+                combinedNoise = (combinedNoise + 1.0f) / 2.0f;
+                
+                // Define much narrower thresholds for ore materials to make them less prominent
+                // Using smaller non-overlapping ranges to reduce frequency
+                bool isGravelVein = (combinedNoise > 0.68f && combinedNoise < 0.71f);
+                bool isSandVein = (combinedNoise > 0.86f && combinedNoise < 0.88f);
+                
+                if (isGravelVein) {
+                    // Use deterministic edge detection for clean, pixel-perfect boundaries
+                    bool isOnBoundary = false;
+                    
+                    // Check surrounding pixels to determine if we're at a vein boundary
+                    for (int dy = -1; dy <= 1 && !isOnBoundary; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dy == 0) continue;
+                            
+                            // Calculate neighbor's noise value
+                            float nNoise1 = sin((wx+dx) * 0.008f + (wy+dy) * 0.012f) * 
+                                           sin((wy+dy) * 0.01f + (wx+dx) * 0.007f);
+                            float nNoise2 = sin((wx+dx) * 0.015f + (wy+dy) * 0.02f) * 
+                                           cos((wx+dx) * 0.018f + (wy+dy) * 0.014f);
+                            float nCombined = nNoise1 * 0.7f + nNoise2 * 0.3f;
+                            nCombined = (nCombined + 1.0f) / 2.0f;
+                            
+                            // Update boundary check to match new narrower threshold
+                            if (nCombined <= 0.68f || nCombined >= 0.71f) {
+                                isOnBoundary = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Set the material to gravel
+                    material = MaterialType::Gravel;
+                    
+                    // For smoother edges, occasionally revert boundary pixels to stone
+                    if (isOnBoundary && ((wx + wy) % 3 == 0)) {
+                        material = MaterialType::Stone;
+                    }
+                }
+                else if (isSandVein) {
+                    // Similar boundary detection for sand veins
+                    bool isOnBoundary = false;
+                    
+                    for (int dy = -1; dy <= 1 && !isOnBoundary; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dy == 0) continue;
+                            
+                            // Calculate neighbor's noise value
+                            float nNoise1 = sin((wx+dx) * 0.008f + (wy+dy) * 0.012f) * 
+                                           sin((wy+dy) * 0.01f + (wx+dx) * 0.007f);
+                            float nNoise2 = sin((wx+dx) * 0.015f + (wy+dy) * 0.02f) * 
+                                           cos((wx+dx) * 0.018f + (wy+dy) * 0.014f);
+                            float nCombined = nNoise1 * 0.7f + nNoise2 * 0.3f;
+                            nCombined = (nCombined + 1.0f) / 2.0f;
+                            
+                            // Update boundary check to match new narrower threshold for sand
+                            if (nCombined <= 0.86f || nCombined >= 0.88f) {
+                                isOnBoundary = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    material = MaterialType::Sand;
+                    
+                    // Different edge pattern for sand to create visual variety
+                    if (isOnBoundary && ((wx * wy) % 4 == 0)) {
+                        material = MaterialType::Stone;
+                    }
+                }
+            }
+            
+            // Set the material at this position
+            set(x, y, material);
+            
+            // Apply color variation by modifying the pixel data directly
+            int idx = (y * m_width + x) * 4;
+            
+            // Get material properties for base color
+            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+            
+            // Apply variation to create more realistic, less uniform appearance
+            // Clamp to ensure valid colors
+            m_pixelData[idx] = std::max(0, std::min(255, static_cast<int>(props.r) + rVar));      // R
+            m_pixelData[idx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + gVar));    // G
+            m_pixelData[idx+2] = std::max(0, std::min(255, static_cast<int>(props.b) + bVar));    // B
+            m_pixelData[idx+3] = 255;                                                             // A
+        }
+    }
+    
+    // Add uneven ground details on the surface
+    std::uniform_int_distribution<int> grassExtrusionDist(0, 30); // Chance to add grass variance
+    
+    for (int x = 1; x < m_width-1; ++x) {
+        // Find the top grass pixel for this column
+        int grassTop = -1;
+        for (int y = 0; y < m_height; ++y) {
+            if (get(x, y) == MaterialType::Grass) {
+                grassTop = y;
+                break;
             }
         }
         
-        // Add dirt/sand layer on top with more consistent depth
-        int sandDepth = 5 + (std::abs(sin(static_cast<double>(x) / 120.0)) * 2); // Less variation
+        if (grassTop < 0) continue; // No grass found
         
-        for (int y = groundLevel - sandDepth; y < groundLevel; ++y) {
-            if (y >= 0 && y < m_height) {
-                set(x, y, MaterialType::Sand);
+        // Sometimes add grass tufts that extend 1-2 pixels higher
+        if (grassExtrusionDist(m_rng) < 10) { // 33% chance
+            int tufts = m_rng() % 2 + 1; // 1-2 pixels higher
+            for (int t = 1; t <= tufts; ++t) {
+                int ty = grassTop - t;
+                if (ty >= 0) {
+                    set(x, ty, MaterialType::Grass);
+                    
+                    // Apply a slightly different color to the tufts
+                    int idx = (ty * m_width + x) * 4;
+                    const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(MaterialType::Grass)];
+                    m_pixelData[idx] = std::max(0, std::min(255, static_cast<int>(props.r) - 10 - t*5));  // Darker R 
+                    m_pixelData[idx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + 15));      // Brighter G for grass
+                    m_pixelData[idx+2] = std::max(0, std::min(255, static_cast<int>(props.b) - 10));      // Darker B
+                    m_pixelData[idx+3] = 255;
+                }
             }
         }
     }
 }
 
 void World::generateCaves() {
-    // Create some cave systems
-    int numCaveSystems = 3 + (m_width / 200); 
+    // Create more cave systems for the larger world
+    int numCaveSystems = 10 + (m_width / 200); 
     
     std::uniform_int_distribution<int> xDist(m_width / 10, m_width * 9 / 10);
     std::uniform_int_distribution<int> yDist(m_height / 2, m_height * 8 / 10);
@@ -1363,8 +2555,8 @@ void World::generateCaves() {
 }
 
 void World::generateWaterPools() {
-    // Add water pools (both on surface and in caves)
-    int numPools = m_width / 90 + 2;
+    // Add many more water pools for the expanded world
+    int numPools = m_width / 60 + 8;
     
     std::uniform_int_distribution<int> poolDist(0, m_width - 1);
     std::uniform_int_distribution<int> poolSizeDist(10, 30);
@@ -1424,44 +2616,162 @@ void World::generateWaterPools() {
 }
 
 void World::generateMaterialDeposits() {
-    // Generate some underground pockets of materials
-    int numDeposits = m_width / 60 + 3;
+    // Generate Terraria/Noita-style ore veins and material deposits
+    
+    // 1. Generate large, coherent ore veins that follow specific patterns
+    generateTerrariaStyleOreVeins();
+    
+    // 2. Generate special structures like oil pockets
+    generateSpecialDeposits();
+}
+
+// Helper function to create Terraria-style ore veins
+void World::generateTerrariaStyleOreVeins() {
+    // Generate fewer, smaller ore veins to make them less prominent
+    int numVeinSets = m_width / 200 + 5;  // Reduce the number of ore clusters
+    
+    // Distributions for positioning and sizing
+    std::uniform_int_distribution<int> xDist(0, m_width - 1);
+    std::uniform_int_distribution<int> yDeepDist(m_height * 2/3, m_height - 20);  // Deep ore veins
+    std::uniform_int_distribution<int> yMidDist(m_height / 2, m_height * 2/3);    // Mid-level deposits
+    std::uniform_int_distribution<int> branchCountDist(2, 5);   // Fewer branches per vein
+    std::uniform_int_distribution<int> branchLengthDist(3, 8);  // Shorter branches
+    std::uniform_int_distribution<int> branchWidthDist(1, 2);   // Thinner branches
+    std::uniform_int_distribution<int> materialDist(0, 100);    // Material type distribution
+    std::uniform_int_distribution<int> angleDist(0, 628);       // Random angle (0-2π × 100)
+    
+    // Generate distinct ore vein sets
+    for (int veinSet = 0; veinSet < numVeinSets; veinSet++) {
+        // Pick starting point for this vein cluster
+        int startX = xDist(m_rng);
+        int startY = yDeepDist(m_rng);
+        
+        // Determine material type (like gold, silver, copper in Terraria)
+        MaterialType material;
+        int materialType = materialDist(m_rng);
+        
+        if (materialType < 40) {
+            material = MaterialType::Sand;   // "Gold" (yellow minerals)
+        } else if (materialType < 70) {
+            material = MaterialType::Gravel; // "Silver" (grey minerals)
+        } else {
+            material = MaterialType::Wood;   // "Copper" (brownish minerals)
+        }
+        
+        // Create multiple branches from the starting point
+        int numBranches = branchCountDist(m_rng);
+        
+        for (int branch = 0; branch < numBranches; branch++) {
+            // Each branch starts at the vein center but goes in different direction
+            int branchLength = branchLengthDist(m_rng);
+            int branchWidth = branchWidthDist(m_rng);
+            double angle = angleDist(m_rng) / 100.0; // Convert to radians
+            
+            // Create the branch with Terraria-style blob shapes
+            for (int step = 0; step < branchLength; step++) {
+                // Calculate current position along the branch
+                int currentX = startX + static_cast<int>(cos(angle) * step * 1.5);
+                int currentY = startY + static_cast<int>(sin(angle) * step * 1.5);
+                
+                // Slightly vary the angle for a natural winding appearance
+                angle += (m_rng() % 100 - 50) / 500.0;
+                
+                // Generate a Terraria-style blob at this point
+                int blobSize = branchWidth - step / 5; // Branches get thinner toward the end
+                if (blobSize < 1) blobSize = 1;
+                
+                // Create a blob of ore
+                for (int y = -blobSize; y <= blobSize; y++) {
+                    for (int x = -blobSize; x <= blobSize; x++) {
+                        // Create pixel-perfect, Terraria-style ore shapes with solid edges
+                        float distSq = x*x + y*y;
+                        if (distSq <= blobSize * blobSize) {
+                            int wx = currentX + x;
+                            int wy = currentY + y;
+                            
+                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                // Only replace stone to maintain structure integrity
+                                if (get(wx, wy) == MaterialType::Stone) {
+                                    // Determine if this is an edge pixel
+                                    bool isEdge = false;
+                                    
+                                    // Check all neighbors to see if we're at a boundary
+                                    for (int ny = -1; ny <= 1 && !isEdge; ny++) {
+                                        for (int nx = -1; nx <= 1; nx++) {
+                                            if (nx == 0 && ny == 0) continue;
+                                            
+                                            int checkX = wx + nx;
+                                            int checkY = wy + ny;
+                                            
+                                            // If neighbor is outside our blob or outside the world
+                                            if (checkX < 0 || checkX >= m_width || 
+                                                checkY < 0 || checkY >= m_height ||
+                                                get(checkX, checkY) != MaterialType::Stone) {
+                                                isEdge = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Place the ore, with special handling for edges
+                                    if (!isEdge || ((wx * 3 + wy * 5) % 7 != 0)) {
+                                        set(wx, wy, material);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Helper function to create special material deposits
+void World::generateSpecialDeposits() {
+    // Create many more special pockets for the expanded world
+    int numSpecialDeposits = m_width / 120 + 10;
     
     std::uniform_int_distribution<int> xDist(0, m_width - 1);
-    std::uniform_int_distribution<int> yDist(m_height / 2, m_height - 5);
-    std::uniform_int_distribution<int> sizeDist(4, 12);
+    std::uniform_int_distribution<int> yDist(m_height * 3/5, m_height - 15);
+    std::uniform_int_distribution<int> depositSizeDist(8, 16);
     std::uniform_int_distribution<int> typeDist(0, 100);
     
-    for (int i = 0; i < numDeposits; ++i) {
+    for (int i = 0; i < numSpecialDeposits; i++) {
         int depositX = xDist(m_rng);
         int depositY = yDist(m_rng);
-        int depositSize = sizeDist(m_rng);
+        int depositSize = depositSizeDist(m_rng);
         
-        // Determine material type
+        // Determine what type of special deposit this is
         MaterialType material;
         int type = typeDist(m_rng);
         
-        if (type < 40) {
-            material = MaterialType::Sand; // 40% chance
-        } else if (type < 70) {
-            material = MaterialType::Wood; // 30% chance (embedded tree?)
+        if (type < 50) {
+            material = MaterialType::Oil;  // 50% chance for oil reservoirs
+        } else if (type < 80) {
+            material = MaterialType::Sand; // 30% chance for sand deposits
         } else {
-            material = MaterialType::Oil;  // 30% chance
+            material = MaterialType::Water; // 20% chance for underground water pocket
         }
         
-        // Create a roughly circular deposit
-        for (int y = -depositSize; y <= depositSize; ++y) {
-            for (int x = -depositSize; x <= depositSize; ++x) {
-                double distance = sqrt(x*x + y*y);
-                if (distance <= depositSize) {
-                    int wx = depositX + x;
-                    int wy = depositY + y;
+        // Create a more natural, irregular pocket shape
+        // Use Perlin-like noise to create irregular but coherent shapes
+        for (int y = -depositSize-2; y <= depositSize+2; y++) {
+            for (int x = -depositSize-2; x <= depositSize+2; x++) {
+                int wx = depositX + x;
+                int wy = depositY + y;
+                
+                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                    // Base shape is elliptical
+                    float distRatio = (float)(x*x)/(depositSize*depositSize) + 
+                                     (float)(y*y)/((depositSize*0.8f)*(depositSize*0.8f));
                     
-                    if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
-                        // Only place in existing stone to maintain ground structure
-                        if (get(wx, wy) == MaterialType::Stone) {
-                            set(wx, wy, material);
-                        }
+                    // Add noise to create irregular edges
+                    float noise = sin(wx * 0.1f + wy * 0.13f) * sin(wy * 0.07f + wx * 0.08f) * 0.2f;
+                    
+                    // Only place within the irregular shape and only in stone
+                    if (distRatio + noise < 1.0f && get(wx, wy) == MaterialType::Stone) {
+                        set(wx, wy, material);
                     }
                 }
             }

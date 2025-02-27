@@ -6,6 +6,7 @@
 // GLEW must be included before any OpenGL headers
 #include <GL/glew.h>
 #include <GL/gl.h>
+#include <vector>
 
 namespace PixelPhys {
 

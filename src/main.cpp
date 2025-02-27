@@ -14,8 +14,8 @@
 
 const int WINDOW_WIDTH = 800;
 const int WINDOW_HEIGHT = 600;
-const int WORLD_WIDTH = 1200;   // Increased world size for panning/zooming
-const int WORLD_HEIGHT = 900;   // Increased world size for panning/zooming
+const int WORLD_WIDTH = 2400;    // Expanded world width for more horizontal exploration
+const int WORLD_HEIGHT = 1800;   // Deeper world for vertical exploration
 const int TARGET_FPS = 60;
 const int FRAME_DELAY = 1000 / TARGET_FPS;
 
@@ -124,20 +124,32 @@ int main(int /*argc*/, char* /*argv*/[]) {
     Uint32 fpsTimer = SDL_GetTicks();
     
     std::cout << "Controls:" << std::endl;
-    std::cout << "Left mouse: Place Sand" << std::endl;
+    std::cout << "Left mouse: Place selected material" << std::endl;
     std::cout << "Right mouse: Erase (place Empty)" << std::endl;
+    std::cout << "WASD/Arrow keys: Move character" << std::endl;
+    std::cout << "Space: Jump" << std::endl;
+    std::cout << "C: Toggle between free camera and follow mode" << std::endl;
+    std::cout << "Mouse wheel: Zoom in/out" << std::endl;
+    std::cout << "Middle mouse: Pan camera (in free cam mode)" << std::endl;
+    std::cout << "Material Selection:" << std::endl;
+    std::cout << "  1: Sand            6: Oil" << std::endl;
+    std::cout << "  2: Water           7: Grass" << std::endl;
+    std::cout << "  3: Stone           8: Dirt" << std::endl;
+    std::cout << "  4: Wood            9: Gravel" << std::endl;
+    std::cout << "  5: Fire            0: Smoke" << std::endl;
     std::cout << "F11: Toggle fullscreen mode" << std::endl;
     std::cout << "R: Reset world with a new seed" << std::endl;
     std::cout << "ESC: Quit" << std::endl;
 
-    // Camera state (no zoom/pan initially)
-    float zoomLevel = 1.0f; 
+    // Camera state
+    float zoomLevel = 2.0f;  // Start with an integer zoom for perfect pixel alignment
     int cameraX = 0;
     int cameraY = 0;
+    bool freeCam = false;  // Free camera mode toggle
     
     // Default settings
     PixelPhys::MaterialType currentMaterial = PixelPhys::MaterialType::Sand;
-    int brushSize = 5;
+    int brushSize = 2;  // Smaller brush for tighter pixel alignment
     bool simulationRunning = true;
 
     // Main loop
@@ -200,6 +212,32 @@ int main(int /*argc*/, char* /*argv*/[]) {
                 } else if (e.key.keysym.sym == SDLK_6) {
                     currentMaterial = PixelPhys::MaterialType::Oil;
                     std::cout << "Selected material: Oil" << std::endl;
+                } else if (e.key.keysym.sym == SDLK_7) {
+                    currentMaterial = PixelPhys::MaterialType::Grass;
+                    std::cout << "Selected material: Grass" << std::endl;
+                } else if (e.key.keysym.sym == SDLK_8) {
+                    currentMaterial = PixelPhys::MaterialType::Dirt;
+                    std::cout << "Selected material: Dirt" << std::endl;
+                } else if (e.key.keysym.sym == SDLK_9) {
+                    currentMaterial = PixelPhys::MaterialType::Gravel;
+                    std::cout << "Selected material: Gravel" << std::endl;
+                } else if (e.key.keysym.sym == SDLK_0) {
+                    currentMaterial = PixelPhys::MaterialType::Smoke;
+                    std::cout << "Selected material: Smoke" << std::endl;
+                } else if (e.key.keysym.sym == SDLK_c) {
+                    // Toggle free camera mode
+                    freeCam = !freeCam;
+                    std::cout << "Camera mode: " << (freeCam ? "Free" : "Follow player") << std::endl;
+                } else if (e.key.keysym.sym == SDLK_a || e.key.keysym.sym == SDLK_LEFT) {
+                    // Move player left
+                    world.getPlayerX() > 0 ? world.movePlayerLeft() : void();
+                } else if (e.key.keysym.sym == SDLK_d || e.key.keysym.sym == SDLK_RIGHT) {
+                    // Move player right
+                    world.getPlayerX() < WORLD_WIDTH ? world.movePlayerRight() : void();
+                } else if (e.key.keysym.sym == SDLK_w || e.key.keysym.sym == SDLK_UP || 
+                           e.key.keysym.sym == SDLK_SPACE) {
+                    // Jump
+                    world.playerJump();
                 }
             } else if (e.type == SDL_WINDOWEVENT) {
                 if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
@@ -224,9 +262,16 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     std::cout << "Window manually resized to " << actualWidth << "x" << actualHeight << std::endl;
                 }
             } else if (e.type == SDL_MOUSEWHEEL) {
-                // Zoom in/out with mouse wheel
-                float zoomDelta = e.wheel.y > 0 ? 0.1f : -0.1f;
-                zoomLevel = std::max(0.1f, std::min(zoomLevel + zoomDelta, 10.0f));
+                // Use integer-only zoom levels for perfect pixel alignment
+                int zoomDirection = e.wheel.y > 0 ? 1 : -1;
+                
+                // Update zoom level with integer steps only
+                // This ensures perfect pixel grid alignment at all zoom levels
+                zoomLevel = std::max(1.0f, std::min(roundf(zoomLevel) + zoomDirection, 10.0f));
+                
+                // Always use integer zoom levels for Noita-style pixel perfect rendering
+                zoomLevel = roundf(zoomLevel);
+                
                 std::cout << "Zoom level: " << zoomLevel << std::endl;
             } else if (e.type == SDL_MOUSEMOTION && (SDL_GetMouseState(NULL, NULL) & SDL_BUTTON(SDL_BUTTON_MIDDLE))) {
                 // Pan with middle mouse button
@@ -243,13 +288,35 @@ int main(int /*argc*/, char* /*argv*/[]) {
         int mouseX, mouseY;
         Uint32 mouseState = SDL_GetMouseState(&mouseX, &mouseY);
         
-        // Simple view rectangle - use the full window with small margin
+        // Create a view rectangle that ensures proper aspect ratio
         SDL_Rect viewRect;
         const int margin = 10;
-        viewRect.x = margin;
-        viewRect.y = margin;
-        viewRect.w = actualWidth - 2 * margin;
-        viewRect.h = actualHeight - 2 * margin;
+        
+        // Find the best dimensions that maintain the world's aspect ratio
+        int availableWidth = actualWidth - 2 * margin;
+        int availableHeight = actualHeight - 2 * margin;
+        
+        // Calculate to maintain aspect ratio while maximizing space usage
+        float worldAspect = static_cast<float>(WORLD_WIDTH) / WORLD_HEIGHT;
+        float screenAspect = static_cast<float>(availableWidth) / availableHeight;
+        
+        // Determine view dimensions to maintain world aspect ratio
+        int viewWidth, viewHeight;
+        if (screenAspect > worldAspect) {
+            // Screen is wider than world, constrain by height
+            viewHeight = availableHeight;
+            viewWidth = static_cast<int>(viewHeight * worldAspect);
+        } else {
+            // Screen is taller than world, constrain by width
+            viewWidth = availableWidth;
+            viewHeight = static_cast<int>(viewWidth / worldAspect);
+        }
+        
+        // Center the view in the window
+        viewRect.x = margin + (availableWidth - viewWidth) / 2;
+        viewRect.y = margin + (availableHeight - viewHeight) / 2;
+        viewRect.w = viewWidth;
+        viewRect.h = viewHeight;
         
         // Check if mouse is inside the view area
         bool canEdit = (mouseX >= viewRect.x && mouseX < viewRect.x + viewRect.w &&
@@ -263,16 +330,19 @@ int main(int /*argc*/, char* /*argv*/[]) {
             float viewPercentY = (mouseY - viewRect.y) / static_cast<float>(viewRect.h);
             
             // 2. Calculate visible world area based on zoom
-            float visibleWorldWidth = WORLD_WIDTH / zoomLevel;
-            float visibleWorldHeight = WORLD_HEIGHT / zoomLevel;
+            // Fix cursor alignment by using the same math as in the rendering section
+            float integerZoom = roundf(zoomLevel);
+            float visibleWorldWidth = WORLD_WIDTH / integerZoom;
+            float visibleWorldHeight = WORLD_HEIGHT / integerZoom;
             
-            // 3. Find the top-left corner of visible world area
-            float worldStartX = WORLD_WIDTH/2.0f + cameraX - visibleWorldWidth/2.0f;
-            float worldStartY = WORLD_HEIGHT/2.0f + cameraY - visibleWorldHeight/2.0f;
+            // 3. Map screen position directly using the exact same calculation as the rendering
+            // For perfect cursor alignment, we need to match the rendering transformation exactly
+            float alignedCameraX = roundf(WORLD_WIDTH/2.0f + cameraX - (WORLD_WIDTH/integerZoom)/2.0f);
+            float alignedCameraY = roundf(WORLD_HEIGHT/2.0f + cameraY - (WORLD_HEIGHT/integerZoom)/2.0f);
             
-            // 4. Map screen position directly to world coordinates
-            int worldMouseX = static_cast<int>(worldStartX + viewPercentX * visibleWorldWidth);
-            int worldMouseY = static_cast<int>(worldStartY + viewPercentY * visibleWorldHeight);
+            // Map mouse position using the exact same transformations as the rendering
+            int worldMouseX = static_cast<int>(alignedCameraX + viewPercentX * visibleWorldWidth);
+            int worldMouseY = static_cast<int>(alignedCameraY + viewPercentY * visibleWorldHeight);
             
             // Ensure coordinates are within the world bounds
             worldMouseX = std::max(0, std::min(worldMouseX, WORLD_WIDTH - 1));
@@ -293,10 +363,28 @@ int main(int /*argc*/, char* /*argv*/[]) {
                               << worldMouseX << "," << worldMouseY << std::endl;
                 }
                 
-                // Place material in a circular brush area
+                // Place material in a more pixel-perfect pattern (Noita-like)
                 for (int y = -brushSize; y <= brushSize; ++y) {
                     for (int x = -brushSize; x <= brushSize; ++x) {
-                        if (x*x + y*y <= brushSize*brushSize) { // Circular brush
+                        // Custom pattern for different materials
+                        bool shouldPlace;
+                        
+                        if (currentMaterial == PixelPhys::MaterialType::Stone) {
+                            // For stone, create a pattern like cobblestone
+                            shouldPlace = ((x*x + y*y <= brushSize*brushSize) && 
+                                          ((worldMouseX+x + worldMouseY+y) % 3 != 0));
+                        } 
+                        else if (currentMaterial == PixelPhys::MaterialType::Wood) {
+                            // For wood, create grain-like pattern
+                            shouldPlace = ((x*x + y*y <= brushSize*brushSize) && 
+                                          ((worldMouseY+y) % 3 != 0));
+                        }
+                        else {
+                            // For other materials, just use a circular brush
+                            shouldPlace = (x*x + y*y <= brushSize*brushSize); // Circular brush
+                        }
+                        
+                        if (shouldPlace) {
                             int px = worldMouseX + x;
                             int py = worldMouseY + y;
                             
@@ -335,7 +423,33 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
         // Update world physics if simulation is running
         if (simulationRunning) {
+            // Calculate delta time for smooth player movement
+            static Uint32 lastTime = SDL_GetTicks();
+            Uint32 currentTime = SDL_GetTicks();
+            float deltaTime = (currentTime - lastTime) / 1000.0f;
+            lastTime = currentTime;
+            
+            // Update player first
+            world.updatePlayer(deltaTime);
+            
+            // Update world physics
             world.update();
+            
+            // Run additional liquid leveling to fix floating particles
+            // Only do this occasionally to avoid performance impact
+            if (frameCount % 10 == 0) {
+                world.levelLiquids();
+            }
+            
+            // Update camera to follow player if not in free cam mode
+            if (!freeCam) {
+                cameraX = world.getPlayerX() - WORLD_WIDTH / 2;
+                cameraY = world.getPlayerY() - WORLD_HEIGHT / 2;
+                
+                // Clamp camera to world bounds
+                cameraX = std::max(0, std::min(cameraX, WORLD_WIDTH));
+                cameraY = std::max(0, std::min(cameraY, WORLD_HEIGHT));
+            }
         }
 
         // Clear the screen with a gray background
@@ -358,24 +472,42 @@ int main(int /*argc*/, char* /*argv*/[]) {
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         
-        // Draw a border around the view area
-        glColor3f(0.4f, 0.4f, 0.4f);
-        glLineWidth(2.0f);
-        glBegin(GL_LINE_LOOP);
-        glVertex2f(viewRect.x, viewRect.y);
-        glVertex2f(viewRect.x + viewRect.w, viewRect.y);
-        glVertex2f(viewRect.x + viewRect.w, viewRect.y + viewRect.h);
-        glVertex2f(viewRect.x, viewRect.y + viewRect.h);
-        glEnd();
+        // Remove border UI elements for a cleaner look
         
         // Render the world
         glPushMatrix();
         
-        // Setup transformation to match the cursor mapping
+        // Setup transformation to center the view properly with no gaps
+        // Start by translating to the view area top-left corner
         glTranslatef(viewRect.x, viewRect.y, 0.0f);
-        glScalef(viewRect.w / (WORLD_WIDTH / zoomLevel), viewRect.h / (WORLD_HEIGHT / zoomLevel), 1.0f);
-        glTranslatef(-(WORLD_WIDTH/2.0f + cameraX - (WORLD_WIDTH/zoomLevel)/2.0f), 
-                     -(WORLD_HEIGHT/2.0f + cameraY - (WORLD_HEIGHT/zoomLevel)/2.0f), 0.0f);
+        
+        // Force integer zoom values to prevent subpixel rendering issues
+        float integerZoom = roundf(zoomLevel);
+        
+        // Calculate pixel-aligned scaling factors, ensuring same scale on both axes
+        float scaleX = viewRect.w / (WORLD_WIDTH / integerZoom);
+        float scaleY = viewRect.h / (WORLD_HEIGHT / integerZoom);
+        
+        // Use uniform scaling to maintain square pixels
+        float uniformScale = std::min(scaleX, scaleY);
+        
+        // Center the view in the available space
+        // This eliminates the gap on the right by properly centering
+        float horizontalOffset = (viewRect.w - (WORLD_WIDTH / integerZoom) * uniformScale) / 2;
+        float verticalOffset = (viewRect.h - (WORLD_HEIGHT / integerZoom) * uniformScale) / 2;
+        
+        // Apply the centering offset
+        glTranslatef(horizontalOffset, verticalOffset, 0.0f);
+        
+        // Apply the uniform scale
+        glScalef(uniformScale, uniformScale, 1.0f);
+        
+        // Ensure camera position is aligned to integer grid for pixel-perfect rendering
+        float alignedCameraX = roundf(WORLD_WIDTH/2.0f + cameraX - (WORLD_WIDTH/integerZoom)/2.0f);
+        float alignedCameraY = roundf(WORLD_HEIGHT/2.0f + cameraY - (WORLD_HEIGHT/integerZoom)/2.0f);
+        
+        // Apply the camera transformation
+        glTranslatef(-alignedCameraX, -alignedCameraY, 0.0f);
         
         // Batch render the world - render each material type separately
         
@@ -385,43 +517,91 @@ int main(int /*argc*/, char* /*argv*/[]) {
             
             // Set material color
             float r = 0.0f, g = 0.0f, b = 0.0f;
-            switch (currentMat) {
-                case PixelPhys::MaterialType::Sand:
-                    r = 0.9f; g = 0.8f; b = 0.4f; // Yellow-ish
-                    break;
-                case PixelPhys::MaterialType::Water:
-                    r = 0.2f; g = 0.4f; b = 0.8f; // Blue
-                    break;
-                case PixelPhys::MaterialType::Stone:
-                    r = 0.5f; g = 0.5f; b = 0.5f; // Gray
-                    break;
-                case PixelPhys::MaterialType::Wood:
-                    r = 0.6f; g = 0.4f; b = 0.2f; // Brown
-                    break;
-                case PixelPhys::MaterialType::Fire:
-                    r = 1.0f; g = 0.3f; b = 0.0f; // Orange-red
-                    break;
-                case PixelPhys::MaterialType::Oil:
-                    r = 0.2f; g = 0.1f; b = 0.1f; // Dark brown
-                    break;
-                default:
-                    continue; // Skip empty material
+            
+            const auto& props = PixelPhys::MATERIAL_PROPERTIES[static_cast<std::size_t>(currentMat)];
+            
+            // First handle any time-based animations for certain materials
+            if (currentMat == PixelPhys::MaterialType::Fire) {
+                // Animate fire with time-based flicker
+                float flicker = 0.2f * sin(SDL_GetTicks() * 0.01f);
+                r = props.r / 255.0f + flicker;
+                g = props.g / 255.0f + flicker * 0.7f;
+                b = props.b / 255.0f + flicker * 0.3f;
+                
+                // Clamp to valid range
+                r = std::max(0.0f, std::min(1.0f, r));
+                g = std::max(0.0f, std::min(1.0f, g));
+                b = std::max(0.0f, std::min(1.0f, b));
+            }
+            else if (currentMat == PixelPhys::MaterialType::Water) {
+                // Slight wave effect for water
+                int matIndex = static_cast<int>(currentMat);
+                float wave = 0.05f * sin(SDL_GetTicks() * 0.003f + matIndex * 0.1f);
+                r = props.r / 255.0f;
+                g = props.g / 255.0f + wave;
+                b = props.b / 255.0f + wave * 2.0f;
+                
+                // Clamp to valid range
+                r = std::max(0.0f, std::min(1.0f, r));
+                g = std::max(0.0f, std::min(1.0f, g));
+                b = std::max(0.0f, std::min(1.0f, b));
+            }
+            else if (currentMat == PixelPhys::MaterialType::Smoke || currentMat == PixelPhys::MaterialType::Steam) {
+                // Make smoke/steam partially transparent
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                r = props.r / 255.0f;
+                g = props.g / 255.0f;
+                b = props.b / 255.0f;
+                glColor4f(r, g, b, 0.7f); // Use alpha
+                continue; // Skip the regular color setting below
+            }
+            else if (currentMat == PixelPhys::MaterialType::Grass) {
+                // Grass with slight variation
+                float time = SDL_GetTicks() * 0.001f;
+                float variation = 0.05f * sin(time);
+                r = props.r / 255.0f;
+                g = props.g / 255.0f + variation;
+                b = props.b / 255.0f;
+            }
+            else {
+                // Default colors from material properties
+                // We'd normally use the per-pixel colors for variation, but in this
+                // rendering approach we'll use a material-wide color with slight randomness
+                float variation = 0.05f * sin(frameCount * 0.01f + static_cast<int>(currentMat) * 0.3f);
+                r = props.r / 255.0f + variation * 0.3f;
+                g = props.g / 255.0f + variation * 0.3f;
+                b = props.b / 255.0f + variation * 0.3f;
+                
+                // Clamp to valid range
+                r = std::max(0.0f, std::min(1.0f, r));
+                g = std::max(0.0f, std::min(1.0f, g));
+                b = std::max(0.0f, std::min(1.0f, b));
             }
             
             // Set the color for this material
             glColor3f(r, g, b);
             
-            // Make pixels look larger to reduce gaps and improve performance
-        glPointSize(3.0f);
+            // Instead of using GL_POINTS which can leave gaps,
+            // we'll use quads (GL_QUADS) to ensure pixels are perfectly tiled
+            // with no gaps between them, like in Noita
             
-        // Use GL_POINTS for rendering, but batch by chunk for better performance
-        glBegin(GL_POINTS);
+            // Calculate exact pixel size for perfect tiling
+            float pixelSize = roundf(zoomLevel);
+            if (pixelSize < 1.0f) pixelSize = 1.0f;
+            
+        // Use GL_QUADS for rendering tightly packed pixels with no gaps
+        glBegin(GL_QUADS);
         
         // Calculate visible area in world coordinates based on camera position and zoom
-        float visibleWorldWidth = WORLD_WIDTH / zoomLevel;
-        float visibleWorldHeight = WORLD_HEIGHT / zoomLevel;
-        float worldStartX = WORLD_WIDTH/2.0f + cameraX - visibleWorldWidth/2.0f;
-        float worldStartY = WORLD_HEIGHT/2.0f + cameraY - visibleWorldHeight/2.0f;
+        // Use integer zoom for pixel-perfect alignment
+        float integerZoom = roundf(zoomLevel);
+        float visibleWorldWidth = WORLD_WIDTH / integerZoom;
+        float visibleWorldHeight = WORLD_HEIGHT / integerZoom;
+        
+        // Round all values to integers to ensure perfect pixel alignment
+        float worldStartX = roundf(WORLD_WIDTH/2.0f + cameraX - visibleWorldWidth/2.0f);
+        float worldStartY = roundf(WORLD_HEIGHT/2.0f + cameraY - visibleWorldHeight/2.0f);
         
         // Determine chunk coordinates for the visible area
         int startChunkX = std::max(0, static_cast<int>(worldStartX) / world.getChunkWidth());
@@ -454,14 +634,22 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     continue;
                 }
                 
-                // Render with a step size based on zoom level for better performance when zoomed out
-                int step = std::max(1, static_cast<int>(1.0f / zoomLevel));
+                // Ensure pixels are rendered consistently
+                // Always render every pixel for high-quality appearance
+                int step = 1;
+                
+                // Remove the pixel offset that was causing misalignment with terrain
                 
                 // Only check pixels within visible part of this chunk
                 for (int y = renderStartY; y < renderEndY; y += step) {
                     for (int x = renderStartX; x < renderEndX; x += step) {
                         if (world.get(x, y) == currentMat) {
-                            glVertex2f(x, y);
+                            // Draw a quad for each pixel to ensure no gaps
+                            // This creates perfectly tiled pixels like in Noita
+                            glVertex2i(x, y);               // Bottom left
+                            glVertex2i(x+1, y);             // Bottom right
+                            glVertex2i(x+1, y+1);           // Top right
+                            glVertex2i(x, y+1);             // Top left
                         }
                     }
                 }
@@ -470,19 +658,35 @@ int main(int /*argc*/, char* /*argv*/[]) {
         glEnd();
         }
         
+        // Render the player character
+        if (!freeCam) { // Only render the player in follow mode
+            glColor3f(0.0f, 1.0f, 0.0f); // Bright green color for better visibility
+            
+            // Calculate player position in screen space
+            float playerScreenX, playerScreenY;
+            playerScreenX = world.getPlayerX();
+            playerScreenY = world.getPlayerY();
+            
+            // Draw player as a small quad for consistent appearance
+            int playerSize = 4; // Larger player size for better visibility
+            glBegin(GL_QUADS);
+            
+            // Convert player position to integer for pixel alignment
+            int px = static_cast<int>(playerScreenX);
+            int py = static_cast<int>(playerScreenY);
+            
+            // Draw player as a square centered at player position
+            glVertex2i(px - playerSize/2, py - playerSize/2);           // Bottom left
+            glVertex2i(px + playerSize/2, py - playerSize/2);           // Bottom right
+            glVertex2i(px + playerSize/2, py + playerSize/2);           // Top right
+            glVertex2i(px - playerSize/2, py + playerSize/2);           // Top left
+            glEnd();
+        }
+        
         // Reset transform
         glPopMatrix();
         
-        // Display some information at the bottom of the screen
-        glColor3f(1.0f, 1.0f, 1.0f);
-        glRasterPos2f(10, actualHeight - 20);
-        std::string statusText = "FPS: " + std::to_string(frameCount) + 
-                               " | Material: " + std::to_string(static_cast<int>(currentMaterial)) +
-                               " | Brush Size: " + std::to_string(brushSize) +
-                               " | Sim: " + (simulationRunning ? "Running" : "Paused");
-                               
-        // Status text would go here, but we're removing the gray bar
-        // to fix the UI issue and improve appearance
+        // Remove UI text elements for a cleaner look
         
         // Update the screen
         SDL_GL_SwapWindow(window);

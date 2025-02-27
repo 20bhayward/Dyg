@@ -48,6 +48,124 @@ bool Renderer::initialize() {
 }
 
 void Renderer::render(const World& world) {
+    // Use shader program if available
+    if (m_shaderProgram != 0) {
+        glUseProgram(m_shaderProgram);
+    }
+    
+    // Update texture with world data
+    updateTexture(world);
+    
+    // Setup VAO/VBO for rendering if they don't exist
+    if (m_vao == 0) {
+        glGenVertexArrays(1, &m_vao);
+        glGenBuffers(1, &m_vbo);
+        
+        glBindVertexArray(m_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+        
+        // Define quad vertices and texture coordinates
+        float vertices[] = {
+            // positions        // texture coords
+            -1.0f,  1.0f, 0.0f, 0.0f, 0.0f, // top left
+            -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, // bottom left
+             1.0f, -1.0f, 0.0f, 1.0f, 1.0f, // bottom right
+             1.0f,  1.0f, 0.0f, 1.0f, 0.0f  // top right
+        };
+        
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+        
+        // Position attribute
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(0);
+        
+        // Texture coord attribute
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+        glEnableVertexAttribArray(1);
+    }
+    
+    // If using shader, setup lighting
+    if (m_shaderProgram != 0) {
+        // Find light sources (fire, lava, etc)
+        std::vector<float> lightPositionsX;
+        std::vector<float> lightPositionsY;
+        std::vector<float> lightColorsR;
+        std::vector<float> lightColorsG;
+        std::vector<float> lightColorsB;
+        std::vector<float> lightIntensities;
+        
+        // Find fire pixels as light sources
+        for (int y = 0; y < world.getHeight(); y += 10) {
+            for (int x = 0; x < world.getWidth(); x += 10) {
+                MaterialType material = world.get(x, y);
+                if (material == MaterialType::Fire) {
+                    // Normalize coordinates to 0-1 range for shader
+                    float normX = static_cast<float>(x) / world.getWidth();
+                    float normY = static_cast<float>(y) / world.getHeight();
+                    
+                    lightPositionsX.push_back(normX);
+                    lightPositionsY.push_back(normY);
+                    lightColorsR.push_back(1.0f);
+                    lightColorsG.push_back(0.6f);
+                    lightColorsB.push_back(0.3f); // Orange fire
+                    lightIntensities.push_back(1.0f);
+                    
+                    // Limit light sources for performance
+                    if (lightPositionsX.size() >= 10) break;
+                }
+            }
+            if (lightPositionsX.size() >= 10) break;
+        }
+        
+        // Add ambient light source if no lights found
+        if (lightPositionsX.empty()) {
+            lightPositionsX.push_back(0.5f); // Top center
+            lightPositionsY.push_back(0.1f);
+            lightColorsR.push_back(1.0f);
+            lightColorsG.push_back(1.0f);
+            lightColorsB.push_back(1.0f); // White light
+            lightIntensities.push_back(0.8f);
+        }
+        
+        // Send light data to shader
+        glUniform1i(glGetUniformLocation(m_shaderProgram, "numLights"), 
+                    static_cast<int>(lightPositionsX.size()));
+                    
+        if (!lightPositionsX.empty()) {
+            // Create combined array for positions
+            float* posArray = new float[lightPositionsX.size() * 2];
+            for (size_t i = 0; i < lightPositionsX.size(); i++) {
+                posArray[i*2] = lightPositionsX[i];
+                posArray[i*2+1] = lightPositionsY[i];
+            }
+            glUniform2fv(glGetUniformLocation(m_shaderProgram, "lightPos"), 
+                         lightPositionsX.size(), posArray);
+            delete[] posArray;
+            
+            // Create combined array for colors
+            float* colorArray = new float[lightColorsR.size() * 3];
+            for (size_t i = 0; i < lightColorsR.size(); i++) {
+                colorArray[i*3] = lightColorsR[i];
+                colorArray[i*3+1] = lightColorsG[i];
+                colorArray[i*3+2] = lightColorsB[i];
+            }
+            glUniform3fv(glGetUniformLocation(m_shaderProgram, "lightColor"), 
+                         lightColorsR.size(), colorArray);
+            delete[] colorArray;
+        }
+                     
+        if (!lightIntensities.empty()) {
+            glUniform1fv(glGetUniformLocation(m_shaderProgram, "lightIntensity"), 
+                         lightIntensities.size(), &lightIntensities[0]);
+        }
+    }
+    
+    // Draw the fullscreen quad with the world texture
+    glBindVertexArray(m_vao);
+    glBindTexture(GL_TEXTURE_2D, m_textureID);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    
+    // Optional: Draw a border around the viewport
     // Save OpenGL state
     glPushAttrib(GL_ALL_ATTRIB_BITS);
     
@@ -61,107 +179,18 @@ void Renderer::render(const World& world) {
     glPushMatrix();
     glLoadIdentity();
     
-    // Draw a dark gray background for the game view
-    glBegin(GL_QUADS);
-    glColor3f(0.15f, 0.15f, 0.15f); // Slightly darker than the clear color
-    glVertex2f(20, 20);
-    glVertex2f(m_screenWidth - 20, 20);
-    glVertex2f(m_screenWidth - 20, m_screenHeight - 20);
-    glVertex2f(20, m_screenHeight - 20);
-    glEnd();
+    if (m_shaderProgram != 0) {
+        glUseProgram(0); // Disable shader for drawing UI elements
+    }
     
     // Draw border around game view
     glLineWidth(2.0f);
     glBegin(GL_LINE_LOOP);
     glColor3f(0.6f, 0.6f, 0.6f); // Light gray border
-    glVertex2f(20, 20);
-    glVertex2f(m_screenWidth - 20, 20);
-    glVertex2f(m_screenWidth - 20, m_screenHeight - 20);
-    glVertex2f(20, m_screenHeight - 20);
-    glEnd();
-    
-    // Define the visible area of the world
-    int viewWidth = m_screenWidth - 40;  // Margins of 20px on each side
-    int viewHeight = m_screenHeight - 40;
-    
-    // Calculate scaling factor to fit world in view
-    float scaleX = static_cast<float>(viewWidth) / world.getWidth();
-    float scaleY = static_cast<float>(viewHeight) / world.getHeight();
-    float scale = std::min(scaleX, scaleY);
-    
-    // Draw some of the world's content
-    int cellSize = std::max(1, static_cast<int>(scale));
-    
-    // Draw a sample of materials from the world (for testing)
-    int sampleEvery = std::max(1, world.getWidth() / 200); // Don't try to render every pixel
-    
-    // Draw materials as colored squares
-    for (int y = 0; y < world.getHeight(); y += sampleEvery) {
-        for (int x = 0; x < world.getWidth(); x += sampleEvery) {
-            MaterialType material = world.get(x, y);
-            
-            // Skip empty cells
-            if (material == MaterialType::Empty) {
-                continue;
-            }
-            
-            // Calculate screen position
-            int screenX = 20 + static_cast<int>(x * scale);
-            int screenY = 20 + static_cast<int>(y * scale);
-            
-            // Set color based on material type
-            switch (material) {
-                case MaterialType::Sand:
-                    glColor3f(0.9f, 0.8f, 0.4f); // Sand color
-                    break;
-                case MaterialType::Water:
-                    glColor4f(0.2f, 0.4f, 0.8f, 0.7f); // Water blue
-                    break;
-                case MaterialType::Stone:
-                    glColor3f(0.5f, 0.5f, 0.5f); // Stone gray
-                    break;
-                case MaterialType::Wood:
-                    glColor3f(0.6f, 0.4f, 0.2f); // Wood brown
-                    break;
-                case MaterialType::Fire:
-                    glColor4f(1.0f, 0.3f, 0.0f, 0.8f); // Fire orange
-                    break;
-                case MaterialType::Oil:
-                    glColor4f(0.2f, 0.1f, 0.1f, 0.8f); // Oil dark
-                    break;
-                default:
-                    glColor3f(1.0f, 0.0f, 1.0f); // Magenta for unknown
-                    break;
-            }
-            
-            // Draw the material as a rectangle
-            glBegin(GL_QUADS);
-            glVertex2f(screenX, screenY);
-            glVertex2f(screenX + cellSize, screenY);
-            glVertex2f(screenX + cellSize, screenY + cellSize);
-            glVertex2f(screenX, screenY + cellSize);
-            glEnd();
-        }
-    }
-    
-    // Draw a debug grid for reference
-    glLineWidth(0.5f);
-    glBegin(GL_LINES);
-    glColor4f(0.5f, 0.5f, 0.5f, 0.2f); // Transparent gray lines
-    
-    // Vertical lines (every 100 world units)
-    for (int x = 0; x < world.getWidth(); x += 100) {
-        int screenX = 20 + static_cast<int>(x * scale);
-        glVertex2f(screenX, 20);
-        glVertex2f(screenX, m_screenHeight - 20);
-    }
-    
-    // Horizontal lines (every 100 world units)
-    for (int y = 0; y < world.getHeight(); y += 100) {
-        int screenY = 20 + static_cast<int>(y * scale);
-        glVertex2f(20, screenY);
-        glVertex2f(m_screenWidth - 20, screenY);
-    }
+    glVertex2f(10, 10);
+    glVertex2f(m_screenWidth - 10, 10);
+    glVertex2f(m_screenWidth - 10, m_screenHeight - 10);
+    glVertex2f(10, m_screenHeight - 10);
     glEnd();
     
     // Restore OpenGL state
@@ -172,6 +201,11 @@ void Renderer::render(const World& world) {
     glPopMatrix();
     
     glPopAttrib();
+    
+    // Disable the shader program
+    if (m_shaderProgram != 0) {
+        glUseProgram(0);
+    }
 }
 
 void Renderer::cleanup() {
@@ -197,7 +231,87 @@ void Renderer::cleanup() {
 }
 
 bool Renderer::createShaders() {
-    // We're using immediate mode rendering now, no need for shaders
+    // Vertex shader source
+    const char* vertexShaderSource = 
+        "#version 330 core\n"
+        "layout (location = 0) in vec3 aPos;\n"
+        "layout (location = 1) in vec2 aTexCoord;\n"
+        "out vec2 TexCoord;\n"
+        "void main()\n"
+        "{\n"
+        "   gl_Position = vec4(aPos, 1.0);\n"
+        "   TexCoord = aTexCoord;\n"
+        "}\n";
+    
+    // Fragment shader source with lighting
+    const char* fragmentShaderSource = 
+        "#version 330 core\n"
+        "out vec4 FragColor;\n"
+        "in vec2 TexCoord;\n"
+        "uniform sampler2D ourTexture;\n"
+        "uniform vec2 lightPos[10];\n" // Support up to 10 light sources
+        "uniform vec3 lightColor[10];\n"
+        "uniform float lightIntensity[10];\n"
+        "uniform int numLights;\n"
+        "void main()\n"
+        "{\n"
+        "   vec4 texColor = texture(ourTexture, TexCoord);\n"
+        "   vec3 lighting = vec3(0.2, 0.2, 0.2);\n" // Ambient light
+        "   for(int i = 0; i < numLights; i++) {\n"
+        "       float distance = length(lightPos[i] - TexCoord);\n"
+        "       float attenuation = 1.0 / (1.0 + 0.1 * distance + 0.01 * distance * distance);\n"
+        "       lighting += lightColor[i] * lightIntensity[i] * attenuation;\n"
+        "   }\n"
+        "   lighting = clamp(lighting, 0.0, 1.0);\n"
+        "   FragColor = vec4(texColor.rgb * lighting, texColor.a);\n"
+        "}\n";
+    
+    // Create and compile vertex shader
+    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+    glCompileShader(vertexShader);
+    
+    // Check for compilation errors
+    GLint success;
+    char infoLog[512];
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+        std::cerr << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n" << infoLog << std::endl;
+        return false;
+    }
+    
+    // Create and compile fragment shader
+    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+    glCompileShader(fragmentShader);
+    
+    // Check for compilation errors
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+        std::cerr << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n" << infoLog << std::endl;
+        return false;
+    }
+    
+    // Create shader program and link shaders
+    m_shaderProgram = glCreateProgram();
+    glAttachShader(m_shaderProgram, vertexShader);
+    glAttachShader(m_shaderProgram, fragmentShader);
+    glLinkProgram(m_shaderProgram);
+    
+    // Check for linking errors
+    glGetProgramiv(m_shaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(m_shaderProgram, 512, NULL, infoLog);
+        std::cerr << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
+        return false;
+    }
+    
+    // Clean up shaders as they're linked to program now
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+    
     return true;
 }
 
@@ -206,8 +320,26 @@ bool Renderer::createTexture(int /*width*/, int /*height*/) {
     return true;
 }
 
-void Renderer::updateTexture(const World& /*world*/) {
-    // We're not using textures in this simple renderer
+void Renderer::updateTexture(const World& world) {
+    // Create texture if it doesn't exist
+    if (m_textureID == 0) {
+        glGenTextures(1, &m_textureID);
+        glBindTexture(GL_TEXTURE_2D, m_textureID);
+        
+        // Set texture parameters for pixel-perfect rendering
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        // Use NEAREST filtering to maintain crisp pixel edges like Noita
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
+    
+    // Bind the texture
+    glBindTexture(GL_TEXTURE_2D, m_textureID);
+    
+    // Upload the pixel data from the world
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, world.getWidth(), world.getHeight(), 
+                 0, GL_RGBA, GL_UNSIGNED_BYTE, world.getPixelData());
 }
 
 } // namespace PixelPhys
