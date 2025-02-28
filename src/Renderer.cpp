@@ -318,16 +318,53 @@ void Renderer::render(const World& world) {
     for (int i = 0; i < static_cast<int>(MaterialType::COUNT); i++) {
         const auto& props = MATERIAL_PROPERTIES[i];
         
-        // Create uniform location strings
+        // Create uniform location strings for visual properties
         std::string isEmissiveLocation = "materials[" + std::to_string(i) + "].isEmissive";
         std::string isRefractiveLocation = "materials[" + std::to_string(i) + "].isRefractive";
+        std::string isTranslucentLocation = "materials[" + std::to_string(i) + "].isTranslucent";
+        std::string isReflectiveLocation = "materials[" + std::to_string(i) + "].isReflective";
         std::string emissiveStrengthLocation = "materials[" + std::to_string(i) + "].emissiveStrength";
         
-        // Set material properties in shader
+        // Create uniform location strings for shader effects
+        std::string hasWaveEffectLocation = "materials[" + std::to_string(i) + "].hasWaveEffect";
+        std::string hasGlowEffectLocation = "materials[" + std::to_string(i) + "].hasGlowEffect";
+        std::string hasParticleEffectLocation = "materials[" + std::to_string(i) + "].hasParticleEffect";
+        std::string hasShimmerEffectLocation = "materials[" + std::to_string(i) + "].hasShimmerEffect";
+        std::string waveSpeedLocation = "materials[" + std::to_string(i) + "].waveSpeed";
+        std::string waveHeightLocation = "materials[" + std::to_string(i) + "].waveHeight";
+        std::string glowSpeedLocation = "materials[" + std::to_string(i) + "].glowSpeed";
+        std::string refractiveIndexLocation = "materials[" + std::to_string(i) + "].refractiveIndex";
+        
+        // Secondary color location
+        std::string secondaryColorLocation = "materials[" + std::to_string(i) + "].secondaryColor";
+        
+        // Set visual properties in shader
         glUniform1i(glGetUniformLocation(m_shaderProgram, isEmissiveLocation.c_str()), props.isEmissive ? 1 : 0);
         glUniform1i(glGetUniformLocation(m_shaderProgram, isRefractiveLocation.c_str()), props.isRefractive ? 1 : 0);
+        glUniform1i(glGetUniformLocation(m_shaderProgram, isTranslucentLocation.c_str()), props.isTranslucent ? 1 : 0);
+        glUniform1i(glGetUniformLocation(m_shaderProgram, isReflectiveLocation.c_str()), props.isReflective ? 1 : 0);
         glUniform1f(glGetUniformLocation(m_shaderProgram, emissiveStrengthLocation.c_str()), 
-                   static_cast<float>(props.emissiveStrength));
+                   static_cast<float>(props.emissiveStrength) / 255.0f);
+        
+        // Set shader effects in shader
+        glUniform1i(glGetUniformLocation(m_shaderProgram, hasWaveEffectLocation.c_str()), props.hasWaveEffect ? 1 : 0);
+        glUniform1i(glGetUniformLocation(m_shaderProgram, hasGlowEffectLocation.c_str()), props.hasGlowEffect ? 1 : 0);
+        glUniform1i(glGetUniformLocation(m_shaderProgram, hasParticleEffectLocation.c_str()), props.hasParticleEffect ? 1 : 0);
+        glUniform1i(glGetUniformLocation(m_shaderProgram, hasShimmerEffectLocation.c_str()), props.hasShimmerEffect ? 1 : 0);
+        glUniform1f(glGetUniformLocation(m_shaderProgram, waveSpeedLocation.c_str()), 
+                   static_cast<float>(props.waveSpeed) / 255.0f);
+        glUniform1f(glGetUniformLocation(m_shaderProgram, waveHeightLocation.c_str()), 
+                   static_cast<float>(props.waveHeight) / 255.0f);
+        glUniform1f(glGetUniformLocation(m_shaderProgram, glowSpeedLocation.c_str()), 
+                   static_cast<float>(props.glowSpeed) / 255.0f);
+        glUniform1f(glGetUniformLocation(m_shaderProgram, refractiveIndexLocation.c_str()), 
+                   static_cast<float>(props.refractiveIndex) / 255.0f);
+        
+        // Set secondary color
+        glUniform3f(glGetUniformLocation(m_shaderProgram, secondaryColorLocation.c_str()),
+                  static_cast<float>(props.secondaryR) / 255.0f,
+                  static_cast<float>(props.secondaryG) / 255.0f,
+                  static_cast<float>(props.secondaryB) / 255.0f);
     }
     
     // Draw main scene
@@ -699,11 +736,27 @@ bool Renderer::createShaders() {
         "uniform vec2 playerPos;\n" // Player position in world coordinates
         "uniform float gameTime;\n"  // For time-based effects
         
-        // Material properties buffer (emissiveness, etc.)
+        // Material properties buffer with enhanced visual effects
         "struct MaterialInfo {\n"
+        "   // Visual properties\n"
         "   bool isEmissive;\n"
         "   bool isRefractive;\n"
+        "   bool isTranslucent;\n"
+        "   bool isReflective;\n"
         "   float emissiveStrength;\n"
+        "   \n"
+        "   // Special shader effects\n"
+        "   bool hasWaveEffect;\n"
+        "   bool hasGlowEffect;\n"
+        "   bool hasParticleEffect;\n"
+        "   bool hasShimmerEffect;\n"
+        "   float waveSpeed;\n"
+        "   float waveHeight;\n"
+        "   float glowSpeed;\n"
+        "   float refractiveIndex;\n"
+        "   \n"
+        "   // Secondary color for effects\n"
+        "   vec3 secondaryColor;\n"
         "};\n"
         "uniform MaterialInfo materials[30];\n" // Max 30 material types
         
@@ -987,29 +1040,93 @@ bool Renderer::createShaders() {
         "       return;\n"
         "   }\n"
         "   \n"
-        "   // Process emissive materials\n"
+        "   // Retrieve all material properties for advanced effects\n"
         "   bool isEmissive = false;\n"
-        "   float emissiveStrength = 0.0;\n"
         "   bool isRefractive = false;\n"
+        "   bool isTranslucent = false;\n"
+        "   bool isReflective = false;\n"
+        "   float emissiveStrength = 0.0;\n"
+        "   bool hasWaveEffect = false;\n"
+        "   bool hasGlowEffect = false;\n"
+        "   bool hasParticleEffect = false;\n"
+        "   bool hasShimmerEffect = false;\n"
+        "   float waveSpeed = 0.0;\n"
+        "   float waveHeight = 0.0;\n"
+        "   float glowSpeed = 0.0;\n"
+        "   float refractiveIndex = 0.0;\n"
+        "   vec3 secondaryColor = vec3(1.0);\n"
         "   \n"
         "   // Use material properties if available\n"
         "   if (materialId > 0 && materialId < 30) {\n"
+        "       // Visual properties\n"
         "       isEmissive = materials[materialId].isEmissive;\n"
-        "       emissiveStrength = materials[materialId].emissiveStrength / 255.0;\n"
         "       isRefractive = materials[materialId].isRefractive;\n"
+        "       isTranslucent = materials[materialId].isTranslucent;\n"
+        "       isReflective = materials[materialId].isReflective;\n"
+        "       emissiveStrength = materials[materialId].emissiveStrength;\n"
+        "       \n"
+        "       // Effect properties\n"
+        "       hasWaveEffect = materials[materialId].hasWaveEffect;\n"
+        "       hasGlowEffect = materials[materialId].hasGlowEffect;\n"
+        "       hasParticleEffect = materials[materialId].hasParticleEffect;\n"
+        "       hasShimmerEffect = materials[materialId].hasShimmerEffect;\n"
+        "       waveSpeed = materials[materialId].waveSpeed;\n"
+        "       waveHeight = materials[materialId].waveHeight;\n"
+        "       glowSpeed = materials[materialId].glowSpeed;\n"
+        "       refractiveIndex = materials[materialId].refractiveIndex;\n"
+        "       \n"
+        "       // Secondary color\n"
+        "       secondaryColor = materials[materialId].secondaryColor;\n"
         "   }\n"
         "   \n"
-        "   // Special case for Fire (always emissive)\n"
-        "   if (materialId == 5) {\n"
-        "       isEmissive = true;\n"
-        "       emissiveStrength = 0.8 + 0.2 * sin(gameTime * 5.0); // Flickering fire\n"
+        "   // Apply wave effect (for water, lava, etc.)\n"
+        "   if (hasWaveEffect) {\n"
+        "       float time = gameTime * waveSpeed * 0.1;\n"
+        "       float waveX = sin(TexCoord.x * 40.0 + time) * waveHeight * 0.01;\n"
+        "       float waveY = sin(TexCoord.y * 30.0 + time * 0.7) * waveHeight * 0.01;\n"
+        "       \n"
+        "       // Calculate wave distortion\n"
+        "       vec2 waveOffset = vec2(waveX, waveY);\n"
+        "       \n"
+        "       // Blend between base color and secondary color based on wave pattern\n"
+        "       float waveBlend = (sin(TexCoord.x * 20.0 + time * 2.0) * 0.5 + 0.5) * \n"
+        "                         (sin(TexCoord.y * 15.0 + time) * 0.5 + 0.5);\n"
+        "       texColor.rgb = mix(texColor.rgb, secondaryColor * texColor.rgb, waveBlend * 0.3);\n"
         "   }\n"
         "   \n"
-        "   // Special effect for water (refraction and wave effect)\n"
+        "   // Apply glow effect (for fire, lava, toxic materials, etc.)\n"
+        "   if (hasGlowEffect) {\n"
+        "       float glowPulse = sin(gameTime * glowSpeed * 0.1) * 0.5 + 0.5;\n"
+        "       emissiveStrength *= (0.8 + glowPulse * 0.4); // Modulate emissive strength\n"
+        "       \n"
+        "       // Add some color variation for more interesting glow\n"
+        "       texColor.rgb = mix(texColor.rgb, secondaryColor, glowPulse * 0.2);\n"
+        "   }\n"
+        "   \n"
+        "   // Apply shimmer effect (for water, ice, etc.)\n"
+        "   if (hasShimmerEffect) {\n"
+        "       // Create sparkling effect using noise\n"
+        "       float noise1 = noise(vec2(TexCoord.x * 80.0, TexCoord.y * 80.0 + gameTime * 0.2));\n"
+        "       float noise2 = noise(vec2(TexCoord.x * 90.0 + gameTime * 0.1, TexCoord.y * 70.0));\n"
+        "       float sparkle = pow(noise1 * noise2, 8.0) * 0.7;\n"
+        "       \n"
+        "       // Add sparkles to the texture\n"
+        "       texColor.rgb += sparkle * secondaryColor * refractiveIndex * 0.04;\n"
+        "   }\n"
+        "   \n"
+        "   // Apply refraction effect (for water, glass, etc.)\n"
         "   if (isRefractive) {\n"
         "       float time = gameTime * 0.05;\n"
-        "       float distortion = 0.005 * sin(TexCoord.x * 30.0 + time) * sin(TexCoord.y * 40.0 + time);\n"
-        "       texColor.rgb *= 1.1 + distortion; // Subtle water sparkle\n"
+        "       float distortion = refractiveIndex * 0.01 * sin(TexCoord.x * 30.0 + time) * sin(TexCoord.y * 40.0 + time);\n"
+        "       texColor.rgb *= 1.1 + distortion; // Distortion effect\n"
+        "   }\n"
+        "   \n"
+        "   // Apply reflective properties (for glass, metal, etc.)\n"
+        "   if (isReflective) {\n"
+        "       // Simulate environment reflection based on view angle\n"
+        "       float viewAngle = abs(dot(normalize(vec2(0.5, 0.5) - TexCoord), vec2(0.0, 1.0)));\n"
+        "       float reflection = pow(1.0 - viewAngle, 2.0) * refractiveIndex * 0.03;\n"
+        "       texColor.rgb += reflection * secondaryColor;\n"
         "   }\n"
         "   \n"
         "   // Apply basic lighting (full implementation will come from shadow map)\n"
@@ -1074,11 +1191,48 @@ bool Renderer::createShaders() {
         "   float fogFactor = 1.0 - exp(-fogDensity * (distFromCenter + depthFactor) * 5.0);\n"
         "   lighting = mix(lighting, fogColor, clamp(fogFactor, 0.0, 0.5));\n"
         "   \n"
+        "   // Apply translucency effect\n"
+        "   float alpha = texColor.a;\n"
+        "   if (isTranslucent) {\n"
+        "       // Make translucent materials let more light through\n"
+        "       lighting = mix(lighting, vec3(1.0), 0.3);\n"
+        "       \n"
+        "       // Create depth-based transparency for better layering effect\n"
+        "       float depthFactor = 1.0 - TexCoord.y * 0.4; // More transparent at surface\n"
+        "       alpha = mix(texColor.a * 0.7, texColor.a, depthFactor);\n"
+        "   }\n"
+        "   \n"
+        "   // Handle particle effects (fire, smoke, etc.)\n"
+        "   if (hasParticleEffect) {\n"
+        "       // Create particle motion effect using time-based texture coordinates\n"
+        "       float particleTime = gameTime * 0.1;\n"
+        "       vec2 particleOffset = vec2(\n"
+        "           sin(TexCoord.y * 10.0 + particleTime) * 0.01,\n"
+        "           cos(TexCoord.x * 8.0 + particleTime * 0.8) * 0.01\n"
+        "       );\n"
+        "       \n"
+        "       // Apply noise-based particle effect\n"
+        "       float particleNoise = noise(TexCoord * 40.0 + particleTime);\n"
+        "       \n"
+        "       // Modulate color and alpha based on particle effect\n"
+        "       texColor.rgb = mix(texColor.rgb, secondaryColor, particleNoise * 0.3);\n"
+        "       alpha *= (0.7 + particleNoise * 0.5); // Varies transparency for particle effect\n"
+        "   }\n"
+        "   \n"
         "   // Write to color and emissive buffers\n"
-        "   FragColor = vec4(texColor.rgb * lighting, texColor.a);\n"
+        "   FragColor = vec4(texColor.rgb * lighting, alpha);\n"
         "   \n"
         "   if (isEmissive) {\n"
-        "       EmissiveColor = vec4(texColor.rgb * emissiveStrength, texColor.a);\n"
+        "       // Add flickering to emissive materials with glow effect\n"
+        "       float emissiveFactor = emissiveStrength;\n"
+        "       if (hasGlowEffect) {\n"
+        "           float flicker = noise(vec2(gameTime * glowSpeed * 0.05, TexCoord.y * 10.0));\n"
+        "           emissiveFactor *= (0.8 + flicker * 0.4);\n"
+        "       }\n"
+        "       \n"
+        "       // Create emissive color based on material and its secondary color\n"
+        "       vec3 emissiveColor = mix(texColor.rgb, secondaryColor, 0.2) * emissiveFactor;\n"
+        "       EmissiveColor = vec4(emissiveColor, alpha);\n"
         "   } else {\n"
         "       EmissiveColor = vec4(0.0);\n"
         "   }\n"
