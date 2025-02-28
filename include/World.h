@@ -193,6 +193,10 @@ private:
     void generateMaterialDeposits();
     void generateTerrariaStyleOreVeins(); // New Terraria-style ore generation
     void generateSpecialDeposits();       // Special deposits like oil pockets
+    
+    // Terrain generation utilities
+    void createSolidGround(int x, int y, int width, int height);
+    void ensureSolidFloor(int x, int y, int width, int depth);
 };
 
 } // namespace PixelPhys
