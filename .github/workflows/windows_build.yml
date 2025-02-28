@@ -60,13 +60,33 @@ jobs:
         echo 'PixelPhys2D.exe' >> artifacts/PixelPhys2D-windows/run_game.bat
         echo 'if ERRORLEVEL 1 pause' >> artifacts/PixelPhys2D-windows/run_game.bat
         
-        # Find and copy DLLs to the package
-        find ${{ github.workspace }}/vcpkg/installed/x64-windows/bin -name "*.dll" -exec cp {} artifacts/PixelPhys2D-windows/ \;
-        find build/Release -name "*.dll" -exec cp {} artifacts/PixelPhys2D-windows/ \; || echo "No DLLs found in build directory"
+        # Copy DLLs - avoid find which is failing and use direct copy
+        if [ -d "${{ github.workspace }}/vcpkg/installed/x64-windows/bin" ]; then
+          cp ${{ github.workspace }}/vcpkg/installed/x64-windows/bin/*.dll artifacts/PixelPhys2D-windows/ || echo "No DLLs found in vcpkg bin directory"
+        else
+          echo "vcpkg bin directory not found, skipping DLL copy from vcpkg"
+        fi
+        
+        # Copy DLLs from build dir if any exist
+        if [ -d "build/Release" ]; then
+          cp build/Release/*.dll artifacts/PixelPhys2D-windows/ 2>/dev/null || echo "No DLLs found in build directory"
+        fi
+        
+        # Copy specific DLLs that are needed
+        if [ -f "${{ github.workspace }}/vcpkg/installed/x64-windows/bin/SDL2.dll" ]; then
+          cp "${{ github.workspace }}/vcpkg/installed/x64-windows/bin/SDL2.dll" artifacts/PixelPhys2D-windows/
+        fi
+        if [ -f "${{ github.workspace }}/vcpkg/installed/x64-windows/bin/glew32.dll" ]; then
+          cp "${{ github.workspace }}/vcpkg/installed/x64-windows/bin/glew32.dll" artifacts/PixelPhys2D-windows/
+        fi
         
         # Copy assets (if any)
-        mkdir -p artifacts/PixelPhys2D-windows/assets
-        cp -r assets/* artifacts/PixelPhys2D-windows/assets/ || echo "No assets found"
+        if [ -d "assets" ]; then
+          mkdir -p artifacts/PixelPhys2D-windows/assets
+          cp -r assets/* artifacts/PixelPhys2D-windows/assets/ || echo "No assets found"
+        else
+          echo "No assets directory found"
+        fi
         
         # Create ZIP file
         cd artifacts
