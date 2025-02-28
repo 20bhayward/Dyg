@@ -1735,6 +1735,11 @@ void Renderer::createFramebuffers() {
     GLenum attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
     glDrawBuffers(2, attachments);
     
+    // Check if framebuffer is complete
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "Main framebuffer is not complete!" << std::endl;
+    }
+    
     // Create shadow map framebuffer
     glGenFramebuffers(1, &m_shadowMapFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, m_shadowMapFBO);
@@ -1748,6 +1753,11 @@ void Renderer::createFramebuffers() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_shadowMapTexture, 0);
+    
+    // Check if framebuffer is complete
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "Shadow map framebuffer is not complete!" << std::endl;
+    }
     
     // Create volumetric lighting framebuffer
     glGenFramebuffers(1, &m_volumetricLightFBO);
@@ -1763,6 +1773,11 @@ void Renderer::createFramebuffers() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_volumetricLightTexture, 0);
     
+    // Check if framebuffer is complete
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "Volumetric light framebuffer is not complete!" << std::endl;
+    }
+    
     // Create bloom effect framebuffer
     glGenFramebuffers(1, &m_bloomFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, m_bloomFBO);
@@ -1776,6 +1791,11 @@ void Renderer::createFramebuffers() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_bloomTexture, 0);
+    
+    // Check if framebuffer is complete
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "Bloom framebuffer is not complete!" << std::endl;
+    }
     
     // Reset to default framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);

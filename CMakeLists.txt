@@ -33,8 +33,16 @@ endif()
 # Include directories
 include_directories(
     ${PROJECT_SOURCE_DIR}/include 
-    ${SDL2_INCLUDE_DIRS}
 )
+
+# SDL2 include directories (support both modern and old-style)
+if(TARGET SDL2::SDL2)
+    get_target_property(SDL2_INCLUDE_DIRS SDL2::SDL2 INTERFACE_INCLUDE_DIRECTORIES)
+endif()
+if(SDL2_INCLUDE_DIRS)
+    include_directories(${SDL2_INCLUDE_DIRS})
+endif()
+
 if(GLEW_FOUND)
     include_directories(${GLEW_INCLUDE_DIRS})
 endif()
@@ -52,7 +60,9 @@ add_executable(PixelPhys2D
 
 # Common libraries for all platforms
 target_link_libraries(PixelPhys2D 
-    ${SDL2_LIBRARIES} 
+    # Support both modern target-based and old variable-based SDL2
+    $<$<TARGET_EXISTS:SDL2::SDL2>:SDL2::SDL2>
+    $<$<NOT:$<TARGET_EXISTS:SDL2::SDL2>>:${SDL2_LIBRARIES}>
     ${OPENGL_LIBRARIES} 
     ${GLEW_LIBRARIES}
 )
@@ -73,7 +83,25 @@ if(WIN32)
     set(REQUIRED_DLLS "")
     
     # Find and copy SDL2.dll
-    if(SDL2_LIBRARIES)
+    if(TARGET SDL2::SDL2)
+        # Modern CMake target - get the DLL location
+        get_target_property(SDL2_LOCATION SDL2::SDL2 LOCATION)
+        if(SDL2_LOCATION)
+            get_filename_component(SDL2_LIB_DIR ${SDL2_LOCATION} DIRECTORY)
+            # Look in standard locations - both regular path and bin directory
+            file(GLOB SDL2_DLL 
+                "${SDL2_LIB_DIR}/SDL2.dll"
+                "${SDL2_LIB_DIR}/../bin/SDL2.dll"
+                "${SDL2_LIB_DIR}/../../bin/SDL2.dll"
+            )
+            if(SDL2_DLL)
+                list(APPEND REQUIRED_DLLS ${SDL2_DLL})
+            else()
+                message(STATUS "SDL2.dll not found automatically. You may need to copy it manually.")
+            endif()
+        endif()
+    elseif(SDL2_LIBRARIES)
+        # Old CMake variables style
         get_filename_component(SDL2_LIB_DIR ${SDL2_LIBRARIES} DIRECTORY)
         # Look in standard locations - both regular path and bin directory
         file(GLOB SDL2_DLL 

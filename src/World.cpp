@@ -9,7 +9,7 @@ namespace PixelPhys {
 
 // Chunk implementation
 
-Chunk::Chunk(int posX, int posY) : m_isDirty(true), m_posX(posX), m_posY(posY) {
+Chunk::Chunk(int posX, int posY) : m_posX(posX), m_posY(posY), m_isDirty(true) {
     // Initialize chunk with empty cells
     m_grid.resize(WIDTH * HEIGHT, MaterialType::Empty);
     
@@ -595,7 +595,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                 
                 // Gases can sometimes dissipate (especially steam)
                 int dissipationChance = isSteam ? 5 : (isSmoke ? 10 : 50);
-                if (m_rng() % 100 < dissipationChance) {
+                if (static_cast<int>(m_rng() % 100) < dissipationChance) {
                     // The gas dissipates
                     m_grid[idx] = MaterialType::Empty;
                     continue;
@@ -605,7 +605,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                 int riseChance = isSteam ? 95 : (isSmoke ? 90 : 80);
                 
                 // Try to rise upward with appropriate speed
-                if (y > 0 && m_rng() % 100 < riseChance) {
+                if (y > 0 && static_cast<int>(m_rng() % 100) < riseChance) {
                     // Try to rise directly upward
                     if (oldGrid[(y-1) * WIDTH + x] == MaterialType::Empty) {
                         m_grid[idx] = MaterialType::Empty;
@@ -654,7 +654,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                 // Chance of spreading is different for each gas
                 int spreadChance = isSteam ? 40 : (isSmoke ? 60 : 50);
                 
-                if (m_rng() % 100 < spreadChance) {
+                if (static_cast<int>(m_rng() % 100) < spreadChance) {
                     bool spreadLeft = false;
                     bool spreadRight = false;
                     
@@ -703,7 +703,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
                                 if (oldGrid[ny * WIDTH + nx] == MaterialType::Water) {
                                     // Contact with water causes steam to condensate
-                                    if (m_rng() % 100 < 30) { // 30% chance to condensate
+                                    if (static_cast<int>(m_rng() % 100) < 30) { // 30% chance to condensate
                                         m_grid[idx] = MaterialType::Empty;
                                     }
                                     break;
@@ -732,7 +732,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                     }
                     
                     // Smoke near fire has a chance to move upward even if no empty space
-                    if (nearFire && y > 0 && m_rng() % 100 < 30) {
+                    if (nearFire && y > 0 && static_cast<int>(m_rng() % 100) < 30) {
                         // Enhanced rising due to heat - can displace air
                         MaterialType aboveMaterial = oldGrid[(y-1) * WIDTH + x];
                         if (aboveMaterial == MaterialType::Empty) {
@@ -1171,7 +1171,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                 
                 // Gases can sometimes dissipate (especially steam)
                 int dissipationChance = isSteam ? 5 : (isSmoke ? 10 : 50);
-                if (m_rng() % 100 < dissipationChance) {
+                if (static_cast<int>(m_rng() % 100) < dissipationChance) {
                     // The gas dissipates
                     m_grid[idx] = MaterialType::Empty;
                     continue;
@@ -1181,7 +1181,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                 int riseChance = isSteam ? 95 : (isSmoke ? 90 : 80);
                 
                 // Try to rise upward with appropriate speed
-                if (y > 0 && m_rng() % 100 < riseChance) {
+                if (y > 0 && static_cast<int>(m_rng() % 100) < riseChance) {
                     // Try to rise directly upward
                     if (m_grid[(y-1) * WIDTH + x] == MaterialType::Empty) {
                         m_grid[idx] = MaterialType::Empty;
@@ -1230,7 +1230,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                 // Chance of spreading is different for each gas
                 int spreadChance = isSteam ? 40 : (isSmoke ? 60 : 50);
                 
-                if (m_rng() % 100 < spreadChance) {
+                if (static_cast<int>(m_rng() % 100) < spreadChance) {
                     bool spreadLeft = false;
                     bool spreadRight = false;
                     
@@ -1279,7 +1279,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             if (nx >= 0 && nx < WIDTH && ny >= 0 && ny < HEIGHT) {
                                 if (m_grid[ny * WIDTH + nx] == MaterialType::Water) {
                                     // Contact with water causes steam to condensate
-                                    if (m_rng() % 100 < 30) { // 30% chance to condensate
+                                    if (static_cast<int>(m_rng() % 100) < 30) { // 30% chance to condensate
                                         m_grid[idx] = MaterialType::Empty;
                                     }
                                     break;
@@ -1308,7 +1308,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                     }
                     
                     // Smoke near fire has a chance to move upward even if no empty space
-                    if (nearFire && y > 0 && m_rng() % 100 < 30) {
+                    if (nearFire && y > 0 && static_cast<int>(m_rng() % 100) < 30) {
                         // Enhanced rising due to heat - can displace air
                         MaterialType aboveMaterial = m_grid[(y-1) * WIDTH + x];
                         if (aboveMaterial == MaterialType::Empty) {
@@ -2866,8 +2866,9 @@ bool World::performPlayerDigging(int /*mouseX*/, int /*mouseY*/, MaterialType& /
 }
 
 void World::renderPlayer(float /*scale*/) const {
-    // For now, we don't have a specific player rendering system
-    // The player is handled by the UI overlay
+    // STUB: This is a placeholder for a more advanced player rendering system
+    // Currently, the player is handled by the UI overlay in the renderer
+    // This method is kept for compatibility with potential future direct world rendering
 }
 
 } // namespace PixelPhys

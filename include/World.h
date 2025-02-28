@@ -99,17 +99,14 @@ public:
     void movePlayerRight() { m_playerVelX = 80.0f; m_playerFacingRight = true; m_lastMoveDir = 1.0f; }
     void playerJump() { 
         // Simple jump that only works when on ground
-        // Use a jumpRequested flag to avoid processing multiple jump requests in a frame
-        static bool jumpRequested = false;
-        
-        if (m_playerOnGround && !jumpRequested) {
+        if (m_playerOnGround && !m_jumpRequested) {
             m_playerVelY = -200.0f;
             m_playerOnGround = false;
-            jumpRequested = true;
+            m_jumpRequested = true;
             
             // Reset the jump request flag after a short delay
             // This prevents immediate repeat jumps on the next frame
-            jumpRequested = false;
+            m_jumpRequested = false;
         }
     }
     bool isPlayerDigging() const;
@@ -168,6 +165,7 @@ private:
     float m_playerMoveTime = 0.0f;
     float m_lastMoveDir = 0.0f;
     bool m_wasOnGround = false;
+    bool m_jumpRequested = false;
     
     // Random number generator
     std::mt19937 m_rng;
