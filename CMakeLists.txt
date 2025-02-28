@@ -116,20 +116,20 @@ if(WIN32)
         endif()
     endif()
     
-    # Find and copy GLEW.dll
-    if(GLEW_LIBRARIES)
-        get_filename_component(GLEW_LIB_DIR ${GLEW_LIBRARIES} DIRECTORY)
-        # Look in standard locations - both regular path and bin directory
-        file(GLOB GLEW_DLL 
-            "${GLEW_LIB_DIR}/glew32.dll"
-            "${GLEW_LIB_DIR}/../bin/glew32.dll"
-            "${GLEW_LIB_DIR}/../../bin/glew32.dll"
-        )
-        if(GLEW_DLL)
-            list(APPEND REQUIRED_DLLS ${GLEW_DLL})
-        else()
-            message(STATUS "glew32.dll not found automatically. You may need to copy it manually.")
-        endif()
+    # Find and copy GLEW.dll - simplified approach
+    # Look in standard locations where GLEW DLLs might be
+    file(GLOB GLEW_DLL 
+        "${CMAKE_PREFIX_PATH}/bin/glew32.dll"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/glew32.dll"
+        "${CMAKE_CURRENT_SOURCE_DIR}/bin/glew32.dll"
+        "${GLEW_INCLUDE_DIRS}/../bin/glew32.dll"
+        "${GLEW_INCLUDE_DIRS}/../../bin/glew32.dll"
+    )
+    if(GLEW_DLL)
+        list(APPEND REQUIRED_DLLS ${GLEW_DLL})
+        message(STATUS "Found GLEW DLL: ${GLEW_DLL}")
+    else()
+        message(STATUS "glew32.dll not found automatically. You may need to copy it manually.")
     endif()
     
     # Copy all required DLLs to build directory
