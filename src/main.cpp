@@ -6,7 +6,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
-#define SDL_MAIN_HANDLED // Add this to avoid SDL_main issues on Windows
+// SDL_MAIN_HANDLED tells SDL not to override our main function
+#define SDL_MAIN_HANDLED
 #endif
 
 // GLEW must be included before any OpenGL headers
@@ -24,15 +25,8 @@ const int WORLD_HEIGHT = 1800;   // Deeper world for vertical exploration
 const int TARGET_FPS = 60;
 const int FRAME_DELAY = 1000 / TARGET_FPS;
 
-// Performance optimization parameters
-const float MIN_ZOOM = 1.0f;     // Minimum zoom level (maximum view size)
-const float MAX_ZOOM = 8.0f;     // Maximum zoom level (minimum view size)
-const int MAX_PHYSICS_ITERATIONS = 2; // Maximum physics updates per frame
-const int ACTIVE_SIMULATION_RADIUS = 120; // Radius around player for active simulation
-const bool ENABLE_CULLING = true; // Enable culling of distant chunks
-
-#if defined(_WIN32) && !defined(SDL_MAIN_HANDLED)
-// For Windows, we need to use WinMain as the entry point
+#ifdef _WIN32
+// For Windows, using WinMain but with SDL_MAIN_HANDLED defined to avoid conflicts
 int WINAPI WinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, LPSTR /*lpCmdLine*/, int /*nCmdShow*/) {
 #else
 // For Linux and other platforms, use standard main
