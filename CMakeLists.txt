@@ -131,7 +131,7 @@ if(WIN32)
         endif()
     endif()
     
-    # Find and copy GLEW.dll - simplified approach
+    # Find and copy GLEW.dll - enhanced search with vcpkg compatibility
     # Look in standard locations where GLEW DLLs might be
     file(GLOB GLEW_DLL 
         "${CMAKE_PREFIX_PATH}/bin/glew32.dll"
@@ -140,6 +140,14 @@ if(WIN32)
         "${GLEW_INCLUDE_DIRS}/../bin/glew32.dll"
         "${GLEW_INCLUDE_DIRS}/../../bin/glew32.dll"
     )
+    
+    # Special handling for vcpkg path format
+    # Use a custom command that doesn't fail if directory doesn't exist
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg/installed/x64-windows/bin/glew32.dll")
+        message(STATUS "Found GLEW DLL in vcpkg path")
+        set(GLEW_DLL "${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg/installed/x64-windows/bin/glew32.dll")
+    endif()
+    
     if(GLEW_DLL)
         list(APPEND REQUIRED_DLLS ${GLEW_DLL})
         message(STATUS "Found GLEW DLL: ${GLEW_DLL}")
@@ -154,6 +162,11 @@ if(WIN32)
             ${DLL_FILE}
             $<TARGET_FILE_DIR:PixelPhys2D>)
     endforeach()
+    
+    # Add directory creation command for artifacts
+    add_custom_command(TARGET PixelPhys2D POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+        ${CMAKE_BINARY_DIR}/../artifacts/PixelPhys2D-windows)
     
     # Create a batch file to run the game easily
     file(WRITE ${CMAKE_BINARY_DIR}/run_game.bat 
