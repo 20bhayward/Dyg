@@ -2,7 +2,24 @@
 #include <iostream>
 #include <vector>
 #include <algorithm> // For std::min/max
+#include <string> // For std::to_string
+#include <sstream> // For stringstream as fallback for to_string
 #include <GL/glew.h>
+
+// Fallback to_string implementation for MSVC compatibility issues
+#if defined(_MSC_VER)
+namespace std {
+    #ifndef _TO_STRING_FALLBACK
+    #define _TO_STRING_FALLBACK
+    template <typename T>
+    std::string to_string(const T& value) {
+        std::ostringstream ss;
+        ss << value;
+        return ss.str();
+    }
+    #endif
+}
+#endif
 
 namespace PixelPhys {
 
@@ -760,6 +777,23 @@ bool Renderer::createShaders() {
         "};\n"
         "uniform MaterialInfo materials[30];\n" // Max 30 material types
         
+        // Basic hash function for random values
+        "float hash(vec2 p) {\n"
+        "   return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);\n"
+        "}\n"
+        
+        // Simple noise function using hash
+        "float noise(vec2 p) {\n"
+        "   vec2 i = floor(p);\n"
+        "   vec2 f = fract(p);\n"
+        "   f = f * f * (3.0 - 2.0 * f);\n"
+        "   float a = hash(i + vec2(0.0, 0.0));\n"
+        "   float b = hash(i + vec2(1.0, 0.0));\n"
+        "   float c = hash(i + vec2(0.0, 1.0));\n"
+        "   float d = hash(i + vec2(1.0, 1.0));\n"
+        "   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);\n"
+        "}\n"
+        
         // Improved Perlin-style noise function
         "vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }\n"
         "vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }\n"
@@ -1105,9 +1139,14 @@ bool Renderer::createShaders() {
         "   \n"
         "   // Apply shimmer effect (for water, ice, etc.)\n"
         "   if (hasShimmerEffect) {\n"
-        "       // Create sparkling effect using noise\n"
-        "       float noise1 = noise(vec2(TexCoord.x * 80.0, TexCoord.y * 80.0 + gameTime * 0.2));\n"
-        "       float noise2 = noise(vec2(TexCoord.x * 90.0 + gameTime * 0.1, TexCoord.y * 70.0));\n"
+        "       // Use a simplified noise approach based on the existing noise function from earlier in the shader\n"
+        "       float time = gameTime * 0.2;\n"
+        "       vec2 coord1 = vec2(TexCoord.x * 80.0, TexCoord.y * 80.0 + time);\n"
+        "       vec2 coord2 = vec2(TexCoord.x * 90.0 + time * 0.5, TexCoord.y * 70.0);\n"
+        "       \n"
+        "       // Use hash-based noise (we already have a hash function in this shader)\n"
+        "       float noise1 = hash(floor(coord1) * 543.3199) * 0.5 + 0.5;\n"
+        "       float noise2 = hash(floor(coord2) * 914.3321) * 0.5 + 0.5;\n"
         "       float sparkle = pow(noise1 * noise2, 8.0) * 0.7;\n"
         "       \n"
         "       // Add sparkles to the texture\n"
@@ -1211,8 +1250,11 @@ bool Renderer::createShaders() {
         "           cos(TexCoord.x * 8.0 + particleTime * 0.8) * 0.01\n"
         "       );\n"
         "       \n"
-        "       // Apply noise-based particle effect\n"
-        "       float particleNoise = noise(TexCoord * 40.0 + particleTime);\n"
+        "       // Use a simple procedural noise based on sine waves\n"
+        "       float nx = sin(TexCoord.x * 40.0 + particleTime * 2.0);\n"
+        "       float ny = sin(TexCoord.y * 30.0 + particleTime);\n"
+        "       float nz = sin((TexCoord.x + TexCoord.y) * 20.0 - particleTime * 1.5);\n"
+        "       float particleNoise = (nx * ny * nz * 0.5 + 0.5);\n"
         "       \n"
         "       // Modulate color and alpha based on particle effect\n"
         "       texColor.rgb = mix(texColor.rgb, secondaryColor, particleNoise * 0.3);\n"
@@ -1226,8 +1268,12 @@ bool Renderer::createShaders() {
         "       // Add flickering to emissive materials with glow effect\n"
         "       float emissiveFactor = emissiveStrength;\n"
         "       if (hasGlowEffect) {\n"
-        "           float flicker = noise(vec2(gameTime * glowSpeed * 0.05, TexCoord.y * 10.0));\n"
-        "           emissiveFactor *= (0.8 + flicker * 0.4);\n"
+        "           // Simple hash-based flickering\n"
+        "           float time = gameTime * glowSpeed * 0.05;\n"
+        "           float flicker = hash(vec2(floor(time * 10.0), floor(TexCoord.y * 20.0))) * 0.5 + 0.5;\n"
+        "           // Smooth out the flicker\n"
+        "           flicker = mix(0.8, 1.2, flicker);\n"
+        "           emissiveFactor *= flicker;\n"
         "       }\n"
         "       \n"
         "       // Create emissive color based on material and its secondary color\n"

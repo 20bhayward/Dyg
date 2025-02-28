@@ -1874,15 +1874,15 @@ void World::set(int x, int y, MaterialType material) {
     m_pixelData[idx+3] = props.transparency; // Use material's transparency value
 }
 
-// Helper function to ensure liquids settle properly
+// Helper function to ensure liquids settle properly with flat surface
 void World::levelLiquids() {
-    // This function will look for isolated liquid pixels and make them fall
+    // This function will look for liquid pixels and enforce proper settling
     for (int y = m_height - 2; y >= 0; y--) {  // Start from bottom-1, going up
         for (int x = 0; x < m_width; x++) {
             MaterialType material = get(x, y);
             
             // Only process liquids
-            if (material != MaterialType::Water && material != MaterialType::Oil) {
+            if (!MATERIAL_PROPERTIES[static_cast<std::size_t>(material)].isLiquid) {
                 continue;
             }
             
@@ -1892,24 +1892,74 @@ void World::levelLiquids() {
                 set(x, y, MaterialType::Empty);
                 set(x, y + 1, material);
             } 
-            // If can't fall, try to find a lower neighboring space
+            // If can't fall, check for uneven surface and equalize it
             else {
-                // If there's a cell of the same liquid to the left/right and empty space on the other side
-                // This helps make liquid surfaces flat
-                if (x > 0 && x < m_width - 1) {
-                    // Check left side - if same liquid to left and empty diagonally down-left
-                    if (get(x - 1, y) == material && 
-                        y < m_height - 1 && get(x - 1, y + 1) == MaterialType::Empty) {
-                        // Move this liquid particle left-down
-                        set(x, y, MaterialType::Empty);
-                        set(x - 1, y + 1, material);
+                bool moved = false;
+                
+                // Check the nearby 5 cells on each side for even distribution
+                for (int step = 1; step <= 5 && !moved; step++) {
+                    // Check if we have a valid column to the left
+                    if (x - step >= 0) {
+                        // If column to the left has space and current column has higher liquid level
+                        int leftLiquidHeight = 0;
+                        int curLiquidHeight = 0;
+                        
+                        // Count down from current position to find liquid heights
+                        for (int checkY = y; checkY < m_height; checkY++) {
+                            if (MATERIAL_PROPERTIES[static_cast<std::size_t>(get(x, checkY))].isLiquid) {
+                                curLiquidHeight++;
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        for (int checkY = y; checkY < m_height; checkY++) {
+                            if (MATERIAL_PROPERTIES[static_cast<std::size_t>(get(x - step, checkY))].isLiquid) {
+                                leftLiquidHeight++;
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        // If this column has more liquid than left column, move a cell to equalize
+                        if (curLiquidHeight > leftLiquidHeight + 1 && get(x - step, y) == MaterialType::Empty) {
+                            set(x, y, MaterialType::Empty);
+                            set(x - step, y, material);
+                            moved = true;
+                            break;
+                        }
                     }
-                    // Check right side - if same liquid to right and empty diagonally down-right
-                    else if (get(x + 1, y) == material && 
-                             y < m_height - 1 && get(x + 1, y + 1) == MaterialType::Empty) {
-                        // Move this liquid particle right-down
-                        set(x, y, MaterialType::Empty);
-                        set(x + 1, y + 1, material);
+                    
+                    // Check if we have a valid column to the right
+                    if (x + step < m_width && !moved) {
+                        // If column to the right has space and current column has higher liquid level
+                        int rightLiquidHeight = 0;
+                        int curLiquidHeight = 0;
+                        
+                        // Count down from current position to find liquid heights
+                        for (int checkY = y; checkY < m_height; checkY++) {
+                            if (MATERIAL_PROPERTIES[static_cast<std::size_t>(get(x, checkY))].isLiquid) {
+                                curLiquidHeight++;
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        for (int checkY = y; checkY < m_height; checkY++) {
+                            if (MATERIAL_PROPERTIES[static_cast<std::size_t>(get(x + step, checkY))].isLiquid) {
+                                rightLiquidHeight++;
+                            } else {
+                                break;
+                            }
+                        }
+                        
+                        // If this column has more liquid than right column, move a cell to equalize
+                        if (curLiquidHeight > rightLiquidHeight + 1 && get(x + step, y) == MaterialType::Empty) {
+                            set(x, y, MaterialType::Empty);
+                            set(x + step, y, material);
+                            moved = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -1956,6 +2006,10 @@ void World::update() {
         }
     }
     
+    // Level liquids for smoother fluid surfaces - do this after chunks are updated
+    // This prevents wave effects and ensures liquids form flat surfaces
+    levelLiquids();
+    
     // Only update pixel data if any chunks were updated
     if (!chunksToUpdate.empty()) {
         updatePixelData();
@@ -1977,7 +2031,7 @@ bool Chunk::isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, in
             if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) continue;
             
             MaterialType cellMaterial = grid[ny * WIDTH + nx];
-            if (cellMaterial == MaterialType::Water || cellMaterial == MaterialType::Oil) {
+            if (MATERIAL_PROPERTIES[static_cast<std::size_t>(cellMaterial)].isLiquid) {
                 liquidCount++;
             }
         }
