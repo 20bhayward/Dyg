@@ -96,6 +96,9 @@ int main(int /*argc*/, char* /*argv*/[]) {
     unsigned int seed = static_cast<unsigned int>(std::time(nullptr));
     world.generate(seed);
     
+    // Force a short delay to ensure the world is fully generated before spawning player
+    SDL_Delay(200);
+    
     // Create the renderer with the actual window size
     PixelPhys::Renderer renderer(actualWidth, actualHeight);
     if (!renderer.initialize()) {
@@ -126,6 +129,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     std::cout << "Controls:" << std::endl;
     std::cout << "Left mouse: Place selected material" << std::endl;
     std::cout << "Right mouse: Erase (place Empty)" << std::endl;
+    std::cout << "Shift + Left mouse: Dig terrain (when close enough)" << std::endl;
     std::cout << "WASD/Arrow keys: Move character" << std::endl;
     std::cout << "Space: Jump" << std::endl;
     std::cout << "C: Toggle between free camera and follow mode" << std::endl;
@@ -152,9 +156,27 @@ int main(int /*argc*/, char* /*argv*/[]) {
     int brushSize = 2;  // Smaller brush for tighter pixel alignment
     bool simulationRunning = true;
 
+    // Fixed timestep for physics
+    const float PHYSICS_TIMESTEP = 1.0f / 60.0f; // Physics update at 60Hz
+    float accumulator = 0.0f;
+    Uint32 lastFrameTime = SDL_GetTicks();
+
     // Main loop
     while (!quit) {
         frameStart = SDL_GetTicks();
+
+        // Calculate delta time in seconds
+        Uint32 currentTime = SDL_GetTicks();
+        float deltaTime = (currentTime - lastFrameTime) / 1000.0f;
+        lastFrameTime = currentTime;
+
+        // Cap delta time to prevent huge physics jumps after lag
+        if (deltaTime > 0.25f) {
+            deltaTime = 0.25f;
+        }
+
+        // Accumulate time for physics updates
+        accumulator += deltaTime;
 
         // Handle events
         while (SDL_PollEvent(&e) != 0) {
@@ -236,8 +258,10 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     world.getPlayerX() < WORLD_WIDTH ? world.movePlayerRight() : void();
                 } else if (e.key.keysym.sym == SDLK_w || e.key.keysym.sym == SDLK_UP || 
                            e.key.keysym.sym == SDLK_SPACE) {
-                    // Jump
-                    world.playerJump();
+                    // Jump - only respond to key press, not hold
+                    if (e.key.repeat == 0) {
+                        world.playerJump();
+                    }
                 }
             } else if (e.type == SDL_WINDOWEVENT) {
                 if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
@@ -284,7 +308,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
             }
         }
         
-        // Handle mouse interactions for placing/erasing materials
+        // Handle mouse interactions for placing/erasing materials and digging
         int mouseX, mouseY;
         Uint32 mouseState = SDL_GetMouseState(&mouseX, &mouseY);
         
@@ -355,42 +379,58 @@ int main(int /*argc*/, char* /*argv*/[]) {
                      << " | Zoom: " << zoomLevel << std::endl;
             */
             
-            // Left mouse button places the current material
+            // Left mouse button: if holding shift, dig. Otherwise, place material
             if (mouseState & SDL_BUTTON(SDL_BUTTON_LEFT)) {
-                // Only log occasionally to reduce console spam
-                if (frameCount % 10 == 0) {
-                    std::cout << "Placing " << static_cast<int>(currentMaterial) << " at: " 
-                              << worldMouseX << "," << worldMouseY << std::endl;
-                }
+                // Check if shift is held down (digging mode)
+                const Uint8* keyState = SDL_GetKeyboardState(NULL);
+                bool shiftPressed = keyState[SDL_SCANCODE_LSHIFT] || keyState[SDL_SCANCODE_RSHIFT];
                 
-                // Place material in a more pixel-perfect pattern (Noita-like)
-                for (int y = -brushSize; y <= brushSize; ++y) {
-                    for (int x = -brushSize; x <= brushSize; ++x) {
-                        // Custom pattern for different materials
-                        bool shouldPlace;
-                        
-                        if (currentMaterial == PixelPhys::MaterialType::Stone) {
-                            // For stone, create a pattern like cobblestone
-                            shouldPlace = ((x*x + y*y <= brushSize*brushSize) && 
-                                          ((worldMouseX+x + worldMouseY+y) % 3 != 0));
-                        } 
-                        else if (currentMaterial == PixelPhys::MaterialType::Wood) {
-                            // For wood, create grain-like pattern
-                            shouldPlace = ((x*x + y*y <= brushSize*brushSize) && 
-                                          ((worldMouseY+y) % 3 != 0));
+                if (shiftPressed && world.isPlayerDigging()) {
+                    // Digging mode - try to dig terrain
+                    PixelPhys::MaterialType dugMaterial;
+                    if (world.performPlayerDigging(worldMouseX, worldMouseY, dugMaterial)) {
+                        // Successfully dug, could spawn particles here
+                        if (frameCount % 5 == 0) {
+                            std::cout << "Digging at: " << worldMouseX << "," << worldMouseY 
+                                      << " Material: " << static_cast<int>(dugMaterial) << std::endl;
                         }
-                        else {
-                            // For other materials, just use a circular brush
-                            shouldPlace = (x*x + y*y <= brushSize*brushSize); // Circular brush
-                        }
-                        
-                        if (shouldPlace) {
-                            int px = worldMouseX + x;
-                            int py = worldMouseY + y;
+                    }
+                } else {
+                    // Material placement mode
+                    if (frameCount % 10 == 0) {
+                        std::cout << "Placing " << static_cast<int>(currentMaterial) << " at: " 
+                                  << worldMouseX << "," << worldMouseY << std::endl;
+                    }
+                    
+                    // Place material in a more pixel-perfect pattern (Noita-like)
+                    for (int y = -brushSize; y <= brushSize; ++y) {
+                        for (int x = -brushSize; x <= brushSize; ++x) {
+                            // Custom pattern for different materials
+                            bool shouldPlace;
                             
-                            // Make sure we're in bounds of the world
-                            if (px >= 0 && px < WORLD_WIDTH && py >= 0 && py < WORLD_HEIGHT) {
-                                world.set(px, py, currentMaterial);
+                            if (currentMaterial == PixelPhys::MaterialType::Stone) {
+                                // For stone, create a pattern like cobblestone
+                                shouldPlace = ((x*x + y*y <= brushSize*brushSize) && 
+                                              ((worldMouseX+x + worldMouseY+y) % 3 != 0));
+                            } 
+                            else if (currentMaterial == PixelPhys::MaterialType::Wood) {
+                                // For wood, create grain-like pattern
+                                shouldPlace = ((x*x + y*y <= brushSize*brushSize) && 
+                                              ((worldMouseY+y) % 3 != 0));
+                            }
+                            else {
+                                // For other materials, just use a circular brush
+                                shouldPlace = (x*x + y*y <= brushSize*brushSize); // Circular brush
+                            }
+                            
+                            if (shouldPlace) {
+                                int px = worldMouseX + x;
+                                int py = worldMouseY + y;
+                                
+                                // Make sure we're in bounds of the world
+                                if (px >= 0 && px < WORLD_WIDTH && py >= 0 && py < WORLD_HEIGHT) {
+                                    world.set(px, py, currentMaterial);
+                                }
                             }
                         }
                     }
@@ -419,21 +459,52 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     }
                 }
             }
+            
+            // Show a visual indicator of digging range when shift is pressed
+            const Uint8* keyState = SDL_GetKeyboardState(NULL);
+            bool shiftPressed = keyState[SDL_SCANCODE_LSHIFT] || keyState[SDL_SCANCODE_RSHIFT];
+            
+            if (shiftPressed && world.isPlayerDigging() && !freeCam) {
+                // Player position and direction information will be calculated when rendering the dig indicator
+                
+                // Store the digging info to draw it during the rendering phase
+                // We'll draw this after the world rendering
+            }
         }
 
         // Update world physics if simulation is running
         if (simulationRunning) {
-            // Calculate delta time for smooth player movement
-            static Uint32 lastTime = SDL_GetTicks();
-            Uint32 currentTime = SDL_GetTicks();
-            float deltaTime = (currentTime - lastTime) / 1000.0f;
-            lastTime = currentTime;
+            // Use fixed timestep for physics but limit max iterations to prevent freezing
+            int maxIterations = 3; // Limit max physics updates per frame to prevent freezing
+            int iterations = 0;
             
-            // Update player first
-            world.updatePlayer(deltaTime);
+            while (accumulator >= PHYSICS_TIMESTEP && iterations < maxIterations) {
+                try {
+                    // Update player first with fixed timestep
+                    world.updatePlayer(PHYSICS_TIMESTEP);
+                    
+                    // Update world physics
+                    world.update();
+                    
+                    // Decrease accumulator
+                    accumulator -= PHYSICS_TIMESTEP;
+                    iterations++;
+                } catch (const std::exception& e) {
+                    std::cerr << "Physics update error: " << e.what() << std::endl;
+                    accumulator = 0; // Reset accumulator to avoid freeze
+                    break;
+                } catch (...) {
+                    std::cerr << "Unknown physics error" << std::endl;
+                    accumulator = 0; // Reset accumulator to avoid freeze
+                    break;
+                }
+            }
             
-            // Update world physics
-            world.update();
+            // If we hit the iteration limit, reduce the remaining accumulator
+            // to prevent massive catch-up the next frame
+            if (iterations == maxIterations && accumulator > PHYSICS_TIMESTEP) {
+                accumulator = PHYSICS_TIMESTEP; // Keep just enough for one more update next frame
+            }
             
             // Run additional liquid leveling to fix floating particles
             // Only do this occasionally to avoid performance impact
@@ -483,6 +554,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
         
         // Force integer zoom values to prevent subpixel rendering issues
         float integerZoom = roundf(zoomLevel);
+        // Ensure zoom is at least 1.0 to prevent division by zero
+        if (integerZoom < 1.0f) integerZoom = 1.0f;
         
         // Calculate pixel-aligned scaling factors, ensuring same scale on both axes
         float scaleX = viewRect.w / (WORLD_WIDTH / integerZoom);
@@ -660,27 +733,112 @@ int main(int /*argc*/, char* /*argv*/[]) {
         
         // Render the player character
         if (!freeCam) { // Only render the player in follow mode
-            glColor3f(0.0f, 1.0f, 0.0f); // Bright green color for better visibility
+            // Use our new rendering method with procedural animation
+            // Make sure we don't divide by zero and keep a reasonable size
+            float playerScale = uniformScale;
+            if (integerZoom > 0) {
+                playerScale = uniformScale / integerZoom;
+            }
+            world.renderPlayer(playerScale);
             
-            // Calculate player position in screen space
-            float playerScreenX, playerScreenY;
-            playerScreenX = world.getPlayerX();
-            playerScreenY = world.getPlayerY();
+            // Draw digging range indicator if in digging mode
+            const Uint8* keyState = SDL_GetKeyboardState(NULL);
+            bool shiftPressed = keyState[SDL_SCANCODE_LSHIFT] || keyState[SDL_SCANCODE_RSHIFT];
             
-            // Draw player as a small quad for consistent appearance
-            int playerSize = 4; // Larger player size for better visibility
-            glBegin(GL_QUADS);
-            
-            // Convert player position to integer for pixel alignment
-            int px = static_cast<int>(playerScreenX);
-            int py = static_cast<int>(playerScreenY);
-            
-            // Draw player as a square centered at player position
-            glVertex2i(px - playerSize/2, py - playerSize/2);           // Bottom left
-            glVertex2i(px + playerSize/2, py - playerSize/2);           // Bottom right
-            glVertex2i(px + playerSize/2, py + playerSize/2);           // Top right
-            glVertex2i(px - playerSize/2, py + playerSize/2);           // Top left
-            glEnd();
+            if (shiftPressed && world.isPlayerDigging() && canEdit) {
+                // Get player position
+                int playerX = world.getPlayerX();
+                int playerY = world.getPlayerY();
+                
+                // Get current mouse position and convert to world coordinates
+                int mouseX = 0, mouseY = 0;
+                SDL_GetMouseState(&mouseX, &mouseY);
+                
+                // Only continue if mouse is in view area
+                if (mouseX >= viewRect.x && mouseX < viewRect.x + viewRect.w &&
+                    mouseY >= viewRect.y && mouseY < viewRect.y + viewRect.h) {
+                    
+                    // Recalculate world mouse coordinates
+                    float viewPercentX = (mouseX - viewRect.x) / static_cast<float>(viewRect.w);
+                    float viewPercentY = (mouseY - viewRect.y) / static_cast<float>(viewRect.h);
+                    
+                    // Use same mapping as in update loop
+                    float integerZoom = roundf(zoomLevel);
+                    float visibleWorldWidth = WORLD_WIDTH / integerZoom;
+                    float visibleWorldHeight = WORLD_HEIGHT / integerZoom;
+                    
+                    float alignedCameraX = roundf(WORLD_WIDTH/2.0f + cameraX - (WORLD_WIDTH/integerZoom)/2.0f);
+                    float alignedCameraY = roundf(WORLD_HEIGHT/2.0f + cameraY - (WORLD_HEIGHT/integerZoom)/2.0f);
+                    
+                    int worldMouseX = static_cast<int>(alignedCameraX + viewPercentX * visibleWorldWidth);
+                    int worldMouseY = static_cast<int>(alignedCameraY + viewPercentY * visibleWorldHeight);
+                    
+                    // Ensure coordinates are within the world bounds
+                    worldMouseX = std::max(0, std::min(worldMouseX, WORLD_WIDTH - 1));
+                    worldMouseY = std::max(0, std::min(worldMouseY, WORLD_HEIGHT - 1));
+                
+                    // Calculate distance from player to mouse
+                    float dx = worldMouseX - playerX;
+                    float dy = worldMouseY - playerY;
+                    float distance = std::sqrt(dx * dx + dy * dy);
+                    
+                    // Normalize direction vector
+                    float dirX = dx / distance;
+                    float dirY = dy / distance;
+                    
+                    // Maximum digging distance from player physics code
+                    const float MAX_DIG_DISTANCE = 50.0f;
+                    
+                    // Color and line style for digging range
+                    if (distance <= MAX_DIG_DISTANCE) {
+                        // Within digging range - show green line
+                        glColor4f(0.0f, 1.0f, 0.0f, 0.5f);
+                    } else {
+                        // Too far - show red line
+                        glColor4f(1.0f, 0.2f, 0.2f, 0.5f);
+                    }
+                    
+                    // Draw the line from player to cursor (or max distance)
+                    glEnable(GL_LINE_STIPPLE);
+                    glLineStipple(1, 0xAAAA);  // Dotted line pattern
+                    glLineWidth(2.0f);
+                    
+                    glBegin(GL_LINES);
+                    glVertex2f(playerX, playerY);
+                    
+                    if (distance > MAX_DIG_DISTANCE) {
+                        // If too far, only draw up to max distance
+                        glVertex2f(playerX + dirX * MAX_DIG_DISTANCE, playerY + dirY * MAX_DIG_DISTANCE);
+                    } else {
+                        // Otherwise draw to the cursor
+                        glVertex2f(worldMouseX, worldMouseY);
+                    }
+                    glEnd();
+                    
+                    // Reset OpenGL state
+                    glDisable(GL_LINE_STIPPLE);
+                    glLineWidth(1.0f);
+                    
+                    // Draw a circle at the dig point
+                    if (distance <= MAX_DIG_DISTANCE) {
+                        // Draw dig radius circle
+                        const int DIG_RADIUS = 3;
+                        const int SEGMENTS = 12;
+                        
+                        glColor4f(0.0f, 1.0f, 0.0f, 0.3f);
+                        glBegin(GL_TRIANGLE_FAN);
+                        glVertex2f(worldMouseX, worldMouseY);  // Center
+                        
+                        for (int i = 0; i <= SEGMENTS; i++) {
+                            float angle = i * 2 * 3.14159f / SEGMENTS;
+                            float px = worldMouseX + cos(angle) * DIG_RADIUS;
+                            float py = worldMouseY + sin(angle) * DIG_RADIUS;
+                            glVertex2f(px, py);
+                        }
+                        glEnd();
+                    }
+                }
+            }
         }
         
         // Reset transform

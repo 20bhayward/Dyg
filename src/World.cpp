@@ -2840,4 +2840,34 @@ void World::updatePixelData() {
     }
 }
 
+// Helper to count water pixels below current position (for depth-based effects)
+int Chunk::countWaterBelow(int x, int y) const {
+    // Count consecutive water pixels below this position (for depth-based effects)
+    int count = 0;
+    for (int checkY = y + 1; checkY < HEIGHT && count < 10; checkY++) {
+        if (m_grid[checkY * WIDTH + x] == MaterialType::Water) {
+            count++;
+        } else {
+            break; // Stop counting when hit non-water
+        }
+    }
+    return count;
+}
+
+// Renderer helper functions for player
+bool World::isPlayerDigging() const {
+    // For now, the player is not digging
+    return false;
+}
+
+bool World::performPlayerDigging(int /*mouseX*/, int /*mouseY*/, MaterialType& /*material*/) {
+    // For now, the player is not digging
+    return false;
+}
+
+void World::renderPlayer(float /*scale*/) const {
+    // For now, we don't have a specific player rendering system
+    // The player is handled by the UI overlay
+}
+
 } // namespace PixelPhys

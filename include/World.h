@@ -59,6 +59,9 @@ private:
     // Handle interactions between different materials (fire spreading, etc.)
     void handleMaterialInteractions(const std::vector<MaterialType>& oldGrid);
     
+    // Helper to count water pixels below current position (for depth-based effects)
+    int countWaterBelow(int x, int y) const;
+    
     // For random number generation in material interactions
     std::mt19937 m_rng{std::random_device{}()};
     
@@ -88,11 +91,29 @@ public:
     
     // Player-related functions
     void updatePlayer(float dt);
-    int getPlayerX() const { return m_playerX; }
-    int getPlayerY() const { return m_playerY; }
-    void movePlayerLeft() { m_playerVelX = -200.0f; }
-    void movePlayerRight() { m_playerVelX = 200.0f; }
-    void playerJump() { if (m_playerOnGround) m_playerVelY = -350.0f; }
+    void updatePlayerAnimation(float dt);
+    void renderPlayer(float scale) const;
+    float getPlayerX() const { return m_playerX; }
+    float getPlayerY() const { return m_playerY; }
+    void movePlayerLeft() { m_playerVelX = -80.0f; m_playerFacingRight = false; m_lastMoveDir = -1.0f; }
+    void movePlayerRight() { m_playerVelX = 80.0f; m_playerFacingRight = true; m_lastMoveDir = 1.0f; }
+    void playerJump() { 
+        // Simple jump that only works when on ground
+        // Use a jumpRequested flag to avoid processing multiple jump requests in a frame
+        static bool jumpRequested = false;
+        
+        if (m_playerOnGround && !jumpRequested) {
+            m_playerVelY = -200.0f;
+            m_playerOnGround = false;
+            jumpRequested = true;
+            
+            // Reset the jump request flag after a short delay
+            // This prevents immediate repeat jumps on the next frame
+            jumpRequested = false;
+        }
+    }
+    bool isPlayerDigging() const;
+    bool performPlayerDigging(int mouseX, int mouseY, MaterialType& material);
     
     // Update the entire world's physics
     void update();
@@ -123,11 +144,30 @@ private:
     std::vector<uint8_t> m_pixelData;
     
     // Player position and physics
-    int m_playerX = 0;
-    int m_playerY = 0;
+    float m_playerX = 0.0f;
+    float m_playerY = 0.0f;
     float m_playerVelX = 0.0f;
     float m_playerVelY = 0.0f;
     bool m_playerOnGround = false;
+    bool m_playerFacingRight = true;
+    
+    // Player body parts for procedural animation
+    struct PlayerLimb {
+        float offsetX, offsetY;
+        float targetOffsetX, targetOffsetY;
+        float angle;
+        float targetAngle;
+    };
+    
+    PlayerLimb m_playerLeftLeg;
+    PlayerLimb m_playerRightLeg;
+    PlayerLimb m_playerLeftArm;
+    PlayerLimb m_playerRightArm;
+    
+    // State tracking
+    float m_playerMoveTime = 0.0f;
+    float m_lastMoveDir = 0.0f;
+    bool m_wasOnGround = false;
     
     // Random number generator
     std::mt19937 m_rng;
