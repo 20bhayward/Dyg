@@ -2162,9 +2162,9 @@ void World::generate(unsigned int seed) {
         }
     }
     
-    // Reset player position to the top middle of the world
+    // Reset player position to above the terrain near the top middle of the world
     m_playerX = m_width / 2;
-    m_playerY = 100;  // Start a bit lower so player can see more of the expanded world
+    m_playerY = 50;  // Start higher since the ground is now near the top 1/6th of the world
     m_playerVelX = 0.0f;
     m_playerVelY = 0.0f;
     
@@ -2193,28 +2193,29 @@ void World::generate(unsigned int seed) {
 }
 
 void World::generateTerrain() {
-    // Base ground level
-    int baseGroundLevel = m_height * 2 / 3;
+    // Make ground much higher in the world to create room for deep cave networks
+    // Only use top 1/6th of the screen for the ground surface, leaving 5/6ths for underground
+    int baseGroundLevel = m_height / 6;
     
-    // Generate smoother height variations for more natural terrain
+    // Generate smoother height variations for natural terrain
     std::vector<int> heightMap(m_width, 0);
     
-    // Use fewer frequencies with smaller amplitudes for less waviness
-    // Large scale features (primary terrain shape) - lower frequency, lower amplitude
-    std::uniform_int_distribution<int> freqDist1(4, 6);
-    std::uniform_int_distribution<int> ampDist1(8, 18); // Reduced amplitude range
+    // Use lower frequencies with moderate amplitudes for gentle surface terrain
+    // Large scale features (primary terrain shape)
+    std::uniform_int_distribution<int> freqDist1(3, 5);  // Lower frequency for larger hills
+    std::uniform_int_distribution<int> ampDist1(10, 20); // Moderate amplitude for rolling hills
     int freq1 = freqDist1(m_rng);
     int amp1 = ampDist1(m_rng);
     
-    // Medium scale features (smaller hills) - smaller amplitude
-    std::uniform_int_distribution<int> freqDist2(10, 14);
-    std::uniform_int_distribution<int> ampDist2(2, 6); // Much smaller amplitude
+    // Medium scale features (smaller hills)
+    std::uniform_int_distribution<int> freqDist2(8, 12);
+    std::uniform_int_distribution<int> ampDist2(4, 8);
     int freq2 = freqDist2(m_rng);
     int amp2 = ampDist2(m_rng);
     
-    // Small scale features (tiny details) - very small amplitude
-    std::uniform_int_distribution<int> freqDist3(20, 30);
-    std::uniform_int_distribution<int> ampDist3(1, 2); // Minimal amplitude
+    // Small scale features (tiny details)
+    std::uniform_int_distribution<int> freqDist3(18, 25);
+    std::uniform_int_distribution<int> ampDist3(1, 3);
     int freq3 = freqDist3(m_rng);
     int amp3 = ampDist3(m_rng);
     
@@ -2225,17 +2226,14 @@ void World::generateTerrain() {
     double phaseOffset3 = phaseOffsetDist(m_rng);
     
     // Generate the height map by combining different frequencies
-    // For a larger world, use more varied terrain with multiple biomes
     for (int x = 0; x < m_width; ++x) {
-        // Use a gentler biome variation that doesn't create extreme differences
-        // This prevents narrow strips of land
-        double biomeFactor = sin(static_cast<double>(x) / m_width * 1.5) * 0.3 + 0.7; // 0.4-1.0 range
-        // Adjust amplitudes more subtly for smoother transitions
-        amp1 = static_cast<int>(amp1 * biomeFactor);
-        // Use noise functions with different phases
+        // Create gentle biome variations
+        double biomeFactor = sin(static_cast<double>(x) / m_width * 1.2) * 0.3 + 0.7; // 0.4-1.0 range
+        int biomeAdjustedAmp = static_cast<int>(amp1 * biomeFactor);
+        
         // Primary terrain shape (smoother, gentler)
         double angle1 = static_cast<double>(x) / m_width * freq1 * 6.28318530718 + phaseOffset1;
-        int height1 = static_cast<int>(sin(angle1) * amp1);
+        int height1 = static_cast<int>(sin(angle1) * biomeAdjustedAmp);
         
         // Medium details
         double angle2 = static_cast<double>(x) / m_width * freq2 * 6.28318530718 + phaseOffset2;
@@ -2245,24 +2243,24 @@ void World::generateTerrain() {
         double angle3 = static_cast<double>(x) / m_width * freq3 * 6.28318530718 + phaseOffset3;
         int height3 = static_cast<int>(sin(angle3) * amp3);
         
-        // Combined terrain height
+        // Combined terrain height - keep near the top of the world
         heightMap[x] = baseGroundLevel + height1 + height2 + height3;
     }
     
-    // Apply more smoothing passes to remove sharp edges
-    for (int i = 0; i < 4; ++i) { // Increased from 2 to 4 passes
+    // Apply moderate smoothing to keep some variation but remove sharp edges
+    for (int i = 0; i < 3; ++i) {
         std::vector<int> smoothedMap = heightMap;
         for (int x = 2; x < m_width - 2; ++x) {
-            // Use a wider window for smoothing (5 cells instead of 3)
+            // Use a 5-cell window for smoothing
             smoothedMap[x] = (heightMap[x-2] + heightMap[x-1] + heightMap[x] * 2 + heightMap[x+1] + heightMap[x+2]) / 6;
         }
         heightMap = smoothedMap;
     }
     
-    // Add plateaus - areas of constant height
-    int numPlateaus = m_width / 250 + 1; // Add a few plateaus
+    // Add plateaus - flat areas for interesting terrain features
+    int numPlateaus = m_width / 250 + 2; // Add more plateaus 
     std::uniform_int_distribution<int> plateauPosDist(0, m_width - 1);
-    std::uniform_int_distribution<int> plateauWidthDist(20, 60);
+    std::uniform_int_distribution<int> plateauWidthDist(30, 80); // Wider plateaus
     
     for (int i = 0; i < numPlateaus; ++i) {
         int plateauCenter = plateauPosDist(m_rng);
@@ -2277,21 +2275,26 @@ void World::generateTerrain() {
         }
         plateauHeight /= (endX - startX + 1);
         
+        // Occasionally lower the plateau a bit to create distinct areas
+        if (m_rng() % 3 == 0) {
+            plateauHeight += 5 + (m_rng() % 10);
+        }
+        
         // Apply plateau with smooth transitions at edges
         for (int x = startX; x <= endX; ++x) {
             double edgeFactor = 1.0;
             // Smooth the edges of the plateau
-            if (x < startX + 10) {
-                edgeFactor = (x - startX) / 10.0;
-            } else if (x > endX - 10) {
-                edgeFactor = (endX - x) / 10.0;
+            if (x < startX + 12) {
+                edgeFactor = (x - startX) / 12.0;
+            } else if (x > endX - 12) {
+                edgeFactor = (endX - x) / 12.0;
             }
             
             heightMap[x] = heightMap[x] * (1.0 - edgeFactor) + plateauHeight * edgeFactor;
         }
     }
     
-    // Apply a final smoothing pass
+    // Apply a final gentle smoothing pass
     for (int i = 0; i < 2; ++i) {
         std::vector<int> smoothedMap = heightMap;
         for (int x = 1; x < m_width - 1; ++x) {
@@ -2300,16 +2303,17 @@ void World::generateTerrain() {
         heightMap = smoothedMap;
     }
     
-    // Create distributions for material depth variations - smaller values for tighter pixels
-    std::uniform_int_distribution<int> grassVariation(0, 1);      // Very thin grass layer
-    std::uniform_int_distribution<int> topsoilVariation(2, 5);    // Thinner topsoil layer
-    std::uniform_int_distribution<int> dirtDepthDist(10, 25);     // Still deep but more suitable for tighter pixels
-    std::uniform_int_distribution<int> stoneStartVariation(-5, 5); // Less variation where stone starts
+    // Create distributions for material depth variations
+    std::uniform_int_distribution<int> grassVariation(0, 2);        // Thin grass layer
+    std::uniform_int_distribution<int> topsoilVariation(2, 6);      // Thin topsoil layer
+    std::uniform_int_distribution<int> dirtDepthDist(15, 35);       // Medium dirt layer
+    std::uniform_int_distribution<int> stoneStartVariation(-8, 8);  // More varied stone transition
     
     // Create distributions for color variation
     std::uniform_int_distribution<int> colorVariation(-15, 15);
     
-    // Fill in the terrain based on the height map, creating layered biome
+    // Layers - the world is now much deeper, with most of it being underground
+    // Keep all the ground near the top 1/6th of the world
     for (int x = 0; x < m_width; ++x) {
         int groundLevel = heightMap[x];
         
@@ -2325,7 +2329,7 @@ void World::generateTerrain() {
         int dirtTop = groundLevel + topsoilDepth;
         int stoneTop = groundLevel + topsoilDepth + dirtDepth + stoneVariation;
         
-        // Fill in each layer with varying colors
+        // Fill in each layer with varying colors - fill entire height
         for (int y = 0; y < m_height; ++y) {
             if (y < 0 || y >= m_height) continue;
             
@@ -2350,40 +2354,37 @@ void World::generateTerrain() {
                 // Dirt layer
                 material = MaterialType::Dirt;
                 
-                // Create clearly defined, pixel-perfect gravel pockets in dirt
-                // Use absolute world coordinates for consistency
+                // Create occasional gravel pockets in dirt
                 int wx = x;
                 int wy = y;
                 
-                // Use much lower frequencies to create larger, more visible patterns
-                // This creates more clearly defined, coherent gravel pockets
-                float primaryNoise = sin(wx * 0.01f) * sin(wy * 0.012f);
-                float secondaryNoise = sin((wx * 0.018f + wy * 0.015f) * 0.8f);
+                // Use lower frequencies for larger patterns
+                float primaryNoise = sin(wx * 0.008f) * sin(wy * 0.01f);
+                float secondaryNoise = sin((wx * 0.015f + wy * 0.013f) * 0.8f);
                 
-                // Combine noise patterns for more organic shapes
+                // Combine noise patterns for organic shapes
                 float combinedNoise = primaryNoise * 0.6f + secondaryNoise * 0.4f;
                 
-                // Scale to 0-1 range with better distribution
+                // Scale to 0-1 range
                 combinedNoise = (combinedNoise + 1.0f) / 2.0f;
                 
-                // Make gravel pockets much smaller and less common
-                // Use much tighter thresholds to reduce prevalence
+                // Smaller, less common gravel pockets
                 if (combinedNoise > 0.72f && combinedNoise < 0.76f) {
-                    // Check for boundary pixels to ensure clean edges
+                    // Check for boundary pixels
                     bool isOnBoundary = false;
                     
-                    // Examine all neighboring pixels
+                    // Examine neighboring pixels
                     for (int dy = -1; dy <= 1; dy++) {
                         for (int dx = -1; dx <= 1; dx++) {
                             if (dx == 0 && dy == 0) continue;
                             
-                            // Calculate same noise for neighbors
-                            float nPrimary = sin((wx+dx) * 0.01f) * sin((wy+dy) * 0.012f);
-                            float nSecondary = sin(((wx+dx) * 0.018f + (wy+dy) * 0.015f) * 0.8f);
+                            // Calculate noise for neighbors
+                            float nPrimary = sin((wx+dx) * 0.008f) * sin((wy+dy) * 0.01f);
+                            float nSecondary = sin(((wx+dx) * 0.015f + (wy+dy) * 0.013f) * 0.8f);
                             float nCombined = nPrimary * 0.6f + nSecondary * 0.4f;
                             nCombined = (nCombined + 1.0f) / 2.0f;
                             
-                            // Check if neighbor is outside gravel pocket threshold
+                            // Check if neighbor is outside gravel pocket
                             if (nCombined <= 0.68f || nCombined >= 0.78f) {
                                 isOnBoundary = true;
                                 break;
@@ -2395,10 +2396,8 @@ void World::generateTerrain() {
                     // Set to gravel for non-boundary pixels
                     material = MaterialType::Gravel;
                     
-                    // Create smoother transitions at boundaries
-                    // Using deterministic pattern based on coordinates
+                    // Smooth transitions at boundaries
                     if (isOnBoundary) {
-                        // Use a more sophisticated pattern for edge smoothing
                         int edgePattern = (wx * 3 + wy * 5) % 7;
                         if (edgePattern < 3) { // ~43% chance to revert to dirt
                             material = MaterialType::Dirt;
@@ -2406,107 +2405,163 @@ void World::generateTerrain() {
                     }
                 }
             } else {
-                // Stone layer (with occasional variation)
+                // Stone layer covers the vast majority of the world
                 material = MaterialType::Stone;
                 
-                // Create more defined, pixel-perfect mineral veins in stone
-                // Use absolute world coordinates for consistent patterns across the world
+                // Underground material veins
                 int wx = x;
                 int wy = y;
                 
-                // Use lower frequencies for the main noise patterns to create larger,
-                // more coherent ore veins and material deposits
-                float noiseValue1 = sin(wx * 0.008f + wy * 0.012f) * sin(wy * 0.01f + wx * 0.007f);
-                float noiseValue2 = sin(wx * 0.015f + wy * 0.02f) * cos(wx * 0.018f + wy * 0.014f);
+                // Use different noise frequencies at different depths to create distinct layers
+                float depthFactor = (float)(wy - stoneTop) / (m_height - stoneTop);
+                float noiseFreq = 0.01f - 0.005f * depthFactor; // Higher frequencies deeper down
                 
-                // Combine noise values with different weights for varied patterns
-                float combinedNoise = noiseValue1 * 0.7f + noiseValue2 * 0.3f;
+                // Different noise functions for different depth zones
+                float noiseValue;
+                if (wy < stoneTop + (m_height - stoneTop) / 3) {
+                    // Upper stone layer - longer horizontal veins
+                    noiseValue = sin(wx * 0.007f + wy * 0.013f) * sin(wy * 0.009f + wx * 0.005f);
+                } else if (wy < stoneTop + 2 * (m_height - stoneTop) / 3) {
+                    // Middle stone layer - more circular/blobby patterns
+                    noiseValue = sin(wx * 0.009f + wy * 0.011f) * cos(wx * 0.012f + wy * 0.008f);
+                } else {
+                    // Deep stone layer - larger, more ore-rich deposits
+                    noiseValue = sin(wx * 0.006f + wy * 0.004f) * sin(wy * 0.007f + wx * 0.009f);
+                }
                 
-                // Scale to 0-1 range for thresholding
-                combinedNoise = (combinedNoise + 1.0f) / 2.0f;
+                // Normalize to 0-1 range
+                noiseValue = (noiseValue + 1.0f) / 2.0f;
                 
-                // Define much narrower thresholds for ore materials to make them less prominent
-                // Using smaller non-overlapping ranges to reduce frequency
-                bool isGravelVein = (combinedNoise > 0.68f && combinedNoise < 0.71f);
-                bool isSandVein = (combinedNoise > 0.86f && combinedNoise < 0.88f);
+                // Create different material types based on depth and noise value
+                bool createSpecialMaterial = false;
+                MaterialType specialMaterial = MaterialType::Stone;
                 
-                if (isGravelVein) {
-                    // Use deterministic edge detection for clean, pixel-perfect boundaries
-                    bool isOnBoundary = false;
-                    
-                    // Check surrounding pixels to determine if we're at a vein boundary
-                    for (int dy = -1; dy <= 1 && !isOnBoundary; dy++) {
-                        for (int dx = -1; dx <= 1; dx++) {
-                            if (dx == 0 && dy == 0) continue;
-                            
-                            // Calculate neighbor's noise value
-                            float nNoise1 = sin((wx+dx) * 0.008f + (wy+dy) * 0.012f) * 
-                                           sin((wy+dy) * 0.01f + (wx+dx) * 0.007f);
-                            float nNoise2 = sin((wx+dx) * 0.015f + (wy+dy) * 0.02f) * 
-                                           cos((wx+dx) * 0.018f + (wy+dy) * 0.014f);
-                            float nCombined = nNoise1 * 0.7f + nNoise2 * 0.3f;
-                            nCombined = (nCombined + 1.0f) / 2.0f;
-                            
-                            // Update boundary check to match new narrower threshold
-                            if (nCombined <= 0.68f || nCombined >= 0.71f) {
-                                isOnBoundary = true;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // Set the material to gravel
-                    material = MaterialType::Gravel;
-                    
-                    // For smoother edges, occasionally revert boundary pixels to stone
-                    if (isOnBoundary && ((wx + wy) % 3 == 0)) {
-                        material = MaterialType::Stone;
+                // Upper layer materials
+                if (wy < stoneTop + (m_height - stoneTop) / 3) {
+                    if (noiseValue > 0.75f && noiseValue < 0.79f) {
+                        createSpecialMaterial = true;
+                        specialMaterial = MaterialType::Gravel; // Common in upper layer
+                    } else if (noiseValue > 0.88f && noiseValue < 0.90f) {
+                        createSpecialMaterial = true;
+                        specialMaterial = MaterialType::Sand; // Uncommon in upper layer
                     }
                 }
-                else if (isSandVein) {
-                    // Similar boundary detection for sand veins
+                // Middle layer materials
+                else if (wy < stoneTop + 2 * (m_height - stoneTop) / 3) {
+                    if (noiseValue > 0.72f && noiseValue < 0.75f) {
+                        createSpecialMaterial = true;
+                        specialMaterial = MaterialType::Gravel; // Less common in middle
+                    } else if (noiseValue > 0.86f && noiseValue < 0.89f) {
+                        createSpecialMaterial = true;
+                        specialMaterial = MaterialType::Sand; // More common in middle
+                    } else if (noiseValue > 0.94f && noiseValue < 0.96f) {
+                        createSpecialMaterial = true;
+                        specialMaterial = MaterialType::Coal; // Only in middle layer
+                    }
+                }
+                // Deep layer materials
+                else {
+                    if (noiseValue > 0.80f && noiseValue < 0.82f) {
+                        createSpecialMaterial = true;
+                        specialMaterial = MaterialType::Gravel; // Rare in deep layer
+                    } else if (noiseValue > 0.84f && noiseValue < 0.88f) {
+                        createSpecialMaterial = true;
+                        specialMaterial = MaterialType::Sand; // More common in deep layer
+                    } else if (noiseValue > 0.93f && noiseValue < 0.95f) {
+                        createSpecialMaterial = true;
+                        specialMaterial = MaterialType::Coal; // More common in deep layer
+                    }
+                }
+                
+                // If we're creating a special material, check for boundary smoothing
+                if (createSpecialMaterial) {
+                    // Check if we're on the boundary of the vein
                     bool isOnBoundary = false;
-                    
                     for (int dy = -1; dy <= 1 && !isOnBoundary; dy++) {
                         for (int dx = -1; dx <= 1; dx++) {
                             if (dx == 0 && dy == 0) continue;
                             
-                            // Calculate neighbor's noise value
-                            float nNoise1 = sin((wx+dx) * 0.008f + (wy+dy) * 0.012f) * 
-                                           sin((wy+dy) * 0.01f + (wx+dx) * 0.007f);
-                            float nNoise2 = sin((wx+dx) * 0.015f + (wy+dy) * 0.02f) * 
-                                           cos((wx+dx) * 0.018f + (wy+dy) * 0.014f);
-                            float nCombined = nNoise1 * 0.7f + nNoise2 * 0.3f;
-                            nCombined = (nCombined + 1.0f) / 2.0f;
+                            int checkX = wx + dx;
+                            int checkY = wy + dy;
                             
-                            // Update boundary check to match new narrower threshold for sand
-                            if (nCombined <= 0.86f || nCombined >= 0.88f) {
+                            // Skip out-of-bounds checks
+                            if (checkX < 0 || checkX >= m_width || checkY < 0 || checkY >= m_height) {
+                                continue;
+                            }
+                            
+                            // Check noise value of neighbor
+                            float neighborNoise;
+                            if (checkY < stoneTop + (m_height - stoneTop) / 3) {
+                                neighborNoise = sin(checkX * 0.007f + checkY * 0.013f) * sin(checkY * 0.009f + checkX * 0.005f);
+                            } else if (checkY < stoneTop + 2 * (m_height - stoneTop) / 3) {
+                                neighborNoise = sin(checkX * 0.009f + checkY * 0.011f) * cos(checkX * 0.012f + checkY * 0.008f);
+                            } else {
+                                neighborNoise = sin(checkX * 0.006f + checkY * 0.004f) * sin(checkY * 0.007f + checkX * 0.009f);
+                            }
+                            neighborNoise = (neighborNoise + 1.0f) / 2.0f;
+                            
+                            // Different threshold checks based on material and layer
+                            bool inVeinRange = false;
+                            if (specialMaterial == MaterialType::Gravel) {
+                                if (checkY < stoneTop + (m_height - stoneTop) / 3) {
+                                    inVeinRange = (neighborNoise > 0.75f && neighborNoise < 0.79f);
+                                } else if (checkY < stoneTop + 2 * (m_height - stoneTop) / 3) {
+                                    inVeinRange = (neighborNoise > 0.72f && neighborNoise < 0.75f);
+                                } else {
+                                    inVeinRange = (neighborNoise > 0.80f && neighborNoise < 0.82f);
+                                }
+                            } else if (specialMaterial == MaterialType::Sand) {
+                                if (checkY < stoneTop + (m_height - stoneTop) / 3) {
+                                    inVeinRange = (neighborNoise > 0.88f && neighborNoise < 0.90f);
+                                } else if (checkY < stoneTop + 2 * (m_height - stoneTop) / 3) {
+                                    inVeinRange = (neighborNoise > 0.86f && neighborNoise < 0.89f);
+                                } else {
+                                    inVeinRange = (neighborNoise > 0.84f && neighborNoise < 0.88f);
+                                }
+                            } else if (specialMaterial == MaterialType::Coal) {
+                                if (checkY < stoneTop + 2 * (m_height - stoneTop) / 3) {
+                                    inVeinRange = (neighborNoise > 0.94f && neighborNoise < 0.96f);
+                                } else {
+                                    inVeinRange = (neighborNoise > 0.93f && neighborNoise < 0.95f);
+                                }
+                            }
+                            
+                            // If neighboring pixel is outside the vein range, we're on a boundary
+                            if (!inVeinRange) {
                                 isOnBoundary = true;
                                 break;
                             }
                         }
                     }
                     
-                    material = MaterialType::Sand;
+                    // Apply the special material
+                    material = specialMaterial;
                     
-                    // Different edge pattern for sand to create visual variety
-                    if (isOnBoundary && ((wx * wy) % 4 == 0)) {
-                        material = MaterialType::Stone;
+                    // For smoother edges, occasionally revert boundary pixels to stone
+                    if (isOnBoundary) {
+                        int edgePattern;
+                        if (specialMaterial == MaterialType::Gravel) {
+                            edgePattern = (wx + wy) % 3;
+                            if (edgePattern == 0) material = MaterialType::Stone;
+                        } else if (specialMaterial == MaterialType::Sand) {
+                            edgePattern = (wx * wy) % 4;
+                            if (edgePattern == 0) material = MaterialType::Stone;
+                        } else if (specialMaterial == MaterialType::Coal) {
+                            edgePattern = (wx * 2 + wy * 3) % 5;
+                            if (edgePattern == 0) material = MaterialType::Stone;
+                        }
                     }
                 }
             }
             
-            // Set the material at this position
+            // Set the material
             set(x, y, material);
             
-            // Apply color variation by modifying the pixel data directly
+            // Apply color variation
             int idx = (y * m_width + x) * 4;
-            
-            // Get material properties for base color
             const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
             
-            // Apply variation to create more realistic, less uniform appearance
-            // Clamp to ensure valid colors
+            // Apply subtle variation to create more realistic appearance
             m_pixelData[idx] = std::max(0, std::min(255, static_cast<int>(props.r) + rVar));      // R
             m_pixelData[idx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + gVar));    // G
             m_pixelData[idx+2] = std::max(0, std::min(255, static_cast<int>(props.b) + bVar));    // B
@@ -2551,59 +2606,765 @@ void World::generateTerrain() {
 }
 
 void World::generateCaves() {
-    // Create more cave systems for the larger world
-    int numCaveSystems = 10 + (m_width / 200); 
+    // Define number of caves based on world size
+    int numCaveSystems = 15 + (m_width / 150); 
     
+    // Distribution for cave type
+    std::uniform_int_distribution<int> caveTypeDist(0, 100);
+    std::uniform_int_distribution<int> materialDist(0, 100);
+    
+    // Common distributions for all cave types
     std::uniform_int_distribution<int> xDist(m_width / 10, m_width * 9 / 10);
-    std::uniform_int_distribution<int> yDist(m_height / 2, m_height * 8 / 10);
-    std::uniform_int_distribution<int> lengthDist(30, 120);
+    std::uniform_int_distribution<int> yDist(m_height / 3, m_height * 9 / 10); // Allow caves to be higher
     std::uniform_int_distribution<int> angleDist(0, 628); // 0 to 2π*100
-    std::uniform_int_distribution<int> radiusDist(5, 15);
+    
+    // Various types of cave systems
+    enum class CaveType {
+        SmallHoles,  // Small isolated holes and minor passages
+        WindingCave, // Traditional winding cave paths
+        LargeCavern, // Large open caverns
+        NarrowPassage, // Extremely narrow network of tunnels
+        FloodedCave,  // Cave with water/oil
+        MaterialFilled, // Cave filled with specific materials (sand, gravel)
+        MassiveComplex // Huge interconnected network
+    };
     
     for (int cave = 0; cave < numCaveSystems; ++cave) {
-        // Start point of the cave
+        // Determine cave type based on weighted probability
+        CaveType caveType;
+        int typeRoll = caveTypeDist(m_rng);
+        
+        if (typeRoll < 20) { // 20%
+            caveType = CaveType::SmallHoles;
+        } else if (typeRoll < 45) { // 25%
+            caveType = CaveType::WindingCave;
+        } else if (typeRoll < 65) { // 20%
+            caveType = CaveType::LargeCavern;
+        } else if (typeRoll < 75) { // 10%
+            caveType = CaveType::NarrowPassage;
+        } else if (typeRoll < 85) { // 10%
+            caveType = CaveType::FloodedCave;
+        } else if (typeRoll < 95) { // 10%
+            caveType = CaveType::MaterialFilled;
+        } else { // 5%
+            caveType = CaveType::MassiveComplex;
+        }
+        
+        // Common starting point for the cave
         int startX = xDist(m_rng);
         int startY = yDist(m_rng);
         
-        // Generate a winding cave path
-        int caveLength = lengthDist(m_rng);
-        double angle = angleDist(m_rng) / 100.0; // Convert to radians
-        
-        int x = startX;
-        int y = startY;
-        
-        for (int step = 0; step < caveLength; ++step) {
-            // Carve out a circle at this position to make the cave
-            int radius = radiusDist(m_rng) / 2 + 3; // Base radius + variation
-            
-            for (int cy = -radius; cy <= radius; ++cy) {
-                for (int cx = -radius; cx <= radius; ++cx) {
-                    if (cx*cx + cy*cy <= radius*radius) {
-                        int wx = x + cx;
-                        int wy = y + cy;
-                        
-                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
-                            // Don't dig too close to the surface to avoid breaking into open air
-                            if (get(wx, wy) != MaterialType::Empty) {
-                                set(wx, wy, MaterialType::Empty);
+        // Different generation based on cave type
+        switch(caveType) {
+            case CaveType::SmallHoles: {
+                // Create a cluster of small isolated holes
+                std::uniform_int_distribution<int> clusterSizeDist(3, 8);
+                std::uniform_int_distribution<int> holeRadiusDist(2, 6);
+                std::uniform_int_distribution<int> offsetDist(-30, 30);
+                
+                int numHoles = clusterSizeDist(m_rng);
+                
+                for (int hole = 0; hole < numHoles; hole++) {
+                    int holeX = startX + offsetDist(m_rng);
+                    int holeY = startY + offsetDist(m_rng);
+                    int radius = holeRadiusDist(m_rng);
+                    
+                    // Make some holes slightly elliptical
+                    float xStretch = 1.0f + (m_rng() % 50) / 100.0f;
+                    float yStretch = 1.0f + (m_rng() % 50) / 100.0f;
+                    
+                    for (int cy = -radius; cy <= radius; cy++) {
+                        for (int cx = -radius; cx <= radius; cx++) {
+                            float scaledX = cx / xStretch;
+                            float scaledY = cy / yStretch;
+                            
+                            if ((scaledX*scaledX + scaledY*scaledY) <= radius*radius) {
+                                int wx = holeX + cx;
+                                int wy = holeY + cy;
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                    if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                        set(wx, wy, MaterialType::Empty);
+                                    }
+                                }
                             }
+                        }
+                    }
+                }
+                break;
+            }
+            
+            case CaveType::WindingCave: {
+                // Traditional winding cave paths with variable width
+                std::uniform_int_distribution<int> lengthDist(50, 150);
+                std::uniform_int_distribution<int> radiusDist(3, 8); // Slimmer caves
+                std::uniform_int_distribution<int> branchChanceDist(0, 100);
+                
+                int caveLength = lengthDist(m_rng);
+                double angle = angleDist(m_rng) / 100.0; // Convert to radians
+                
+                int x = startX;
+                int y = startY;
+                
+                // Track carved points to allow branching
+                std::vector<std::pair<int, int>> pathPoints;
+                
+                for (int step = 0; step < caveLength; ++step) {
+                    // Occasionally vary the radius to create chambers and narrow passages
+                    int baseRadius = radiusDist(m_rng);
+                    int radius = baseRadius;
+                    
+                    // Create chamber at the start, middle or end
+                    if (step < 5 || (step > caveLength/2-5 && step < caveLength/2+5) || step > caveLength-10) {
+                        radius = baseRadius * 2;
+                    }
+                    
+                    // Carve out this section
+                    for (int cy = -radius; cy <= radius; ++cy) {
+                        for (int cx = -radius; cx <= radius; ++cx) {
+                            if (cx*cx + cy*cy <= radius*radius) {
+                                int wx = x + cx;
+                                int wy = y + cy;
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                    if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                        set(wx, wy, MaterialType::Empty);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Save this point for potential branching
+                    if (step % 10 == 0) {
+                        pathPoints.push_back(std::make_pair(x, y));
+                    }
+                    
+                    // Change direction for a winding path - more variation
+                    angle += (m_rng() % 100 - 50) / 300.0;
+                    
+                    // Move in the current direction
+                    x += static_cast<int>(cos(angle) * 2);
+                    y += static_cast<int>(sin(angle) * 2);
+                    
+                    // Bound check and reflect if needed
+                    if (x < 5) { x = 5; angle = 3.14159 - angle; }
+                    if (x >= m_width - 5) { x = m_width - 5; angle = 3.14159 - angle; }
+                    if (y < m_height / 4) { y = m_height / 4; angle = -angle; }
+                    if (y >= m_height - 5) { y = m_height - 5; angle = -angle; }
+                }
+                
+                // Create branches with probability
+                if (!pathPoints.empty() && branchChanceDist(m_rng) < 70) { // 70% chance for branches
+                    std::uniform_int_distribution<int> branchLengthDist(15, 40);
+                    std::uniform_int_distribution<int> pointSelectDist(0, pathPoints.size() - 1);
+                    
+                    int numBranches = 1 + (m_rng() % 3); // 1-3 branches
+                    
+                    for (int branch = 0; branch < numBranches; branch++) {
+                        if (pathPoints.empty()) break;
+                        
+                        int pointIdx = pointSelectDist(m_rng);
+                        if (pointIdx >= pathPoints.size()) pointIdx = pathPoints.size() - 1;
+                        
+                        int branchX = pathPoints[pointIdx].first;
+                        int branchY = pathPoints[pointIdx].second;
+                        
+                        int branchLength = branchLengthDist(m_rng);
+                        double branchAngle = angleDist(m_rng) / 100.0;
+                        
+                        // Create the branch
+                        for (int step = 0; step < branchLength; ++step) {
+                            int radius = radiusDist(m_rng) - 1; // Branches are slightly slimmer
+                            
+                            for (int cy = -radius; cy <= radius; ++cy) {
+                                for (int cx = -radius; cx <= radius; ++cx) {
+                                    if (cx*cx + cy*cy <= radius*radius) {
+                                        int wx = branchX + cx;
+                                        int wy = branchY + cy;
+                                        
+                                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                            if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                                set(wx, wy, MaterialType::Empty);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            branchAngle += (m_rng() % 100 - 50) / 400.0;
+                            branchX += static_cast<int>(cos(branchAngle) * 2);
+                            branchY += static_cast<int>(sin(branchAngle) * 2);
+                            
+                            // Bound check for branch
+                            if (branchX < 5 || branchX >= m_width - 5 || 
+                                branchY < m_height / 4 || branchY >= m_height - 5) {
+                                break;
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+            
+            case CaveType::LargeCavern: {
+                // Large open caverns with more irregular shapes
+                std::uniform_int_distribution<int> cavernSizeXDist(30, 80);
+                std::uniform_int_distribution<int> cavernSizeYDist(20, 50);
+                std::uniform_int_distribution<int> noiseScaleDist(10, 30);
+                
+                int cavernWidth = cavernSizeXDist(m_rng);
+                int cavernHeight = cavernSizeYDist(m_rng);
+                int noiseScale = noiseScaleDist(m_rng);
+                
+                // Generate a large, irregular cavern using noise
+                for (int cy = -cavernHeight/2; cy <= cavernHeight/2; cy++) {
+                    for (int cx = -cavernWidth/2; cx <= cavernWidth/2; cx++) {
+                        // Elliptical base shape
+                        float normalizedX = (float)cx / (cavernWidth/2);
+                        float normalizedY = (float)cy / (cavernHeight/2);
+                        float ellipseDist = normalizedX*normalizedX + normalizedY*normalizedY;
+                        
+                        if (ellipseDist <= 1.0f) {
+                            // Apply noise to make edges irregular
+                            float noiseVal = sin((startX + cx) * 0.1f) * cos((startY + cy) * 0.1f);
+                            noiseVal = (noiseVal + 1.0f) / 2.0f; // Normalize to 0-1
+                            
+                            // More irregular edges near the perimeter
+                            float edgeFactor = std::max(0.0f, 1.0f - ellipseDist);
+                            
+                            if (noiseVal > 0.3f || edgeFactor > 0.7f) {
+                                int wx = startX + cx;
+                                int wy = startY + cy;
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                    if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                        set(wx, wy, MaterialType::Empty);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Add some stalactites/stalagmites for visual interest
+                std::uniform_int_distribution<int> formationsDist(4, 12);
+                std::uniform_int_distribution<int> formationSizeDist(3, 8);
+                
+                int numFormations = formationsDist(m_rng);
+                
+                for (int i = 0; i < numFormations; i++) {
+                    int formX = startX + (m_rng() % cavernWidth - cavernWidth/2);
+                    int formY = startY + (m_rng() % cavernHeight - cavernHeight/2);
+                    int size = formationSizeDist(m_rng);
+                    
+                    // Choose whether it's stalactite (ceiling) or stalagmite (floor)
+                    bool isCeiling = m_rng() % 2 == 0;
+                    
+                    for (int h = 0; h < size; h++) {
+                        int width = size - h; // Narrower as it extends
+                        
+                        for (int w = -width/2; w <= width/2; w++) {
+                            int wx = formX + w;
+                            int wy = isCeiling ? formY - h : formY + h;
+                            
+                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                set(wx, wy, MaterialType::Stone);
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+            
+            case CaveType::NarrowPassage: {
+                // Very narrow, long winding passages
+                std::uniform_int_distribution<int> lengthDist(100, 300);
+                std::uniform_int_distribution<int> radiusDist(1, 3); // Very narrow
+                
+                int caveLength = lengthDist(m_rng);
+                double angle = angleDist(m_rng) / 100.0;
+                
+                int x = startX;
+                int y = startY;
+                
+                for (int step = 0; step < caveLength; ++step) {
+                    // Ultra-narrow passages with occasional small chambers
+                    int radius = radiusDist(m_rng);
+                    
+                    // Small chambers every so often
+                    if (step % 25 == 0) {
+                        radius += 2;
+                    }
+                    
+                    for (int cy = -radius; cy <= radius; ++cy) {
+                        for (int cx = -radius; cx <= radius; ++cx) {
+                            if (cx*cx + cy*cy <= radius*radius) {
+                                int wx = x + cx;
+                                int wy = y + cy;
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                    if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                        set(wx, wy, MaterialType::Empty);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // More winding for narrow passages - frequently change direction
+                    angle += (m_rng() % 100 - 50) / 250.0;
+                    
+                    // Move in smaller increments for more detail
+                    x += static_cast<int>(cos(angle) * 1.5);
+                    y += static_cast<int>(sin(angle) * 1.5);
+                    
+                    // Bound check and reflect 
+                    if (x < 5) { x = 5; angle = 3.14159 - angle; }
+                    if (x >= m_width - 5) { x = m_width - 5; angle = 3.14159 - angle; }
+                    if (y < m_height / 4) { y = m_height / 4; angle = -angle; }
+                    if (y >= m_height - 5) { y = m_height - 5; angle = -angle; }
+                }
+                break;
+            }
+            
+            case CaveType::FloodedCave: {
+                // Cave with water/liquid pools
+                std::uniform_int_distribution<int> cavernSizeDist(30, 70);
+                std::uniform_int_distribution<int> floodLevelDist(30, 70);
+                
+                int cavernSize = cavernSizeDist(m_rng);
+                int floodPercent = floodLevelDist(m_rng); // Percentage of height to flood
+                
+                // Determine liquid type
+                MaterialType liquidType;
+                int liquidRoll = materialDist(m_rng);
+                
+                if (liquidRoll < 60) {  // 60%
+                    liquidType = MaterialType::Water;
+                } else if (liquidRoll < 85) {  // 25%
+                    liquidType = MaterialType::Oil;
+                } else {  // 15%
+                    liquidType = MaterialType::ToxicSludge;
+                }
+                
+                // First create a cavity
+                for (int cy = -cavernSize/2; cy <= cavernSize/2; cy++) {
+                    for (int cx = -cavernSize/2; cx <= cavernSize/2; cx++) {
+                        // Circular/elliptical shape with noise
+                        float dist = sqrt(cx*cx + cy*cy);
+                        
+                        // Add some noise to the edges
+                        float noiseOffset = sin(cx * 0.2f) * cos(cy * 0.2f) * 5.0f;
+                        
+                        if (dist + noiseOffset < cavernSize/2) {
+                            int wx = startX + cx;
+                            int wy = startY + cy;
+                            
+                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                    // Mark as empty first
+                                    set(wx, wy, MaterialType::Empty);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Now add liquid at the bottom portion
+                int floodHeight = (cavernSize * floodPercent) / 100;
+                int floodTop = startY + cavernSize/2 - floodHeight;
+                
+                for (int cy = 0; cy < floodHeight; cy++) {
+                    for (int cx = -cavernSize/2; cx <= cavernSize/2; cx++) {
+                        float dist = sqrt(cx*cx + (cy - floodHeight/2)*(cy - floodHeight/2));
+                        float noiseOffset = sin(cx * 0.2f) * cos(cy * 0.2f) * 5.0f;
+                        
+                        if (dist + noiseOffset < cavernSize/2) {
+                            int wx = startX + cx;
+                            int wy = floodTop + cy;
+                            
+                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                if (get(wx, wy) == MaterialType::Empty) {
+                                    set(wx, wy, liquidType);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Add some dripping stalactites with the liquid
+                std::uniform_int_distribution<int> numDripsDist(2, 6);
+                int numDrips = numDripsDist(m_rng);
+                
+                for (int i = 0; i < numDrips; i++) {
+                    int dripX = startX - cavernSize/2 + (m_rng() % cavernSize);
+                    int ceilingY = startY - cavernSize/2;
+                    
+                    // Create a stalactite
+                    int stalactiteHeight = 2 + (m_rng() % 5);
+                    
+                    for (int h = 0; h < stalactiteHeight; h++) {
+                        int width = 2 - h / 2;
+                        if (width < 1) width = 1;
+                        
+                        for (int w = -width; w <= width; w++) {
+                            if (dripX + w >= 0 && dripX + w < m_width && 
+                                ceilingY + h >= 0 && ceilingY + h < m_height) {
+                                set(dripX + w, ceilingY + h, MaterialType::Stone);
+                            }
+                        }
+                    }
+                    
+                    // Add a few drops of liquid below the stalactite
+                    int numDrops = 1 + (m_rng() % 3);
+                    for (int d = 0; d < numDrops; d++) {
+                        int dropY = ceilingY + stalactiteHeight + d;
+                        
+                        if (dripX >= 0 && dripX < m_width && dropY >= 0 && dropY < m_height) {
+                            if (get(dripX, dropY) == MaterialType::Empty) {
+                                set(dripX, dropY, liquidType);
+                            }
+                        }
+                    }
+                }
+                
+                // Sometimes add a small air pocket trapped at the top
+                if (m_rng() % 2 == 0) {
+                    int pocketSize = 3 + (m_rng() % 6);
+                    int pocketX = startX;
+                    int pocketY = startY - cavernSize/2 + pocketSize/2;
+                    
+                    for (int cy = -pocketSize/2; cy <= pocketSize/2; cy++) {
+                        for (int cx = -pocketSize/2; cx <= pocketSize/2; cx++) {
+                            if (cx*cx + cy*cy <= (pocketSize/2)*(pocketSize/2)) {
+                                int wx = pocketX + cx;
+                                int wy = pocketY + cy;
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                    set(wx, wy, MaterialType::Empty);
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+            
+            case CaveType::MaterialFilled: {
+                // Create caves filled with specific materials
+                std::uniform_int_distribution<int> cavernSizeDist(25, 60);
+                
+                int cavernSize = cavernSizeDist(m_rng);
+                
+                // Choose fill material
+                MaterialType fillMaterial;
+                int fillRoll = materialDist(m_rng);
+                
+                if (fillRoll < 40) {  // 40%
+                    fillMaterial = MaterialType::Sand;
+                } else if (fillRoll < 70) {  // 30%
+                    fillMaterial = MaterialType::Gravel;
+                } else if (fillRoll < 90) {  // 20%
+                    fillMaterial = MaterialType::Mud;
+                } else {  // 10%
+                    fillMaterial = MaterialType::Coal;
+                }
+                
+                // First create the cavity
+                for (int cy = -cavernSize/2; cy <= cavernSize/2; cy++) {
+                    for (int cx = -cavernSize/2; cx <= cavernSize/2; cx++) {
+                        float dist = sqrt(cx*cx + cy*cy);
+                        
+                        // Add some noise to the edges
+                        float noiseOffset = sin(cx * 0.2f) * cos(cy * 0.2f) * 4.0f;
+                        
+                        if (dist + noiseOffset < cavernSize/2) {
+                            int wx = startX + cx;
+                            int wy = startY + cy;
+                            
+                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                    // First make it empty
+                                    set(wx, wy, MaterialType::Empty);
+                                    
+                                    // Then immediately fill most of it (leaving some air pockets)
+                                    if ((cx+cy) % 6 != 0) { // Occasional air pockets
+                                        set(wx, wy, fillMaterial);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Add a few air pockets
+                std::uniform_int_distribution<int> pocketCountDist(3, 8);
+                std::uniform_int_distribution<int> pocketSizeDist(3, 8);
+                
+                int numPockets = pocketCountDist(m_rng);
+                
+                for (int p = 0; p < numPockets; p++) {
+                    int pocketX = startX - cavernSize/2 + (m_rng() % cavernSize);
+                    int pocketY = startY - cavernSize/2 + (m_rng() % cavernSize);
+                    int pocketSize = pocketSizeDist(m_rng);
+                    
+                    for (int cy = -pocketSize/2; cy <= pocketSize/2; cy++) {
+                        for (int cx = -pocketSize/2; cx <= pocketSize/2; cx++) {
+                            if (cx*cx + cy*cy <= (pocketSize/2)*(pocketSize/2)) {
+                                int wx = pocketX + cx;
+                                int wy = pocketY + cy;
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                    set(wx, wy, MaterialType::Empty);
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+            
+            case CaveType::MassiveComplex: {
+                // Huge interconnected cave network
+                std::uniform_int_distribution<int> radiusDist(5, 12);
+                std::uniform_int_distribution<int> lengthDist(120, 250);
+                std::uniform_int_distribution<int> branchCountDist(3, 8);
+                
+                // Create a main tunnel
+                int mainLength = lengthDist(m_rng);
+                double mainAngle = angleDist(m_rng) / 100.0;
+                
+                int x = startX;
+                int y = startY;
+                
+                // Store points for branching
+                std::vector<std::tuple<int, int, double>> junctionPoints;
+                
+                // Create the main passage
+                for (int step = 0; step < mainLength; ++step) {
+                    int radius = radiusDist(m_rng);
+                    
+                    // Create wider chambers at key points
+                    if (step % 40 < 5) {
+                        radius += 5;
+                        
+                        // Save this as a junction point
+                        if (step % 40 == 2 && junctionPoints.size() < 8) {
+                            junctionPoints.push_back(std::make_tuple(x, y, mainAngle + 3.14159/2.0));
+                        }
+                    }
+                    
+                    // Carve the main tunnel
+                    for (int cy = -radius; cy <= radius; ++cy) {
+                        for (int cx = -radius; cx <= radius; ++cx) {
+                            if (cx*cx + cy*cy <= radius*radius) {
+                                int wx = x + cx;
+                                int wy = y + cy;
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                    if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                        set(wx, wy, MaterialType::Empty);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Change direction gradually
+                    mainAngle += (m_rng() % 100 - 50) / 500.0;
+                    
+                    // Move to next point
+                    x += static_cast<int>(cos(mainAngle) * 2);
+                    y += static_cast<int>(sin(mainAngle) * 2);
+                    
+                    // Bounds checking and reflection
+                    if (x < 10) { x = 10; mainAngle = 3.14159 - mainAngle; }
+                    if (x >= m_width - 10) { x = m_width - 10; mainAngle = 3.14159 - mainAngle; }
+                    if (y < m_height / 4) { y = m_height / 4; mainAngle = -mainAngle; }
+                    if (y >= m_height - 10) { y = m_height - 10; mainAngle = -mainAngle; }
+                }
+                
+                // Create branches from the saved junction points
+                int numBranches = branchCountDist(m_rng);
+                numBranches = std::min(numBranches, (int)junctionPoints.size());
+                
+                for (int b = 0; b < numBranches; b++) {
+                    if (junctionPoints.empty()) break;
+                    
+                    // Pick a junction point
+                    int jIndex = m_rng() % junctionPoints.size();
+                    int branchX = std::get<0>(junctionPoints[jIndex]);
+                    int branchY = std::get<1>(junctionPoints[jIndex]);
+                    double branchAngle = std::get<2>(junctionPoints[jIndex]);
+                    
+                    // Remove used junction point
+                    junctionPoints.erase(junctionPoints.begin() + jIndex);
+                    
+                    // Create the branch
+                    int branchLength = lengthDist(m_rng) / 2;
+                    
+                    for (int step = 0; step < branchLength; ++step) {
+                        int radius = radiusDist(m_rng) - 2; // Slightly smaller than main tunnel
+                        
+                        // Create smaller chambers along branches
+                        if (step % 25 < 3) {
+                            radius += 3;
+                        }
+                        
+                        // Carve the branch tunnel
+                        for (int cy = -radius; cy <= radius; ++cy) {
+                            for (int cx = -radius; cx <= radius; ++cx) {
+                                if (cx*cx + cy*cy <= radius*radius) {
+                                    int wx = branchX + cx;
+                                    int wy = branchY + cy;
+                                    
+                                    if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                        if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                            set(wx, wy, MaterialType::Empty);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Change direction gradually but more erratically for branches
+                        branchAngle += (m_rng() % 100 - 50) / 400.0;
+                        
+                        // Move to next point in branch
+                        branchX += static_cast<int>(cos(branchAngle) * 2);
+                        branchY += static_cast<int>(sin(branchAngle) * 2);
+                        
+                        // Bounds checking and end branch if it hits boundaries
+                        if (branchX < 5 || branchX >= m_width - 5 || 
+                            branchY < m_height / 4 || branchY >= m_height - 5) {
+                            break;
+                        }
+                    }
+                }
+                
+                // Add some decorative features - stalactites, stalagmites
+                std::uniform_int_distribution<int> featureCountDist(5, 15);
+                int numFeatures = featureCountDist(m_rng);
+                
+                for (int f = 0; f < numFeatures; f++) {
+                    // Randomly place within the massive complex area
+                    int featureX = startX + (m_rng() % 100 - 50);
+                    int featureY = startY + (m_rng() % 100 - 50);
+                    
+                    // Bounds check
+                    if (featureX < 10 || featureX >= m_width - 10 || 
+                        featureY < m_height / 4 || featureY >= m_height - 10) {
+                        continue;
+                    }
+                    
+                    // Only place if there's empty space
+                    if (get(featureX, featureY) != MaterialType::Empty) {
+                        continue;
+                    }
+                    
+                    // Decide formation type and size
+                    bool isStalactite = m_rng() % 2 == 0;
+                    int size = 3 + (m_rng() % 6);
+                    
+                    // Create the formation
+                    for (int h = 0; h < size; h++) {
+                        int width = size - h;
+                        
+                        for (int w = -width/2; w <= width/2; w++) {
+                            int wx = featureX + w;
+                            int wy = isStalactite ? featureY - h : featureY + h;
+                            
+                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                // Use stone or other material types for variety
+                                MaterialType formationMaterial = MaterialType::Stone;
+                                if (m_rng() % 10 == 0) {
+                                    formationMaterial = MaterialType::Gravel;
+                                }
+                                
+                                set(wx, wy, formationMaterial);
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+    
+    // Second pass - add interconnections between nearby caves
+    std::uniform_int_distribution<int> connectChanceDist(0, 100);
+    
+    if (connectChanceDist(m_rng) < 70) { // 70% chance to add some connections
+        std::uniform_int_distribution<int> numConnectionsDist(2, 5);
+        int numConnections = numConnectionsDist(m_rng);
+        
+        for (int c = 0; c < numConnections; c++) {
+            // Find two random empty spaces that might be caves
+            int x1 = m_width / 4 + (m_rng() % (m_width / 2));
+            int y1 = m_height / 3 + (m_rng() % (m_height / 2));
+            
+            // Search for an actual empty space (cave)
+            bool foundFirst = false;
+            for (int searchY = y1; searchY < y1 + 50 && !foundFirst; searchY++) {
+                for (int searchX = x1; searchX < x1 + 50 && !foundFirst; searchX++) {
+                    if (searchX >= 0 && searchX < m_width && searchY >= 0 && searchY < m_height) {
+                        if (get(searchX, searchY) == MaterialType::Empty) {
+                            x1 = searchX;
+                            y1 = searchY;
+                            foundFirst = true;
                         }
                     }
                 }
             }
             
-            // Change direction slightly for a winding path
-            angle += (m_rng() % 100 - 50) / 500.0;
+            if (!foundFirst) continue;
             
-            // Move in the current direction
-            x += static_cast<int>(cos(angle) * 2);
-            y += static_cast<int>(sin(angle) * 2);
+            // Find a second point in another direction
+            int x2 = m_width / 4 + (m_rng() % (m_width / 2));
+            int y2 = m_height / 3 + (m_rng() % (m_height / 2));
             
-            // Bound check and reflect if needed
-            if (x < 5) { x = 5; angle = 3.14159 - angle; }
-            if (x >= m_width - 5) { x = m_width - 5; angle = 3.14159 - angle; }
-            if (y < m_height / 2) { y = m_height / 2; angle = -angle; }
-            if (y >= m_height - 5) { y = m_height - 5; angle = -angle; }
+            bool foundSecond = false;
+            for (int searchY = y2; searchY < y2 + 50 && !foundSecond; searchY++) {
+                for (int searchX = x2; searchX < x2 + 50 && !foundSecond; searchX++) {
+                    if (searchX >= 0 && searchX < m_width && searchY >= 0 && searchY < m_height) {
+                        if (get(searchX, searchY) == MaterialType::Empty && 
+                            (abs(searchX - x1) > 50 || abs(searchY - y1) > 50)) {
+                            x2 = searchX;
+                            y2 = searchY;
+                            foundSecond = true;
+                        }
+                    }
+                }
+            }
+            
+            if (!foundSecond) continue;
+            
+            // Create a tunnel between them
+            int steps = sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+            
+            for (int i = 0; i <= steps; i++) {
+                int x = x1 + (x2 - x1) * i / steps;
+                int y = y1 + (y2 - y1) * i / steps;
+                
+                // Create a small tunnel
+                int radius = 2 + (m_rng() % 2);  // 2-3 radius tunnel
+                
+                for (int cy = -radius; cy <= radius; cy++) {
+                    for (int cx = -radius; cx <= radius; cx++) {
+                        if (cx*cx + cy*cy <= radius*radius) {
+                            int wx = x + cx;
+                            int wy = y + cy;
+                            
+                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                    set(wx, wy, MaterialType::Empty);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

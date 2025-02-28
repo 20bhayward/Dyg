@@ -76,6 +76,21 @@ if(WIN32)
     # Windows-specific settings and libraries
     target_link_libraries(PixelPhys2D opengl32 glu32)
     
+    # Define to use the SDL_main entry point
+    target_compile_definitions(PixelPhys2D PRIVATE -DSDL_MAIN_HANDLED)
+    
+    # Link with SDL2main library explicitly for Windows
+    if(TARGET SDL2::SDL2main)
+        target_link_libraries(PixelPhys2D SDL2::SDL2main)
+    elseif(SDL2MAIN_LIBRARY)
+        target_link_libraries(PixelPhys2D ${SDL2MAIN_LIBRARY})
+    endif()
+    
+    # Set WIN32 subsystem type (GUI app)
+    set_target_properties(PixelPhys2D PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
+    
     # Windows does not need pthread - skip that library
     message(STATUS "Building for Windows - skipping pthread")
     

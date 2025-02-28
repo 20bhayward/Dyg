@@ -4,6 +4,10 @@
 #include <random>
 #include <chrono>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 // GLEW must be included before any OpenGL headers
 #include <GL/glew.h>
 #include <GL/gl.h>
@@ -19,7 +23,13 @@ const int WORLD_HEIGHT = 1800;   // Deeper world for vertical exploration
 const int TARGET_FPS = 60;
 const int FRAME_DELAY = 1000 / TARGET_FPS;
 
+#if defined(_WIN32) && !defined(SDL_MAIN_HANDLED)
+// For Windows, we need to use WinMain as the entry point
+int WINAPI WinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, LPSTR /*lpCmdLine*/, int /*nCmdShow*/) {
+#else
+// For Linux and other platforms, use standard main
 int main(int /*argc*/, char* /*argv*/[]) {
+#endif
 
     // Initialize SDL
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
