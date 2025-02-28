@@ -27,9 +27,10 @@ jobs:
       
     - name: Configure CMake
       run: |
+        rm -rf build
         mkdir -p build
         cd build
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DSIMPLIFIED_SKY=ON
+        cmake ${{ github.workspace }} -DCMAKE_BUILD_TYPE=Release -DSIMPLIFIED_SKY=ON
 
     - name: Build
       run: |
@@ -39,7 +40,7 @@ jobs:
     - name: Test run
       run: |
         cd build
-        ./PixelPhys2D --version || echo "Version flag not implemented, but executable runs"
+        ./PixelPhys2D --help || ./PixelPhys2D --version || echo "Executable built successfully, but help/version flags not implemented"
         
     - name: Create artifacts directory
       run: mkdir -p artifacts

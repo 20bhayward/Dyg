@@ -31,9 +31,10 @@ jobs:
     - name: Configure CMake
       shell: pwsh
       run: |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue build
         mkdir build
         cd build
-        cmake .. -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" -DSIMPLIFIED_SKY=ON -DCMAKE_BUILD_TYPE=Release -A x64
+        cmake ${{ github.workspace }} -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" -DSIMPLIFIED_SKY=ON -DCMAKE_BUILD_TYPE=Release -A x64
     
     - name: Build
       shell: pwsh
