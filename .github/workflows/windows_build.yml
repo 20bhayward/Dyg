@@ -15,45 +15,43 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    # Use the official vcpkg GitHub Action
-    - name: Setup vcpkg
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgJsonGlob: '**/vcpkg.json'
-
-    # Create vcpkg.json for dependencies
-    - name: Create vcpkg.json
+    - name: Install vcpkg
+      shell: pwsh
       run: |
-        New-Item -Path . -Name "vcpkg.json" -ItemType "file" -Value @"
-        {
-          "name": "pixelphys2d",
-          "version": "0.1.0",
-          "dependencies": [
-            "sdl2",
-            "glew",
-            "opengl"
-          ]
-        }
-        "@
-      
+        git clone https://github.com/microsoft/vcpkg.git ${{ github.workspace }}/vcpkg
+        cd ${{ github.workspace }}/vcpkg
+        ./bootstrap-vcpkg.bat
+        ./vcpkg integrate install
+    
+    - name: Install dependencies with vcpkg
+      shell: pwsh
+      run: |
+        ${{ github.workspace }}/vcpkg/vcpkg install sdl2:x64-windows glew:x64-windows opengl:x64-windows
+    
     - name: Configure CMake
-      uses: lukka/run-cmake@v10
-      with:
-        cmakeListsTxtPath: '${{ github.workspace }}/CMakeLists.txt'
-        configurePreset: 'ninja-multi-vcpkg'
-        buildPreset: 'ninja-multi-vcpkg-release'
-        buildPresetAdditionalArgs: "['-DSIMPLIFIED_SKY=ON']"
-      
+      shell: pwsh
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" -DSIMPLIFIED_SKY=ON -DCMAKE_BUILD_TYPE=Release -A x64
+    
+    - name: Build
+      shell: pwsh
+      run: |
+        cd build
+        cmake --build . --config Release
+    
     - name: Create artifacts directory
-      run: mkdir -p artifacts
       shell: bash
-      
+      run: mkdir -p artifacts
+    
     - name: Package game
+      shell: bash
       run: |
         mkdir -p artifacts/PixelPhys2D-windows
         
         # Copy executable
-        cp build/Release/PixelPhys2D.exe artifacts/PixelPhys2D-windows/ || cp build/bin/Release/PixelPhys2D.exe artifacts/PixelPhys2D-windows/ || echo "Executable not found in expected location"
+        cp build/Release/PixelPhys2D.exe artifacts/PixelPhys2D-windows/ || echo "Executable not found in expected location"
         
         # Create batch file
         echo '@echo off' > artifacts/PixelPhys2D-windows/run_game.bat
@@ -62,21 +60,19 @@ jobs:
         echo 'if ERRORLEVEL 1 pause' >> artifacts/PixelPhys2D-windows/run_game.bat
         
         # Copy DLLs
-        cp build/Release/*.dll artifacts/PixelPhys2D-windows/ || cp build/bin/Release/*.dll artifacts/PixelPhys2D-windows/ || echo "No DLLs found in build directory"
+        cp build/Release/*.dll artifacts/PixelPhys2D-windows/ || echo "No DLLs found in build directory"
+        
+        # Find SDL2 and GLEW DLLs
+        find ${{ github.workspace }}/vcpkg/installed/x64-windows/bin -name "SDL2.dll" -o -name "glew32.dll" -exec cp {} artifacts/PixelPhys2D-windows/ \;
         
         # Copy assets (if any)
         mkdir -p artifacts/PixelPhys2D-windows/assets
         cp -r assets/* artifacts/PixelPhys2D-windows/assets/ || echo "No assets found"
         
-        # Create README for distribution
-        echo "# PixelPhys2D" > artifacts/PixelPhys2D-windows/README.txt
-        echo "Run the game by executing run_game.bat" >> artifacts/PixelPhys2D-windows/README.txt
-        
         # Create ZIP file
         cd artifacts
         7z a -tzip PixelPhys2D-windows.zip PixelPhys2D-windows
-      shell: bash
-        
+    
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
