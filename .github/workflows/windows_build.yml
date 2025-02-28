@@ -1,0 +1,68 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install vcpkg
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: '12c2a93b4007612b5ffa980c9d2235eb0bcac10f' # Use a specific commit for reproducibility
+    
+    - name: Install dependencies
+      run: |
+        vcpkg install sdl2:x64-windows glew:x64-windows opengl:x64-windows
+      
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake -DSIMPLIFIED_SKY=ON
+
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config Release
+      
+    - name: Create artifacts directory
+      run: mkdir -p artifacts
+      
+    - name: Package game
+      run: |
+        # Create output directory
+        mkdir -p artifacts/PixelPhys2D-windows
+        
+        # Copy executable
+        cp build/Release/PixelPhys2D.exe artifacts/PixelPhys2D-windows/
+        
+        # Copy DLLs
+        cp build/run_game.bat artifacts/PixelPhys2D-windows/
+        cp build/Release/*.dll artifacts/PixelPhys2D-windows/ || echo "No DLLs found"
+        
+        # Copy assets (if any)
+        mkdir -p artifacts/PixelPhys2D-windows/assets
+        cp -r assets/* artifacts/PixelPhys2D-windows/assets/ || echo "No assets found"
+        
+        # Create README for distribution
+        echo "# PixelPhys2D" > artifacts/PixelPhys2D-windows/README.txt
+        echo "Run the game by executing run_game.bat" >> artifacts/PixelPhys2D-windows/README.txt
+        
+        # Create ZIP file
+        cd artifacts
+        powershell Compress-Archive -Path PixelPhys2D-windows -DestinationPath PixelPhys2D-windows.zip
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: PixelPhys2D-windows
+        path: artifacts/PixelPhys2D-windows.zip

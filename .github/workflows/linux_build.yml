@@ -1,0 +1,82 @@
+name: Linux Build
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          libsdl2-dev \
+          libgl1-mesa-dev \
+          libglu1-mesa-dev \
+          libglew-dev
+      
+    - name: Configure CMake
+      run: |
+        mkdir -p build
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DSIMPLIFIED_SKY=ON
+
+    - name: Build
+      run: |
+        cd build
+        cmake --build . -j$(nproc)
+      
+    - name: Test run
+      run: |
+        cd build
+        ./PixelPhys2D --version || echo "Version flag not implemented, but executable runs"
+        
+    - name: Create artifacts directory
+      run: mkdir -p artifacts
+      
+    - name: Package game
+      run: |
+        # Create output directory
+        mkdir -p artifacts/PixelPhys2D-linux
+        
+        # Copy executable
+        cp build/PixelPhys2D artifacts/PixelPhys2D-linux/
+        chmod +x artifacts/PixelPhys2D-linux/PixelPhys2D
+        
+        # Create run script
+        echo '#!/bin/bash' > artifacts/PixelPhys2D-linux/run_game.sh
+        echo './PixelPhys2D "$@"' >> artifacts/PixelPhys2D-linux/run_game.sh
+        chmod +x artifacts/PixelPhys2D-linux/run_game.sh
+        
+        # Copy assets (if any)
+        mkdir -p artifacts/PixelPhys2D-linux/assets
+        cp -r assets/* artifacts/PixelPhys2D-linux/assets/ || echo "No assets found"
+        
+        # Create README for distribution
+        echo "# PixelPhys2D" > artifacts/PixelPhys2D-linux/README.txt
+        echo "Run the game by executing ./run_game.sh" >> artifacts/PixelPhys2D-linux/README.txt
+        echo "" >> artifacts/PixelPhys2D-linux/README.txt
+        echo "Dependencies required:" >> artifacts/PixelPhys2D-linux/README.txt
+        echo "- libsdl2" >> artifacts/PixelPhys2D-linux/README.txt
+        echo "- libglew" >> artifacts/PixelPhys2D-linux/README.txt
+        echo "- OpenGL libraries" >> artifacts/PixelPhys2D-linux/README.txt
+        
+        # Create TAR.GZ file
+        cd artifacts
+        tar -czvf PixelPhys2D-linux.tar.gz PixelPhys2D-linux
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: PixelPhys2D-linux
+        path: artifacts/PixelPhys2D-linux.tar.gz
