@@ -216,5 +216,4 @@ CMakeFiles/PixelPhys2D.dir/src/World.cpp.o: \
  /usr/include/c++/13/pstl/glue_algorithm_defs.h \
  /usr/include/c++/13/cstring /usr/include/string.h /usr/include/strings.h \
  /usr/include/x86_64-linux-gnu/bits/strings_fortified.h \
- /usr/include/x86_64-linux-gnu/bits/string_fortified.h \
- /usr/include/GL/glew.h /usr/include/GL/glu.h /usr/include/GL/gl.h
+ /usr/include/x86_64-linux-gnu/bits/string_fortified.h
