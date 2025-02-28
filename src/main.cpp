@@ -25,6 +25,13 @@ const int WORLD_HEIGHT = 1800;   // Deeper world for vertical exploration
 const int TARGET_FPS = 60;
 const int FRAME_DELAY = 1000 / TARGET_FPS;
 
+// Default values for maximum performance
+const float MIN_ZOOM = 1.0f;     // Minimum zoom level (maximum view size)
+const float MAX_ZOOM = 10.0f;    // Maximum zoom level (minimum view size)
+const int MAX_PHYSICS_ITERATIONS = 3; // Maximum physics updates per frame
+const int ACTIVE_SIMULATION_RADIUS = 300; // No optimization, use full world size
+const bool ENABLE_CULLING = false; // Disable culling for better quality
+
 #ifdef _WIN32
 // For Windows, using WinMain but with SDL_MAIN_HANDLED defined to avoid conflicts
 int WINAPI WinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, LPSTR /*lpCmdLine*/, int /*nCmdShow*/) {
