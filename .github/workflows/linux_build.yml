@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Install dependencies
       run: |
@@ -76,7 +76,7 @@ jobs:
         tar -czvf PixelPhys2D-linux.tar.gz PixelPhys2D-linux
         
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: PixelPhys2D-linux
         path: artifacts/PixelPhys2D-linux.tar.gz

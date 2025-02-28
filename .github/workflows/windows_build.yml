@@ -12,7 +12,7 @@ jobs:
     runs-on: windows-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Install vcpkg
       uses: lukka/run-vcpkg@v11
@@ -62,7 +62,7 @@ jobs:
         powershell Compress-Archive -Path PixelPhys2D-windows -DestinationPath PixelPhys2D-windows.zip
         
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: PixelPhys2D-windows
         path: artifacts/PixelPhys2D-windows.zip
