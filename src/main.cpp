@@ -6,6 +6,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#define SDL_MAIN_HANDLED // Add this to avoid SDL_main issues on Windows
 #endif
 
 // GLEW must be included before any OpenGL headers
@@ -22,6 +23,13 @@ const int WORLD_WIDTH = 2400;    // Expanded world width for more horizontal exp
 const int WORLD_HEIGHT = 1800;   // Deeper world for vertical exploration
 const int TARGET_FPS = 60;
 const int FRAME_DELAY = 1000 / TARGET_FPS;
+
+// Performance optimization parameters
+const float MIN_ZOOM = 1.0f;     // Minimum zoom level (maximum view size)
+const float MAX_ZOOM = 8.0f;     // Maximum zoom level (minimum view size)
+const int MAX_PHYSICS_ITERATIONS = 2; // Maximum physics updates per frame
+const int ACTIVE_SIMULATION_RADIUS = 120; // Radius around player for active simulation
+const bool ENABLE_CULLING = true; // Enable culling of distant chunks
 
 #if defined(_WIN32) && !defined(SDL_MAIN_HANDLED)
 // For Windows, we need to use WinMain as the entry point
@@ -299,9 +307,9 @@ int main(int /*argc*/, char* /*argv*/[]) {
                 // Use integer-only zoom levels for perfect pixel alignment
                 int zoomDirection = e.wheel.y > 0 ? 1 : -1;
                 
-                // Update zoom level with integer steps only
-                // This ensures perfect pixel grid alignment at all zoom levels
-                zoomLevel = (std::max)(1.0f, (std::min)(roundf(zoomLevel) + zoomDirection, 10.0f));
+                // Update zoom level with capped range for performance optimization
+                // Using MIN_ZOOM and MAX_ZOOM constants to limit zoom range
+                zoomLevel = (std::max)(MIN_ZOOM, (std::min)(roundf(zoomLevel) + zoomDirection, MAX_ZOOM));
                 
                 // Always use integer zoom levels for Noita-style pixel perfect rendering
                 zoomLevel = roundf(zoomLevel);
@@ -485,16 +493,33 @@ int main(int /*argc*/, char* /*argv*/[]) {
         // Update world physics if simulation is running
         if (simulationRunning) {
             // Use fixed timestep for physics but limit max iterations to prevent freezing
-            int maxIterations = 3; // Limit max physics updates per frame to prevent freezing
             int iterations = 0;
             
-            while (accumulator >= PHYSICS_TIMESTEP && iterations < maxIterations) {
+            // Get player position for optimization (only simulate nearby areas)
+            int playerX = world.getPlayerX();
+            int playerY = world.getPlayerY();
+            
+            while (accumulator >= PHYSICS_TIMESTEP && iterations < MAX_PHYSICS_ITERATIONS) {
                 try {
                     // Update player first with fixed timestep
                     world.updatePlayer(PHYSICS_TIMESTEP);
                     
-                    // Update world physics
-                    world.update();
+                    // Update world physics only in active radius for performance optimization
+                    // This significantly reduces lag for large worlds
+                    if (ENABLE_CULLING) {
+                        // Calculate chunk bounds for active simulation area
+                        int startX = (std::max)(0, playerX - ACTIVE_SIMULATION_RADIUS);
+                        int startY = (std::max)(0, playerY - ACTIVE_SIMULATION_RADIUS);
+                        int endX = (std::min)(WORLD_WIDTH - 1, playerX + ACTIVE_SIMULATION_RADIUS);
+                        int endY = (std::min)(WORLD_HEIGHT - 1, playerY + ACTIVE_SIMULATION_RADIUS);
+                        
+                        // Update only within this area - assume World class has this method
+                        // Or needs to be implemented
+                        world.update(startX, startY, endX, endY);
+                    } else {
+                        // Legacy full-world update
+                        world.update();
+                    }
                     
                     // Decrease accumulator
                     accumulator -= PHYSICS_TIMESTEP;
@@ -512,14 +537,26 @@ int main(int /*argc*/, char* /*argv*/[]) {
             
             // If we hit the iteration limit, reduce the remaining accumulator
             // to prevent massive catch-up the next frame
-            if (iterations == maxIterations && accumulator > PHYSICS_TIMESTEP) {
+            if (iterations == MAX_PHYSICS_ITERATIONS && accumulator > PHYSICS_TIMESTEP) {
                 accumulator = PHYSICS_TIMESTEP; // Keep just enough for one more update next frame
             }
             
             // Run additional liquid leveling to fix floating particles
-            // Only do this occasionally to avoid performance impact
-            if (frameCount % 10 == 0) {
-                world.levelLiquids();
+            // Only do this occasionally and only in player vicinity to avoid performance impact
+            if (frameCount % 15 == 0) {
+                if (ENABLE_CULLING) {
+                    // Optimize liquid leveling to only process around the player
+                    int startX = (std::max)(0, playerX - ACTIVE_SIMULATION_RADIUS/2);
+                    int startY = (std::max)(0, playerY - ACTIVE_SIMULATION_RADIUS/2);
+                    int endX = (std::min)(WORLD_WIDTH - 1, playerX + ACTIVE_SIMULATION_RADIUS/2);
+                    int endY = (std::min)(WORLD_HEIGHT - 1, playerY + ACTIVE_SIMULATION_RADIUS/2);
+                    
+                    // Use smaller area for liquid leveling for better performance
+                    // Assumes we have a regionalized version of levelLiquids
+                    world.levelLiquids(startX, startY, endX, endY);
+                } else {
+                    world.levelLiquids();
+                }
             }
             
             // Update camera to follow player if not in free cam mode
@@ -693,10 +730,11 @@ int main(int /*argc*/, char* /*argv*/[]) {
         int endChunkY = (std::min)(world.getChunksY() - 1, static_cast<int>((worldStartY + visibleWorldHeight) / world.getChunkHeight()));
         
         // Calculate visible bounds in world coordinates for clipping
-        int visStartX = (std::max)(0, static_cast<int>(worldStartX - 5)); // Add a small margin
-        int visStartY = (std::max)(0, static_cast<int>(worldStartY - 5));
-        int visEndX = (std::min)(WORLD_WIDTH - 1, static_cast<int>(worldStartX + visibleWorldWidth + 5));
-        int visEndY = (std::min)(WORLD_HEIGHT - 1, static_cast<int>(worldStartY + visibleWorldHeight + 5));
+        // Add slightly larger margin for smooth scrolling
+        int visStartX = (std::max)(0, static_cast<int>(worldStartX - 10));
+        int visStartY = (std::max)(0, static_cast<int>(worldStartY - 10));
+        int visEndX = (std::min)(WORLD_WIDTH - 1, static_cast<int>(worldStartX + visibleWorldWidth + 10));
+        int visEndY = (std::min)(WORLD_HEIGHT - 1, static_cast<int>(worldStartY + visibleWorldHeight + 10));
         
         // Only render chunks in the visible area
         for (int chunkY = startChunkY; chunkY <= endChunkY; chunkY++) {
@@ -717,9 +755,31 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     continue;
                 }
                 
-                // Ensure pixels are rendered consistently
-                // Always render every pixel for high-quality appearance
-                int step = 1;
+                // Skip rendering for chunks outside the active simulation area if culling is enabled
+                // This is a significant optimization for large worlds
+                if (ENABLE_CULLING && integerZoom < 3.0f) {
+                    // When zoomed out far enough, only render chunks near the player for performance
+                    int playerX = world.getPlayerX();
+                    int playerY = world.getPlayerY();
+                    int chunkCenterX = chunkStartX + world.getChunkWidth()/2;
+                    int chunkCenterY = chunkStartY + world.getChunkHeight()/2;
+                    
+                    // Calculate distance from player to chunk center
+                    float dist = (std::sqrt)(
+                        (chunkCenterX - playerX) * (chunkCenterX - playerX) + 
+                        (chunkCenterY - playerY) * (chunkCenterY - playerY)
+                    );
+                    
+                    // Skip chunks that are too far away from player when zoomed out
+                    // This is a huge performance boost for large worlds
+                    if (dist > ACTIVE_SIMULATION_RADIUS * 1.5f) {
+                        continue;
+                    }
+                }
+                
+                // Dynamic level of detail - render every other pixel when zoomed out
+                // for significant performance improvement
+                int step = (integerZoom <= 2.0f) ? 2 : 1;
                 
                 // Remove the pixel offset that was causing misalignment with terrain
                 

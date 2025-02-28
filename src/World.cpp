@@ -1876,9 +1876,21 @@ void World::set(int x, int y, MaterialType material) {
 
 // Helper function to ensure liquids settle properly with flat surface
 void World::levelLiquids() {
-    // This function will look for liquid pixels and enforce proper settling
-    for (int y = m_height - 2; y >= 0; y--) {  // Start from bottom-1, going up
-        for (int x = 0; x < m_width; x++) {
+    // Process the entire world - this is just a wrapper for the regionalized version
+    levelLiquids(0, 0, m_width - 1, m_height - 1);
+}
+
+// Regionalized version for better performance
+void World::levelLiquids(int startX, int startY, int endX, int endY) {
+    // Ensure coordinates are within world bounds
+    startX = (std::max)(0, startX);
+    startY = (std::max)(0, startY);
+    endX = (std::min)(m_width - 1, endX);
+    endY = (std::min)(m_height - 1, endY);
+    
+    // This function will look for liquid pixels in a specific region and enforce proper settling
+    for (int y = endY - 1; y >= startY; y--) {  // Start from bottom-1, going up
+        for (int x = startX; x <= endX; x++) {
             MaterialType material = get(x, y);
             
             // Only process liquids
@@ -2006,9 +2018,61 @@ void World::update() {
         }
     }
     
-    // Level liquids for smoother fluid surfaces - do this after chunks are updated
-    // This prevents wave effects and ensures liquids form flat surfaces
-    levelLiquids();
+    // Only update pixel data if any chunks were updated
+    if (!chunksToUpdate.empty()) {
+        updatePixelData();
+    }
+}
+
+// Optimized version that only updates a specific region of the world
+void World::update(int startX, int startY, int endX, int endY) {
+    // Create a list of chunks to update in the specified region
+    std::vector<std::pair<int, int>> chunksToUpdate;
+    
+    // Convert world coordinates to chunk coordinates
+    int startChunkX = (std::max)(0, startX / Chunk::WIDTH);
+    int startChunkY = (std::max)(0, startY / Chunk::HEIGHT);
+    int endChunkX = (std::min)(m_chunksX - 1, endX / Chunk::WIDTH);
+    int endChunkY = (std::min)(m_chunksY - 1, endY / Chunk::HEIGHT);
+    
+    // First pass: identify all chunks in the active region and mark them as dirty
+    for (int y = startChunkY; y <= endChunkY; ++y) {
+        for (int x = startChunkX; x <= endChunkX; ++x) {
+            Chunk* chunk = getChunkAt(x, y);
+            if (chunk) {
+                // Force chunks in active region to be dirty for reliable updates
+                chunk->setDirty(true);
+                
+                // Add this chunk
+                chunksToUpdate.emplace_back(x, y);
+                
+                // Also add neighboring chunks since they might be affected
+                // But only if they're outside our active region
+                if (y > 0) chunksToUpdate.emplace_back(x, y-1);  // Above
+                if (y < m_chunksY - 1) chunksToUpdate.emplace_back(x, y+1);  // Below
+                if (x > 0) chunksToUpdate.emplace_back(x-1, y);  // Left
+                if (x < m_chunksX - 1) chunksToUpdate.emplace_back(x+1, y);  // Right
+            }
+        }
+    }
+    
+    // Remove duplicates from the update list
+    std::sort(chunksToUpdate.begin(), chunksToUpdate.end());
+    chunksToUpdate.erase(std::unique(chunksToUpdate.begin(), chunksToUpdate.end()), chunksToUpdate.end());
+    
+    // Second pass: update only the necessary chunks
+    for (const auto& [x, y] : chunksToUpdate) {
+        Chunk* chunk = getChunkAt(x, y);
+        if (chunk) {
+            // Get neighboring chunks
+            Chunk* chunkBelow = (y < m_chunksY - 1) ? getChunkAt(x, y + 1) : nullptr;
+            Chunk* chunkLeft = (x > 0) ? getChunkAt(x - 1, y) : nullptr;
+            Chunk* chunkRight = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
+            
+            // Update with neighbors for boundary physics
+            chunk->update(chunkBelow, chunkLeft, chunkRight);
+        }
+    }
     
     // Only update pixel data if any chunks were updated
     if (!chunksToUpdate.empty()) {

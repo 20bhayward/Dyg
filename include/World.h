@@ -115,8 +115,14 @@ public:
     // Update the entire world's physics
     void update();
     
+    // Update only a specific region of the world (optimization for large worlds)
+    void update(int startX, int startY, int endX, int endY);
+    
     // Special processing to level out liquids (fix floating particles)
     void levelLiquids();
+    
+    // Level liquids in specific region (optimization for large worlds)
+    void levelLiquids(int startX, int startY, int endX, int endY);
     
     // Generate the initial world with terrain, etc.
     void generate(unsigned int seed);
