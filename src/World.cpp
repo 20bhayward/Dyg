@@ -66,9 +66,9 @@ void Chunk::set(int x, int y, MaterialType material) {
         int posHash = ((x * 13) + (y * 7)) % 32;
         int variation = (posHash % 7) - 3;
         
-        m_pixelData[pixelIdx] = std::max(0, std::min(255, static_cast<int>(props.r) + variation));   // R
-        m_pixelData[pixelIdx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + variation)); // G
-        m_pixelData[pixelIdx+2] = std::max(0, std::min(255, static_cast<int>(props.b) + variation)); // B
+        m_pixelData[pixelIdx] = (std::max)(0, (std::min)(255, static_cast<int>(props.r) + variation));   // R
+        m_pixelData[pixelIdx+1] = (std::max)(0, (std::min)(255, static_cast<int>(props.g) + variation)); // G
+        m_pixelData[pixelIdx+2] = (std::max)(0, (std::min)(255, static_cast<int>(props.b) + variation)); // B
         m_pixelData[pixelIdx+3] = props.transparency;  // A (use material transparency)
     }
 }
@@ -2133,8 +2133,8 @@ void World::updatePlayer(float dt) {
     }
     
     // Clamp position to world bounds
-    newX = std::max(playerWidth/2.0f, std::min(newX, m_width - playerWidth/2.0f));
-    newY = std::max(playerHeight/2.0f, std::min(newY, m_height - playerHeight/2.0f));
+    newX = (std::max)(playerWidth/2.0f, (std::min)(newX, m_width - playerWidth/2.0f));
+    newY = (std::max)(playerHeight/2.0f, (std::min)(newY, m_height - playerHeight/2.0f));
     
     // Update position
     m_playerX = static_cast<int>(newX);
@@ -2265,8 +2265,8 @@ void World::generateTerrain() {
     for (int i = 0; i < numPlateaus; ++i) {
         int plateauCenter = plateauPosDist(m_rng);
         int plateauWidth = plateauWidthDist(m_rng);
-        int startX = std::max(0, plateauCenter - plateauWidth/2);
-        int endX = std::min(m_width - 1, plateauCenter + plateauWidth/2);
+        int startX = (std::max)(0, plateauCenter - plateauWidth/2);
+        int endX = (std::min)(m_width - 1, plateauCenter + plateauWidth/2);
         
         // Set plateau height to average height in this region
         int plateauHeight = 0;
@@ -2719,7 +2719,7 @@ void World::generateCaves() {
                 // Now connect some of the holes with tunnels (80% chance for connections)
                 if (holePositions.size() >= 2 && connectChanceDist(m_rng) < 80) {
                     int numConnections = holePositions.size() - 1 + (m_rng() % 3); // At least n-1 connections
-                    numConnections = std::min(numConnections, 20); // Cap to avoid too many
+                    numConnections = (std::min)(numConnections, 20); // Cap to avoid too many
                     
                     for (int c = 0; c < numConnections; c++) {
                         // Pick two random holes to connect
@@ -3028,7 +3028,7 @@ void World::generateCaves() {
                         float combinedFactor = ellipseDist - (bigNoise * 0.3f + smallNoise * 0.1f);
                         
                         // More irregular at the edges, smoother in the center
-                        float edgeFactor = std::max(0.0f, 1.0f - ellipseDist);
+                        float edgeFactor = (std::max)(0.0f, 1.0f - ellipseDist);
                         float carveFactor = 0.9f; // Threshold to carve (lower = more carved)
                         
                         if (combinedFactor < carveFactor || edgeFactor > 0.6f) {
@@ -3561,8 +3561,8 @@ void World::generateCaves() {
                             tunnelStartY = startY + (m_rng() % 200 - 100);
                             
                             // Ensure it's within world bounds
-                            tunnelStartX = std::max(20, std::min(tunnelStartX, m_width - 20));
-                            tunnelStartY = std::max(m_height/4 + 10, std::min(tunnelStartY, m_height - 20));
+                            tunnelStartX = (std::max)(20, (std::min)(tunnelStartX, m_width - 20));
+                            tunnelStartY = (std::max)(m_height/4 + 10, (std::min)(tunnelStartY, m_height - 20));
                         }
                     }
                     
@@ -3674,7 +3674,7 @@ void World::generateCaves() {
                     
                     // Create branches from this tunnel's junction points
                     int numBranches = branchCountDist(m_rng);
-                    numBranches = std::min(numBranches, (int)junctionPoints.size() * 2); // More branches
+                    numBranches = (std::min)(numBranches, (int)junctionPoints.size() * 2); // More branches
                     
                     for (int b = 0; b < numBranches; b++) {
                         if (junctionPoints.empty()) break;
@@ -4192,7 +4192,7 @@ void World::generateCaves() {
         // If we found enough major points, connect them
         if (majorCavePoints.size() >= 2) {
             // Adjust number of connections based on available points
-            numConnections = std::min(numConnections, (int)(majorCavePoints.size() * 1.5));
+            numConnections = (std::min)(numConnections, (int)(majorCavePoints.size() * 1.5));
             
             for (int c = 0; c < numConnections; c++) {
                 // Pick two different points to connect
@@ -4416,7 +4416,7 @@ void World::generateCaves() {
             }
         } else {
             // Fall back to simpler connection method if we couldn't find major points
-            numConnections = std::min(numConnections, 5);
+            numConnections = (std::min)(numConnections, 5);
             
             for (int c = 0; c < numConnections; c++) {
                 // Find two random empty spaces that might be caves

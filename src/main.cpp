@@ -572,7 +572,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
         float scaleY = viewRect.h / (WORLD_HEIGHT / integerZoom);
         
         // Use uniform scaling to maintain square pixels
-        float uniformScale = std::min(scaleX, scaleY);
+        float uniformScale = (std::min)(scaleX, scaleY);
         
         // Center the view in the available space
         // This eliminates the gap on the right by properly centering
@@ -790,7 +790,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     // Calculate distance from player to mouse
                     float dx = worldMouseX - playerX;
                     float dy = worldMouseY - playerY;
-                    float distance = std::sqrt(dx * dx + dy * dy);
+                    float distance = (std::sqrt)(dx * dx + dy * dy);
                     
                     // Normalize direction vector
                     float dirX = dx / distance;
