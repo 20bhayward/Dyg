@@ -1,0 +1,1 @@
+/usr/bin/c++ -O3 -DNDEBUG -O3 CMakeFiles/PixelPhys2D.dir/Renderer.cpp.o CMakeFiles/PixelPhys2D.dir/UI.cpp.o CMakeFiles/PixelPhys2D.dir/World.cpp.o CMakeFiles/PixelPhys2D.dir/main.cpp.o -o PixelPhys2D  /usr/lib/x86_64-linux-gnu/libSDL2.so /usr/lib/x86_64-linux-gnu/libGL.so /usr/lib/x86_64-linux-gnu/libGLU.so /usr/lib/x86_64-linux-gnu/libGLEW.so 

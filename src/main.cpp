@@ -301,7 +301,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                 
                 // Update zoom level with integer steps only
                 // This ensures perfect pixel grid alignment at all zoom levels
-                zoomLevel = std::max(1.0f, std::min(roundf(zoomLevel) + zoomDirection, 10.0f));
+                zoomLevel = (std::max)(1.0f, (std::min)(roundf(zoomLevel) + zoomDirection, 10.0f));
                 
                 // Always use integer zoom levels for Noita-style pixel perfect rendering
                 zoomLevel = roundf(zoomLevel);
@@ -313,8 +313,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
                 cameraY -= e.motion.yrel;
                 
                 // Limit camera position to prevent moving too far from world
-                cameraX = std::max(-WORLD_WIDTH/2, std::min(cameraX, WORLD_WIDTH/2));
-                cameraY = std::max(-WORLD_HEIGHT/2, std::min(cameraY, WORLD_HEIGHT/2));
+                cameraX = (std::max)(-WORLD_WIDTH/2, (std::min)(cameraX, WORLD_WIDTH/2));
+                cameraY = (std::max)(-WORLD_HEIGHT/2, (std::min)(cameraY, WORLD_HEIGHT/2));
             }
         }
         
@@ -379,8 +379,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
             int worldMouseY = static_cast<int>(alignedCameraY + viewPercentY * visibleWorldHeight);
             
             // Ensure coordinates are within the world bounds
-            worldMouseX = std::max(0, std::min(worldMouseX, WORLD_WIDTH - 1));
-            worldMouseY = std::max(0, std::min(worldMouseY, WORLD_HEIGHT - 1));
+            worldMouseX = (std::max)(0, (std::min)(worldMouseX, WORLD_WIDTH - 1));
+            worldMouseY = (std::max)(0, (std::min)(worldMouseY, WORLD_HEIGHT - 1));
             
             // Debug output only when needed
             /*
@@ -528,8 +528,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
                 cameraY = world.getPlayerY() - WORLD_HEIGHT / 2;
                 
                 // Clamp camera to world bounds
-                cameraX = std::max(0, std::min(cameraX, WORLD_WIDTH));
-                cameraY = std::max(0, std::min(cameraY, WORLD_HEIGHT));
+                cameraX = (std::max)(0, (std::min)(cameraX, WORLD_WIDTH));
+                cameraY = (std::max)(0, (std::min)(cameraY, WORLD_HEIGHT));
             }
         }
 
@@ -612,9 +612,9 @@ int main(int /*argc*/, char* /*argv*/[]) {
                 b = props.b / 255.0f + flicker * 0.3f;
                 
                 // Clamp to valid range
-                r = std::max(0.0f, std::min(1.0f, r));
-                g = std::max(0.0f, std::min(1.0f, g));
-                b = std::max(0.0f, std::min(1.0f, b));
+                r = (std::max)(0.0f, (std::min)(1.0f, r));
+                g = (std::max)(0.0f, (std::min)(1.0f, g));
+                b = (std::max)(0.0f, (std::min)(1.0f, b));
             }
             else if (currentMat == PixelPhys::MaterialType::Water) {
                 // Slight wave effect for water
@@ -625,9 +625,9 @@ int main(int /*argc*/, char* /*argv*/[]) {
                 b = props.b / 255.0f + wave * 2.0f;
                 
                 // Clamp to valid range
-                r = std::max(0.0f, std::min(1.0f, r));
-                g = std::max(0.0f, std::min(1.0f, g));
-                b = std::max(0.0f, std::min(1.0f, b));
+                r = (std::max)(0.0f, (std::min)(1.0f, r));
+                g = (std::max)(0.0f, (std::min)(1.0f, g));
+                b = (std::max)(0.0f, (std::min)(1.0f, b));
             }
             else if (currentMat == PixelPhys::MaterialType::Smoke || currentMat == PixelPhys::MaterialType::Steam) {
                 // Make smoke/steam partially transparent
@@ -657,9 +657,9 @@ int main(int /*argc*/, char* /*argv*/[]) {
                 b = props.b / 255.0f + variation * 0.3f;
                 
                 // Clamp to valid range
-                r = std::max(0.0f, std::min(1.0f, r));
-                g = std::max(0.0f, std::min(1.0f, g));
-                b = std::max(0.0f, std::min(1.0f, b));
+                r = (std::max)(0.0f, (std::min)(1.0f, r));
+                g = (std::max)(0.0f, (std::min)(1.0f, g));
+                b = (std::max)(0.0f, (std::min)(1.0f, b));
             }
             
             // Set the color for this material
@@ -687,30 +687,30 @@ int main(int /*argc*/, char* /*argv*/[]) {
         float worldStartY = roundf(WORLD_HEIGHT/2.0f + cameraY - visibleWorldHeight/2.0f);
         
         // Determine chunk coordinates for the visible area
-        int startChunkX = std::max(0, static_cast<int>(worldStartX) / world.getChunkWidth());
-        int startChunkY = std::max(0, static_cast<int>(worldStartY) / world.getChunkHeight());
-        int endChunkX = std::min(world.getChunksX() - 1, static_cast<int>((worldStartX + visibleWorldWidth) / world.getChunkWidth()));
-        int endChunkY = std::min(world.getChunksY() - 1, static_cast<int>((worldStartY + visibleWorldHeight) / world.getChunkHeight()));
+        int startChunkX = (std::max)(0, static_cast<int>(worldStartX) / world.getChunkWidth());
+        int startChunkY = (std::max)(0, static_cast<int>(worldStartY) / world.getChunkHeight());
+        int endChunkX = (std::min)(world.getChunksX() - 1, static_cast<int>((worldStartX + visibleWorldWidth) / world.getChunkWidth()));
+        int endChunkY = (std::min)(world.getChunksY() - 1, static_cast<int>((worldStartY + visibleWorldHeight) / world.getChunkHeight()));
         
         // Calculate visible bounds in world coordinates for clipping
-        int visStartX = std::max(0, static_cast<int>(worldStartX - 5)); // Add a small margin
-        int visStartY = std::max(0, static_cast<int>(worldStartY - 5));
-        int visEndX = std::min(WORLD_WIDTH - 1, static_cast<int>(worldStartX + visibleWorldWidth + 5));
-        int visEndY = std::min(WORLD_HEIGHT - 1, static_cast<int>(worldStartY + visibleWorldHeight + 5));
+        int visStartX = (std::max)(0, static_cast<int>(worldStartX - 5)); // Add a small margin
+        int visStartY = (std::max)(0, static_cast<int>(worldStartY - 5));
+        int visEndX = (std::min)(WORLD_WIDTH - 1, static_cast<int>(worldStartX + visibleWorldWidth + 5));
+        int visEndY = (std::min)(WORLD_HEIGHT - 1, static_cast<int>(worldStartY + visibleWorldHeight + 5));
         
         // Only render chunks in the visible area
         for (int chunkY = startChunkY; chunkY <= endChunkY; chunkY++) {
             for (int chunkX = startChunkX; chunkX <= endChunkX; chunkX++) {
                 int chunkStartX = chunkX * world.getChunkWidth();
                 int chunkStartY = chunkY * world.getChunkHeight();
-                int chunkEndX = std::min(chunkStartX + world.getChunkWidth(), WORLD_WIDTH);
-                int chunkEndY = std::min(chunkStartY + world.getChunkHeight(), WORLD_HEIGHT);
+                int chunkEndX = (std::min)(chunkStartX + world.getChunkWidth(), WORLD_WIDTH);
+                int chunkEndY = (std::min)(chunkStartY + world.getChunkHeight(), WORLD_HEIGHT);
                 
                 // Clip chunk bounds against visible area for improved performance
-                int renderStartX = std::max(chunkStartX, visStartX);
-                int renderStartY = std::max(chunkStartY, visStartY);
-                int renderEndX = std::min(chunkEndX, visEndX);
-                int renderEndY = std::min(chunkEndY, visEndY);
+                int renderStartX = (std::max)(chunkStartX, visStartX);
+                int renderStartY = (std::max)(chunkStartY, visStartY);
+                int renderEndX = (std::min)(chunkEndX, visEndX);
+                int renderEndY = (std::min)(chunkEndY, visEndY);
                 
                 // Skip fully invisible chunks
                 if (renderStartX >= renderEndX || renderStartY >= renderEndY) {
@@ -784,8 +784,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     int worldMouseY = static_cast<int>(alignedCameraY + viewPercentY * visibleWorldHeight);
                     
                     // Ensure coordinates are within the world bounds
-                    worldMouseX = std::max(0, std::min(worldMouseX, WORLD_WIDTH - 1));
-                    worldMouseY = std::max(0, std::min(worldMouseY, WORLD_HEIGHT - 1));
+                    worldMouseX = (std::max)(0, (std::min)(worldMouseX, WORLD_WIDTH - 1));
+                    worldMouseY = (std::max)(0, (std::min)(worldMouseY, WORLD_HEIGHT - 1));
                 
                     // Calculate distance from player to mouse
                     float dx = worldMouseX - playerX;

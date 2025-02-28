@@ -2606,8 +2606,8 @@ void World::generateTerrain() {
 }
 
 void World::generateCaves() {
-    // Define number of caves based on world size
-    int numCaveSystems = 15 + (m_width / 150); 
+    // Define number of caves based on world size but fewer than before for larger caves
+    int numCaveSystems = 10 + (m_width / 200); 
     
     // Distribution for cave type
     std::uniform_int_distribution<int> caveTypeDist(0, 100);
@@ -2631,22 +2631,23 @@ void World::generateCaves() {
     
     for (int cave = 0; cave < numCaveSystems; ++cave) {
         // Determine cave type based on weighted probability
+        // Rebalanced to favor larger caves and reduce small caves
         CaveType caveType;
         int typeRoll = caveTypeDist(m_rng);
         
-        if (typeRoll < 20) { // 20%
+        if (typeRoll < 10) { // 10% - Reduced from 20% 
             caveType = CaveType::SmallHoles;
-        } else if (typeRoll < 45) { // 25%
+        } else if (typeRoll < 30) { // 20% - Reduced from 25%
             caveType = CaveType::WindingCave;
-        } else if (typeRoll < 65) { // 20%
+        } else if (typeRoll < 60) { // 30% - Increased from 20%
             caveType = CaveType::LargeCavern;
-        } else if (typeRoll < 75) { // 10%
+        } else if (typeRoll < 65) { // 5% - Reduced from 10%
             caveType = CaveType::NarrowPassage;
-        } else if (typeRoll < 85) { // 10%
+        } else if (typeRoll < 75) { // 10% - Same
             caveType = CaveType::FloodedCave;
-        } else if (typeRoll < 95) { // 10%
+        } else if (typeRoll < 85) { // 10% - Same
             caveType = CaveType::MaterialFilled;
-        } else { // 5%
+        } else { // 15% - Increased from 5%
             caveType = CaveType::MassiveComplex;
         }
         
@@ -2657,22 +2658,29 @@ void World::generateCaves() {
         // Different generation based on cave type
         switch(caveType) {
             case CaveType::SmallHoles: {
-                // Create a cluster of small isolated holes
-                std::uniform_int_distribution<int> clusterSizeDist(3, 8);
-                std::uniform_int_distribution<int> holeRadiusDist(2, 6);
-                std::uniform_int_distribution<int> offsetDist(-30, 30);
+                // Create a cluster of more numerous and larger connected holes
+                std::uniform_int_distribution<int> clusterSizeDist(8, 15); // Increased from 3-8
+                std::uniform_int_distribution<int> holeRadiusDist(5, 12);  // Increased from 2-6
+                std::uniform_int_distribution<int> offsetDist(-60, 60);    // Increased from -30/30
+                std::uniform_int_distribution<int> connectChanceDist(0, 100);
                 
                 int numHoles = clusterSizeDist(m_rng);
+                std::vector<std::pair<int, int>> holePositions;
                 
+                // First, create the individual holes
                 for (int hole = 0; hole < numHoles; hole++) {
                     int holeX = startX + offsetDist(m_rng);
                     int holeY = startY + offsetDist(m_rng);
                     int radius = holeRadiusDist(m_rng);
                     
-                    // Make some holes slightly elliptical
-                    float xStretch = 1.0f + (m_rng() % 50) / 100.0f;
-                    float yStretch = 1.0f + (m_rng() % 50) / 100.0f;
+                    // Store hole positions for connecting them later
+                    holePositions.push_back(std::make_pair(holeX, holeY));
                     
+                    // Make holes more elliptical - better for walking/traversing
+                    float xStretch = 1.0f + (m_rng() % 100) / 100.0f; // Increased stretch
+                    float yStretch = 1.0f + (m_rng() % 80) / 100.0f;  // More horizontal stretching
+                    
+                    // Create the hole
                     for (int cy = -radius; cy <= radius; cy++) {
                         for (int cx = -radius; cx <= radius; cx++) {
                             float scaledX = cx / xStretch;
@@ -2690,15 +2698,99 @@ void World::generateCaves() {
                             }
                         }
                     }
+                    
+                    // Add flat floor for better walking - smooth the bottom part
+                    int floorY = holeY + (int)(radius / yStretch);
+                    int floorWidth = (int)(radius * xStretch * 1.8f); // Wider floor than ceiling
+                    
+                    for (int fx = -floorWidth; fx <= floorWidth; fx++) {
+                        int wx = holeX + fx;
+                        // Create a slightly sloped floor by using a sin wave
+                        int wy = floorY + (int)(sin(fx * 0.1f) * 2);
+                        
+                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                            if (wy > floorY - 3) { // Leave a bit of space above floor
+                                set(wx, wy, MaterialType::Empty);
+                            }
+                        }
+                    }
+                }
+                
+                // Now connect some of the holes with tunnels (80% chance for connections)
+                if (holePositions.size() >= 2 && connectChanceDist(m_rng) < 80) {
+                    int numConnections = holePositions.size() - 1 + (m_rng() % 3); // At least n-1 connections
+                    numConnections = std::min(numConnections, 20); // Cap to avoid too many
+                    
+                    for (int c = 0; c < numConnections; c++) {
+                        // Pick two random holes to connect
+                        int idx1 = m_rng() % holePositions.size();
+                        int idx2 = m_rng() % holePositions.size();
+                        
+                        // Ensure we pick different holes
+                        if (idx1 == idx2) {
+                            idx2 = (idx2 + 1) % holePositions.size();
+                        }
+                        
+                        int x1 = holePositions[idx1].first;
+                        int y1 = holePositions[idx1].second;
+                        int x2 = holePositions[idx2].first;
+                        int y2 = holePositions[idx2].second;
+                        
+                        // Create a path between them with natural curves
+                        int steps = sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+                        double pathAngle = atan2(y2 - y1, x2 - x1);
+                        
+                        // Will be a gently curving path rather than straight line
+                        double angleVariation = (m_rng() % 100 - 50) / 500.0;
+                        
+                        // Tunnel parameters
+                        std::uniform_int_distribution<int> tunnelWidthDist(3, 6);
+                        int tunnelWidth = tunnelWidthDist(m_rng);
+                        
+                        for (int i = 0; i <= steps; i++) {
+                            // Add some gentle curves to the path
+                            pathAngle += sin(i * 0.1f) * angleVariation;
+                            
+                            // Calculate position with curving path
+                            float progress = (float)i / steps;
+                            int x = x1 + (int)(cos(pathAngle) * i);
+                            int y = y1 + (int)(sin(pathAngle) * i);
+                            
+                            // Make tunnel slightly wider in the middle
+                            float widthMod = 1.0f + sin(progress * 3.14159f) * 0.5f;
+                            int radius = (int)(tunnelWidth * widthMod);
+                            
+                            // Create a circular/elliptical tunnel section
+                            for (int cy = -radius; cy <= radius; cy++) {
+                                for (int cx = -radius; cx <= radius; cx++) {
+                                    // More elliptical horizontally for easier traversal
+                                    float scaledX = cx / 1.2f; // Stretch horizontally
+                                    float scaledY = cy;
+                                    
+                                    if ((scaledX*scaledX + scaledY*scaledY) <= radius*radius) {
+                                        int wx = x + cx;
+                                        int wy = y + cy;
+                                        
+                                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                            if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                                set(wx, wy, MaterialType::Empty);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 break;
             }
             
             case CaveType::WindingCave: {
-                // Traditional winding cave paths with variable width
-                std::uniform_int_distribution<int> lengthDist(50, 150);
-                std::uniform_int_distribution<int> radiusDist(3, 8); // Slimmer caves
+                // Expanded winding cave paths with much wider passages
+                std::uniform_int_distribution<int> lengthDist(150, 350);     // Increased from 50-150
+                std::uniform_int_distribution<int> radiusDist(6, 15);        // Increased from 3-8
                 std::uniform_int_distribution<int> branchChanceDist(0, 100);
+                std::uniform_int_distribution<int> chamberSizeDist(18, 30);  // Large chambers
                 
                 int caveLength = lengthDist(m_rng);
                 double angle = angleDist(m_rng) / 100.0; // Convert to radians
@@ -2709,20 +2801,36 @@ void World::generateCaves() {
                 // Track carved points to allow branching
                 std::vector<std::pair<int, int>> pathPoints;
                 
+                // Create more gentle curves for better navigation
                 for (int step = 0; step < caveLength; ++step) {
-                    // Occasionally vary the radius to create chambers and narrow passages
+                    // Vary the radius to create wider passages throughout
                     int baseRadius = radiusDist(m_rng);
                     int radius = baseRadius;
                     
-                    // Create chamber at the start, middle or end
-                    if (step < 5 || (step > caveLength/2-5 && step < caveLength/2+5) || step > caveLength-10) {
-                        radius = baseRadius * 2;
+                    // Create major chambers at several points along the path
+                    if (step < 8 || (step > caveLength/3-8 && step < caveLength/3+8) || 
+                        (step > caveLength*2/3-8 && step < caveLength*2/3+8) || 
+                        step > caveLength-15) {
+                        // Much larger chambers at key points
+                        int chamberSize = chamberSizeDist(m_rng);
+                        radius = chamberSize;
+                        
+                        // Record chamber centers for branching
+                        if (step % 4 == 0) {
+                            pathPoints.push_back(std::make_pair(x, y));
+                        }
                     }
                     
-                    // Carve out this section
+                    // Carve out this section with more horizontal stretching for traversal
+                    float xStretch = 1.3f; // Horizontal stretch for easier left-right movement
+                    float yStretch = 1.0f;
+                    
                     for (int cy = -radius; cy <= radius; ++cy) {
                         for (int cx = -radius; cx <= radius; ++cx) {
-                            if (cx*cx + cy*cy <= radius*radius) {
+                            float scaledX = cx / xStretch;
+                            float scaledY = cy / yStretch;
+                            
+                            if ((scaledX*scaledX + scaledY*scaledY) <= radius*radius) {
                                 int wx = x + cx;
                                 int wy = y + cy;
                                 
@@ -2735,31 +2843,57 @@ void World::generateCaves() {
                         }
                     }
                     
-                    // Save this point for potential branching
-                    if (step % 10 == 0) {
+                    // Smooth the floor for better walking - like in Terraria
+                    int floorY = y + radius - 2; // Slightly above the bottom
+                    int floorWidth = (int)(radius * 1.5f);
+                    
+                    // Create a smooth floor with slight undulation
+                    for (int fx = -floorWidth; fx <= floorWidth; fx++) {
+                        int wx = x + fx;
+                        // Add gentle elevation changes with sin wave
+                        int floorOffset = (int)(sin(step * 0.03f + fx * 0.1f) * 2.0f);
+                        int wy = floorY + floorOffset;
+                        
+                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height && wy < y + radius) {
+                            if (get(wx, wy - 1) != MaterialType::Empty) {
+                                // Create flat floor
+                                set(wx, wy, MaterialType::Empty);
+                                // Ensure there's space above the floor (for player height)
+                                for (int clearY = 1; clearY <= 3; clearY++) {
+                                    if (wy - clearY >= 0 && get(wx, wy - clearY) != MaterialType::Empty) {
+                                        set(wx, wy - clearY, MaterialType::Empty);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Save more points for potential branching
+                    if (step % 8 == 0) {
                         pathPoints.push_back(std::make_pair(x, y));
                     }
                     
-                    // Change direction for a winding path - more variation
-                    angle += (m_rng() % 100 - 50) / 300.0;
+                    // Change direction more gently for smoother paths
+                    angle += (m_rng() % 100 - 50) / 800.0; // Reduced from 300.0 for gentler curves
                     
-                    // Move in the current direction
-                    x += static_cast<int>(cos(angle) * 2);
-                    y += static_cast<int>(sin(angle) * 2);
+                    // Move in the current direction with variable step size for more natural curves
+                    float stepSize = 2.0f + sin(step * 0.05f) * 0.5f;
+                    x += static_cast<int>(cos(angle) * stepSize);
+                    y += static_cast<int>(sin(angle) * stepSize);
                     
                     // Bound check and reflect if needed
-                    if (x < 5) { x = 5; angle = 3.14159 - angle; }
-                    if (x >= m_width - 5) { x = m_width - 5; angle = 3.14159 - angle; }
+                    if (x < 10) { x = 10; angle = 3.14159 - angle; }
+                    if (x >= m_width - 10) { x = m_width - 10; angle = 3.14159 - angle; }
                     if (y < m_height / 4) { y = m_height / 4; angle = -angle; }
-                    if (y >= m_height - 5) { y = m_height - 5; angle = -angle; }
+                    if (y >= m_height - 10) { y = m_height - 10; angle = -angle; }
                 }
                 
-                // Create branches with probability
-                if (!pathPoints.empty() && branchChanceDist(m_rng) < 70) { // 70% chance for branches
-                    std::uniform_int_distribution<int> branchLengthDist(15, 40);
+                // Create branches with increased probability and larger size
+                if (!pathPoints.empty() && branchChanceDist(m_rng) < 90) { // 90% chance for branches (up from 70%)
+                    std::uniform_int_distribution<int> branchLengthDist(40, 120); // Increased from 15-40
                     std::uniform_int_distribution<int> pointSelectDist(0, pathPoints.size() - 1);
                     
-                    int numBranches = 1 + (m_rng() % 3); // 1-3 branches
+                    int numBranches = 2 + (m_rng() % 4); // 2-5 branches (up from 1-3)
                     
                     for (int branch = 0; branch < numBranches; branch++) {
                         if (pathPoints.empty()) break;
@@ -2773,13 +2907,27 @@ void World::generateCaves() {
                         int branchLength = branchLengthDist(m_rng);
                         double branchAngle = angleDist(m_rng) / 100.0;
                         
-                        // Create the branch
+                        // Branches that are also wider and more traversable
                         for (int step = 0; step < branchLength; ++step) {
-                            int radius = radiusDist(m_rng) - 1; // Branches are slightly slimmer
+                            // Branches almost as wide as main tunnel
+                            int radius = radiusDist(m_rng) - 2;
                             
+                            // Create chambers along branches too
+                            if (step % 20 < 3) {
+                                radius += 4;
+                            }
+                            
+                            // More horizontal stretching for easier traversal
+                            float xStretch = 1.2f;
+                            float yStretch = 1.0f;
+                            
+                            // Carve the tunnel with elliptical shape
                             for (int cy = -radius; cy <= radius; ++cy) {
                                 for (int cx = -radius; cx <= radius; ++cx) {
-                                    if (cx*cx + cy*cy <= radius*radius) {
+                                    float scaledX = cx / xStretch;
+                                    float scaledY = cy / yStretch;
+                                    
+                                    if ((scaledX*scaledX + scaledY*scaledY) <= radius*radius) {
                                         int wx = branchX + cx;
                                         int wy = branchY + cy;
                                         
@@ -2792,13 +2940,39 @@ void World::generateCaves() {
                                 }
                             }
                             
-                            branchAngle += (m_rng() % 100 - 50) / 400.0;
-                            branchX += static_cast<int>(cos(branchAngle) * 2);
-                            branchY += static_cast<int>(sin(branchAngle) * 2);
+                            // Smooth floor for branch too, similar to main tunnel
+                            int floorY = branchY + radius - 2;
+                            int floorWidth = (int)(radius * 1.3f);
+                            
+                            for (int fx = -floorWidth; fx <= floorWidth; fx++) {
+                                int wx = branchX + fx;
+                                int floorOffset = (int)(sin(step * 0.03f + fx * 0.1f) * 1.5f);
+                                int wy = floorY + floorOffset;
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height && wy < branchY + radius) {
+                                    if (get(wx, wy - 1) != MaterialType::Empty) {
+                                        // Clear floor and space above
+                                        set(wx, wy, MaterialType::Empty);
+                                        for (int clearY = 1; clearY <= 3; clearY++) {
+                                            if (wy - clearY >= 0 && get(wx, wy - clearY) != MaterialType::Empty) {
+                                                set(wx, wy - clearY, MaterialType::Empty);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // More gentle curves for branches too
+                            branchAngle += (m_rng() % 100 - 50) / 600.0; // More gentle than original
+                            
+                            // Move with variable step size
+                            float stepSize = 2.0f + sin(step * 0.04f) * 0.5f;
+                            branchX += static_cast<int>(cos(branchAngle) * stepSize);
+                            branchY += static_cast<int>(sin(branchAngle) * stepSize);
                             
                             // Bound check for branch
-                            if (branchX < 5 || branchX >= m_width - 5 || 
-                                branchY < m_height / 4 || branchY >= m_height - 5) {
+                            if (branchX < 10 || branchX >= m_width - 10 || 
+                                branchY < m_height / 4 || branchY >= m_height - 10) {
                                 break;
                             }
                         }
@@ -2808,69 +2982,296 @@ void World::generateCaves() {
             }
             
             case CaveType::LargeCavern: {
-                // Large open caverns with more irregular shapes
-                std::uniform_int_distribution<int> cavernSizeXDist(30, 80);
-                std::uniform_int_distribution<int> cavernSizeYDist(20, 50);
-                std::uniform_int_distribution<int> noiseScaleDist(10, 30);
+                // Massive open caverns with traversable paths and interesting features
+                std::uniform_int_distribution<int> cavernSizeXDist(80, 180);    // Dramatically increased from 30-80
+                std::uniform_int_distribution<int> cavernSizeYDist(60, 120);    // Dramatically increased from 20-50
+                std::uniform_int_distribution<int> platformCountDist(4, 12);    // For platforms
+                std::uniform_int_distribution<int> pathwidthDist(4, 10);        // For connecting paths
                 
+                // Create much larger caverns
                 int cavernWidth = cavernSizeXDist(m_rng);
                 int cavernHeight = cavernSizeYDist(m_rng);
-                int noiseScale = noiseScaleDist(m_rng);
                 
-                // Generate a large, irregular cavern using noise
+                // Generate the base cavern shape - more elliptical and roomier
                 for (int cy = -cavernHeight/2; cy <= cavernHeight/2; cy++) {
                     for (int cx = -cavernWidth/2; cx <= cavernWidth/2; cx++) {
-                        // Elliptical base shape
-                        float normalizedX = (float)cx / (cavernWidth/2);
-                        float normalizedY = (float)cy / (cavernHeight/2);
+                        // Elliptical base shape with horizontal stretch for traversable space
+                        float xStretch = 1.0f;   // Default base stretch
+                        float yStretch = 1.2f;   // Slightly more vertically stretched
+                        
+                        // Adjust shape near floor and ceiling to be flatter (Terraria style)
+                        if (cy > cavernHeight/3) {
+                            yStretch = 1.4f; // Flatten floor area
+                        } else if (cy < -cavernHeight/3) {
+                            yStretch = 1.3f; // Flatten ceiling slightly
+                        }
+                        
+                        float normalizedX = (float)cx / (cavernWidth/2 * xStretch);
+                        float normalizedY = (float)cy / (cavernHeight/2 * yStretch);
                         float ellipseDist = normalizedX*normalizedX + normalizedY*normalizedY;
                         
-                        if (ellipseDist <= 1.0f) {
-                            // Apply noise to make edges irregular
-                            float noiseVal = sin((startX + cx) * 0.1f) * cos((startY + cy) * 0.1f);
-                            noiseVal = (noiseVal + 1.0f) / 2.0f; // Normalize to 0-1
+                        // Add varied noise to create natural-looking features
+                        float bigNoiseScale = 0.04f; // Large-scale features
+                        float smallNoiseScale = 0.1f; // Small detail features
+                        
+                        // Large-scale noise for overall cave shape
+                        float bigNoise = sin((startX + cx) * bigNoiseScale) * 
+                                        cos((startY + cy) * bigNoiseScale * 1.3f);
+                        bigNoise = (bigNoise + 1.0f) / 2.0f; // Normalize to 0-1
+                        
+                        // Small-scale noise for detailed edges
+                        float smallNoise = sin((startX + cx) * smallNoiseScale * 1.5f) * 
+                                         cos((startY + cy) * smallNoiseScale);
+                        smallNoise = (smallNoise + 1.0f) / 2.0f; // Normalize to 0-1
+                        
+                        // Combine noises with distance from center
+                        float combinedFactor = ellipseDist - (bigNoise * 0.3f + smallNoise * 0.1f);
+                        
+                        // More irregular at the edges, smoother in the center
+                        float edgeFactor = std::max(0.0f, 1.0f - ellipseDist);
+                        float carveFactor = 0.9f; // Threshold to carve (lower = more carved)
+                        
+                        if (combinedFactor < carveFactor || edgeFactor > 0.6f) {
+                            int wx = startX + cx;
+                            int wy = startY + cy;
                             
-                            // More irregular edges near the perimeter
-                            float edgeFactor = std::max(0.0f, 1.0f - ellipseDist);
-                            
-                            if (noiseVal > 0.3f || edgeFactor > 0.7f) {
-                                int wx = startX + cx;
-                                int wy = startY + cy;
-                                
-                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
-                                    if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
-                                        set(wx, wy, MaterialType::Empty);
-                                    }
+                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                    set(wx, wy, MaterialType::Empty);
                                 }
                             }
                         }
                     }
                 }
                 
-                // Add some stalactites/stalagmites for visual interest
-                std::uniform_int_distribution<int> formationsDist(4, 12);
-                std::uniform_int_distribution<int> formationSizeDist(3, 8);
+                // Create a flatter floor for better traversal (Terraria-style)
+                int floorY = startY + cavernHeight/2 - cavernHeight/8; // Near but not at the bottom
+                int floorWidth = cavernWidth * 3/4; // Most of the width
+                
+                for (int fx = -floorWidth/2; fx <= floorWidth/2; fx++) {
+                    // Generate natural-looking floor with gentle slopes
+                    float normalizedX = (float)fx / (floorWidth/2);
+                    
+                    // Base floor height + undulations from noise
+                    int floorOffset = (int)(sin(fx * 0.05f) * 3.0f + 
+                                           cos(fx * 0.02f) * 2.0f);
+                    
+                    // Slightly raise edges for a bowl-like shape
+                    float edgeFactor = normalizedX * normalizedX * 4.0f;
+                    floorOffset += (int)(edgeFactor);
+                    
+                    int wy = floorY + floorOffset;
+                    int wx = startX + fx;
+                    
+                    if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                        // Create flat floor area
+                        set(wx, wy, MaterialType::Empty);
+                        
+                        // Clear space above floor for player height
+                        for (int clearY = 1; clearY <= 4; clearY++) {
+                            if (wy - clearY >= 0) {
+                                set(wx, wy - clearY, MaterialType::Empty);
+                            }
+                        }
+                        
+                        // Add some solid ground below the floor
+                        for (int groundY = 1; groundY <= 2; groundY++) {
+                            if (wy + groundY < m_height && get(wx, wy + groundY) == MaterialType::Empty) {
+                                // Use stone for solid floor
+                                set(wx, wy + groundY, MaterialType::Stone);
+                            }
+                        }
+                    }
+                }
+                
+                // Add floating platforms for vertical traversal (Terraria style)
+                int numPlatforms = platformCountDist(m_rng);
+                std::uniform_int_distribution<int> platformWidthDist(8, cavernWidth/3);
+                std::uniform_int_distribution<int> platformHeightDist(0, cavernHeight - 20);
+                
+                for (int p = 0; p < numPlatforms; p++) {
+                    int platformWidth = platformWidthDist(m_rng);
+                    
+                    // Platform height - distribute throughout the cavern with tendency toward center
+                    float heightPosition = ((float)p / numPlatforms) * 0.8f + (m_rng() % 20) / 100.0f;
+                    int platformY = startY - cavernHeight/3 + (int)(cavernHeight * heightPosition);
+                    
+                    // Platform horizontal position - prefer not too close to edges
+                    int xOffset = (m_rng() % (cavernWidth - platformWidth)) - (cavernWidth - platformWidth)/2;
+                    int platformX = startX + xOffset;
+                    
+                    // Create the platform with gentle slope for natural look
+                    for (int fx = 0; fx < platformWidth; fx++) {
+                        // Add gentle curve to platform
+                        float normalizedX = (float)fx / platformWidth * 2.0f - 1.0f; // -1 to 1
+                        int heightOffset = (int)(sin(normalizedX * 3.14159f) * 3.0f);
+                        
+                        int wx = platformX + fx;
+                        int wy = platformY + heightOffset;
+                        
+                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                            // Platform is 1-2 blocks thick
+                            for (int thickness = 0; thickness < 2; thickness++) {
+                                if (wy + thickness < m_height) {
+                                    // Use stone for the platform
+                                    set(wx, wy + thickness, MaterialType::Stone);
+                                }
+                            }
+                            
+                            // Ensure there's empty space above the platform
+                            for (int clearY = 1; clearY <= 4; clearY++) {
+                                if (wy - clearY >= 0) {
+                                    set(wx, wy - clearY, MaterialType::Empty);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Add stalactites and stalagmites as traversal obstacles and visual features
+                std::uniform_int_distribution<int> formationsDist(8, 20);       // More formations
+                std::uniform_int_distribution<int> formationSizeDist(5, 15);    // Larger formations
                 
                 int numFormations = formationsDist(m_rng);
                 
                 for (int i = 0; i < numFormations; i++) {
-                    int formX = startX + (m_rng() % cavernWidth - cavernWidth/2);
-                    int formY = startY + (m_rng() % cavernHeight - cavernHeight/2);
+                    // More deliberate positioning for visual impact
+                    float positionRatio = (float)i / numFormations;
+                    int formX = startX + (int)((positionRatio * 2.0f - 1.0f) * cavernWidth/2 * 0.8f);
+                    formX += (m_rng() % 20) - 10; // Add some randomness
+                    
+                    // Choose location - ceiling, floor, or walls
+                    int locationType = m_rng() % 4; // 0-1 = ceiling, 2-3 = floor
+                    int formY = 0;
+                    
+                    if (locationType <= 1) {
+                        // Ceiling formations
+                        formY = startY - cavernHeight/2 + cavernHeight/8;
+                    } else {
+                        // Floor formations
+                        formY = startY + cavernHeight/2 - cavernHeight/8;
+                    }
+                    
+                    // Vary position slightly
+                    formY += (m_rng() % 10) - 5;
+                    
+                    // Determine size - larger for visual statement
                     int size = formationSizeDist(m_rng);
                     
                     // Choose whether it's stalactite (ceiling) or stalagmite (floor)
-                    bool isCeiling = m_rng() % 2 == 0;
+                    bool isCeiling = locationType <= 1;
                     
+                    // Create more natural-looking formations with varied widths
                     for (int h = 0; h < size; h++) {
-                        int width = size - h; // Narrower as it extends
+                        // More natural tapered shape with some variation
+                        float taperRatio = (float)h / size;
+                        int baseWidth = size - (int)(size * taperRatio * 0.8f);
+                        
+                        // Add some irregularity to width
+                        int widthVariation = (h % 3 == 0) ? 1 : 0;
+                        int width = baseWidth + widthVariation;
                         
                         for (int w = -width/2; w <= width/2; w++) {
                             int wx = formX + w;
-                            int wy = isCeiling ? formY - h : formY + h;
+                            int wy = isCeiling ? formY + h : formY - h;
                             
                             if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
-                                set(wx, wy, MaterialType::Stone);
+                                // Occasional gaps in formations for interesting shapes
+                                if (h > 2 && w > -width/3 && w < width/3 && m_rng() % 10 == 0) {
+                                    continue;
+                                }
+                                
+                                // Use varied materials for visual interest
+                                MaterialType formationMaterial = MaterialType::Stone;
+                                if (m_rng() % 20 == 0) {
+                                    formationMaterial = MaterialType::Gravel;
+                                } else if (m_rng() % 25 == 0) {
+                                    formationMaterial = MaterialType::Coal;
+                                }
+                                
+                                set(wx, wy, formationMaterial);
                             }
+                        }
+                    }
+                }
+                
+                // Create access tunnels to connect to the outside world (1-3 tunnels)
+                int numTunnels = 1 + (m_rng() % 3);
+                std::uniform_int_distribution<int> tunnelDirDist(0, 3); // 0=left, 1=right, 2=up, 3=down
+                
+                for (int t = 0; t < numTunnels; t++) {
+                    int direction = tunnelDirDist(m_rng);
+                    int tunnelWidth = pathwidthDist(m_rng);
+                    int tunnelStartX = 0, tunnelStartY = 0;
+                    double tunnelAngle = 0.0;
+                    
+                    // Determine tunnel start based on direction
+                    switch(direction) {
+                        case 0: // Left tunnel
+                            tunnelStartX = startX - cavernWidth/2;
+                            tunnelStartY = startY + (m_rng() % cavernHeight - cavernHeight/2);
+                            tunnelAngle = 3.14159; // Left
+                            break;
+                            
+                        case 1: // Right tunnel
+                            tunnelStartX = startX + cavernWidth/2;
+                            tunnelStartY = startY + (m_rng() % cavernHeight - cavernHeight/2);
+                            tunnelAngle = 0.0; // Right
+                            break;
+                            
+                        case 2: // Up tunnel
+                            tunnelStartX = startX + (m_rng() % cavernWidth - cavernWidth/2);
+                            tunnelStartY = startY - cavernHeight/2;
+                            tunnelAngle = -3.14159/2.0; // Up
+                            break;
+                            
+                        case 3: // Down tunnel
+                            tunnelStartX = startX + (m_rng() % cavernWidth - cavernWidth/2);
+                            tunnelStartY = startY + cavernHeight/2;
+                            tunnelAngle = 3.14159/2.0; // Down
+                            break;
+                    }
+                    
+                    // Create tunnel with gentle curve
+                    int tunnelLength = 50 + (m_rng() % 100); // Long enough to reach new areas
+                    
+                    // Carve the access tunnel
+                    int x = tunnelStartX;
+                    int y = tunnelStartY;
+                    
+                    for (int step = 0; step < tunnelLength; step++) {
+                        // Gentle curve to the tunnel
+                        tunnelAngle += (m_rng() % 100 - 50) / 2000.0;
+                        
+                        // Create a circular/elliptical tunnel segment
+                        for (int cy = -tunnelWidth; cy <= tunnelWidth; cy++) {
+                            for (int cx = -tunnelWidth; cx <= tunnelWidth; cx++) {
+                                // More elliptical in the movement direction
+                                float stretchDirection = (direction < 2) ? 1.2f : 1.0f; // Horizontal or vertical
+                                float stretchPerpendicular = (direction < 2) ? 1.0f : 1.2f;
+                                
+                                float scaledX = cx / ((direction < 2) ? stretchDirection : stretchPerpendicular);
+                                float scaledY = cy / ((direction < 2) ? stretchPerpendicular : stretchDirection);
+                                
+                                if ((scaledX*scaledX + scaledY*scaledY) <= tunnelWidth*tunnelWidth) {
+                                    int wx = x + cx;
+                                    int wy = y + cy;
+                                    
+                                    if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height && wy > m_height/4) {
+                                        set(wx, wy, MaterialType::Empty);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Move to next point with slight variation
+                        float stepSize = 2.0f + sin(step * 0.1f) * 0.5f;
+                        x += static_cast<int>(cos(tunnelAngle) * stepSize);
+                        y += static_cast<int>(sin(tunnelAngle) * stepSize);
+                        
+                        // Stop if we hit world boundaries
+                        if (x < 10 || x >= m_width - 10 || y < m_height/4 || y >= m_height - 10) {
+                            break;
                         }
                     }
                 }
@@ -3126,39 +3527,729 @@ void World::generateCaves() {
             }
             
             case CaveType::MassiveComplex: {
-                // Huge interconnected cave network
-                std::uniform_int_distribution<int> radiusDist(5, 12);
-                std::uniform_int_distribution<int> lengthDist(120, 250);
-                std::uniform_int_distribution<int> branchCountDist(3, 8);
+                // Truly massive interconnected cave network that spans large distances
+                std::uniform_int_distribution<int> radiusDist(10, 25);            // Increased from 5-12
+                std::uniform_int_distribution<int> lengthDist(250, 600);          // Increased from 120-250
+                std::uniform_int_distribution<int> branchCountDist(6, 15);        // Increased from 3-8
+                std::uniform_int_distribution<int> chamberSizeDist(25, 60);       // Large chambers
+                std::uniform_int_distribution<int> chamberSpacingDist(50, 100);   // Distance between chambers
                 
-                // Create a main tunnel
-                int mainLength = lengthDist(m_rng);
-                double mainAngle = angleDist(m_rng) / 100.0;
+                // Store all major points for creating a more interconnected system
+                std::vector<std::pair<int, int>> allPathPoints;
+                std::vector<std::pair<int, int>> majorChambers;
                 
-                int x = startX;
-                int y = startY;
+                // Create multiple main tunnels instead of just one
+                int numMainTunnels = 2 + (m_rng() % 3); // 2-4 main tunnels
                 
-                // Store points for branching
-                std::vector<std::tuple<int, int, double>> junctionPoints;
-                
-                // Create the main passage
-                for (int step = 0; step < mainLength; ++step) {
-                    int radius = radiusDist(m_rng);
+                for (int tunnel = 0; tunnel < numMainTunnels; tunnel++) {
+                    // Each main tunnel starts from a different position
+                    int tunnelStartX, tunnelStartY;
                     
-                    // Create wider chambers at key points
-                    if (step % 40 < 5) {
-                        radius += 5;
-                        
-                        // Save this as a junction point
-                        if (step % 40 == 2 && junctionPoints.size() < 8) {
-                            junctionPoints.push_back(std::make_tuple(x, y, mainAngle + 3.14159/2.0));
+                    if (tunnel == 0) {
+                        // First tunnel starts from the original start point
+                        tunnelStartX = startX;
+                        tunnelStartY = startY;
+                    } else {
+                        // Other tunnels start from major chambers of previous tunnels if available
+                        if (!majorChambers.empty()) {
+                            int chamberIdx = m_rng() % majorChambers.size();
+                            tunnelStartX = majorChambers[chamberIdx].first;
+                            tunnelStartY = majorChambers[chamberIdx].second;
+                        } else {
+                            // Or from a point near the original start
+                            tunnelStartX = startX + (m_rng() % 200 - 100);
+                            tunnelStartY = startY + (m_rng() % 200 - 100);
+                            
+                            // Ensure it's within world bounds
+                            tunnelStartX = std::max(20, std::min(tunnelStartX, m_width - 20));
+                            tunnelStartY = std::max(m_height/4 + 10, std::min(tunnelStartY, m_height - 20));
                         }
                     }
                     
-                    // Carve the main tunnel
-                    for (int cy = -radius; cy <= radius; ++cy) {
-                        for (int cx = -radius; cx <= radius; ++cx) {
-                            if (cx*cx + cy*cy <= radius*radius) {
+                    // Create a main tunnel with varying properties
+                    int mainLength = lengthDist(m_rng);
+                    double mainAngle = angleDist(m_rng) / 100.0; // Random starting direction
+                    
+                    int x = tunnelStartX;
+                    int y = tunnelStartY;
+                    
+                    // Store points for branching along this main tunnel
+                    std::vector<std::tuple<int, int, double>> junctionPoints;
+                    
+                    // Track the next chamber placement
+                    int nextChamber = chamberSpacingDist(m_rng);
+                    
+                    // Create the main passage with varied width and smooth curves
+                    for (int step = 0; step < mainLength; ++step) {
+                        // Base tunnel size - much wider than before
+                        int radius = radiusDist(m_rng);
+                        
+                        // Create major chambers at semi-regular intervals
+                        if (step >= nextChamber) {
+                            // Create a large chamber at this point
+                            int chamberSize = chamberSizeDist(m_rng);
+                            radius = chamberSize;
+                            
+                            // Mark this as a junction point for major branching
+                            junctionPoints.push_back(std::make_tuple(x, y, mainAngle + 3.14159/2.0));
+                            
+                            // Save chamber location for potential future tunnels
+                            majorChambers.push_back(std::make_pair(x, y));
+                            
+                            // Schedule next chamber
+                            nextChamber += chamberSpacingDist(m_rng);
+                        }
+                        
+                        // Carve the main tunnel with elliptical shape for better traversal
+                        float xStretch = 1.3f; // Horizontal stretch for easier movement
+                        float yStretch = 1.0f;
+                        
+                        for (int cy = -radius; cy <= radius; ++cy) {
+                            for (int cx = -radius; cx <= radius; ++cx) {
+                                float scaledX = cx / xStretch;
+                                float scaledY = cy / yStretch;
+                                
+                                if ((scaledX*scaledX + scaledY*scaledY) <= radius*radius) {
+                                    int wx = x + cx;
+                                    int wy = y + cy;
+                                    
+                                    if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                        if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                            set(wx, wy, MaterialType::Empty);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Create smooth floor for better walking
+                        int floorY = y + radius - 3; // Slightly above bottom
+                        int floorWidth = radius * 2;
+                        
+                        for (int fx = -floorWidth; fx <= floorWidth; fx++) {
+                            int wx = x + fx;
+                            // Create gentle undulations in the floor
+                            int floorOffset = (int)(sin(step * 0.02f + fx * 0.05f) * 2.0f);
+                            int wy = floorY + floorOffset;
+                            
+                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height && wy < y + radius) {
+                                // Create flat floor and ensure space above for player
+                                set(wx, wy, MaterialType::Empty);
+                                
+                                // Ensure headroom
+                                for (int clearY = 1; clearY <= 4; clearY++) {
+                                    if (wy - clearY >= 0 && get(wx, wy - clearY) != MaterialType::Empty) {
+                                        set(wx, wy - clearY, MaterialType::Empty);
+                                    }
+                                }
+                                
+                                // Ensure solid ground beneath
+                                for (int groundY = 1; groundY <= 2; groundY++) {
+                                    if (wy + groundY < m_height && get(wx, wy + groundY) == MaterialType::Empty) {
+                                        set(wx, wy + groundY, MaterialType::Stone);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Save path points more frequently for detailed branching
+                        if (step % 5 == 0) {
+                            allPathPoints.push_back(std::make_pair(x, y));
+                        }
+                        
+                        // Change direction very gradually for smoother, more natural paths
+                        mainAngle += (m_rng() % 100 - 50) / 1000.0; // Much gentler curves
+                        
+                        // Variable step size for natural curves
+                        float stepSize = 2.5f + sin(step * 0.03f) * 0.7f;
+                        x += static_cast<int>(cos(mainAngle) * stepSize);
+                        y += static_cast<int>(sin(mainAngle) * stepSize);
+                        
+                        // Bounds checking with gentler reflection
+                        if (x < 15) { x = 15; mainAngle = 3.14159 - mainAngle * 0.8f; } // Soften the reflection
+                        if (x >= m_width - 15) { x = m_width - 15; mainAngle = 3.14159 - mainAngle * 0.8f; }
+                        if (y < m_height / 4 + 10) { y = m_height / 4 + 10; mainAngle = -mainAngle * 0.8f; }
+                        if (y >= m_height - 15) { y = m_height - 15; mainAngle = -mainAngle * 0.8f; }
+                    }
+                    
+                    // Create branches from this tunnel's junction points
+                    int numBranches = branchCountDist(m_rng);
+                    numBranches = std::min(numBranches, (int)junctionPoints.size() * 2); // More branches
+                    
+                    for (int b = 0; b < numBranches; b++) {
+                        if (junctionPoints.empty()) break;
+                        
+                        // Pick a junction point - may use same junction multiple times
+                        int jIndex = m_rng() % junctionPoints.size();
+                        int branchX = std::get<0>(junctionPoints[jIndex]);
+                        int branchY = std::get<1>(junctionPoints[jIndex]);
+                        
+                        // Varied branch angle - not just perpendicular to main tunnel
+                        double branchAngle = std::get<2>(junctionPoints[jIndex]) + 
+                                          (m_rng() % 100 - 50) / 100.0; // Add randomness
+                        
+                        // Create longer branches
+                        int branchLength = lengthDist(m_rng) / 2 + 50; // Longer branches
+                        
+                        // Track branch chambers
+                        int branchNextChamber = 30 + (m_rng() % 40);
+                        
+                        // Create the branch
+                        for (int step = 0; step < branchLength; ++step) {
+                            // Branches are still substantial in size
+                            int radius = radiusDist(m_rng) * 3/4; // 75% of main tunnel size
+                            
+                            // Create chambers along branches too
+                            if (step >= branchNextChamber) {
+                                radius = chamberSizeDist(m_rng) * 2/3; // Slightly smaller chambers
+                                
+                                // Store this chamber 
+                                majorChambers.push_back(std::make_pair(branchX, branchY));
+                                
+                                // Schedule next chamber
+                                branchNextChamber += chamberSpacingDist(m_rng) * 2/3;
+                            }
+                            
+                            // Carve branch with elliptical shape
+                            float xStretch = 1.3f;
+                            float yStretch = 1.0f;
+                            
+                            for (int cy = -radius; cy <= radius; ++cy) {
+                                for (int cx = -radius; cx <= radius; ++cx) {
+                                    float scaledX = cx / xStretch;
+                                    float scaledY = cy / yStretch;
+                                    
+                                    if ((scaledX*scaledX + scaledY*scaledY) <= radius*radius) {
+                                        int wx = branchX + cx;
+                                        int wy = branchY + cy;
+                                        
+                                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                            if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                                set(wx, wy, MaterialType::Empty);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Smooth floor for branches too
+                            int floorY = branchY + radius - 3;
+                            int floorWidth = radius * 2;
+                            
+                            for (int fx = -floorWidth; fx <= floorWidth; fx++) {
+                                int wx = branchX + fx;
+                                int floorOffset = (int)(sin(step * 0.03f + fx * 0.06f) * 1.5f);
+                                int wy = floorY + floorOffset;
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height && wy < branchY + radius) {
+                                    // Ensure walkable floor and headroom
+                                    set(wx, wy, MaterialType::Empty);
+                                    
+                                    for (int clearY = 1; clearY <= 4; clearY++) {
+                                        if (wy - clearY >= 0 && get(wx, wy - clearY) != MaterialType::Empty) {
+                                            set(wx, wy - clearY, MaterialType::Empty);
+                                        }
+                                    }
+                                    
+                                    // Ensure solid floor
+                                    for (int groundY = 1; groundY <= 2; groundY++) {
+                                        if (wy + groundY < m_height && get(wx, wy + groundY) == MaterialType::Empty) {
+                                            set(wx, wy + groundY, MaterialType::Stone);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Save positions for possible future connections
+                            if (step % 10 == 0) {
+                                allPathPoints.push_back(std::make_pair(branchX, branchY));
+                            }
+                            
+                            // Gentle branching curves
+                            branchAngle += (m_rng() % 100 - 50) / 800.0; // Very gentle curves
+                            
+                            // Variable step size for natural curves
+                            float stepSize = 2.0f + sin(step * 0.04f) * 0.5f;
+                            branchX += static_cast<int>(cos(branchAngle) * stepSize);
+                            branchY += static_cast<int>(sin(branchAngle) * stepSize);
+                            
+                            // Bounds checking with gentle reflection
+                            if (branchX < 15) { branchX = 15; branchAngle = 3.14159 - branchAngle * 0.8f; }
+                            if (branchX >= m_width - 15) { branchX = m_width - 15; branchAngle = 3.14159 - branchAngle * 0.8f; }
+                            if (branchY < m_height / 4 + 10) { branchY = m_height / 4 + 10; branchAngle = -branchAngle * 0.8f; }
+                            if (branchY >= m_height - 15) { branchY = m_height - 15; branchAngle = -branchAngle * 0.8f; }
+                        }
+                    }
+                }
+                
+                // Create additional cross-connections between paths to make it truly feel like a massive network
+                int numExtraConnections = 10 + (m_rng() % 15); // Many more connections
+                
+                if (allPathPoints.size() > 20) { // Only if we have enough points to connect
+                    for (int c = 0; c < numExtraConnections; c++) {
+                        // Pick two random points that are somewhat apart
+                        int idx1 = m_rng() % allPathPoints.size();
+                        int idx2 = m_rng() % allPathPoints.size();
+                        
+                        // Ensure they're different and at least some distance apart
+                        int attempts = 0;
+                        while ((idx1 == idx2 || 
+                               (abs(allPathPoints[idx1].first - allPathPoints[idx2].first) < 50 &&
+                                abs(allPathPoints[idx1].second - allPathPoints[idx2].second) < 50)) && 
+                               attempts < 10) {
+                            idx2 = m_rng() % allPathPoints.size();
+                            attempts++;
+                        }
+                        
+                        if (attempts >= 10) continue; // Skip if we couldn't find good points
+                        
+                        int x1 = allPathPoints[idx1].first;
+                        int y1 = allPathPoints[idx1].second;
+                        int x2 = allPathPoints[idx2].first;
+                        int y2 = allPathPoints[idx2].second;
+                        
+                        // Create a connecting tunnel with natural curve
+                        int steps = sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+                        double connectAngle = atan2(y2 - y1, x2 - x1);
+                        
+                        // Tunnel width is variable
+                        int tunnelWidth = 4 + (m_rng() % 5); // 4-8 width
+                        
+                        // Add midpoint deflection for a more natural curve
+                        float deflection = (m_rng() % 20 - 10) / 10.0f;
+                        
+                        for (int i = 0; i <= steps; i++) {
+                            // Calculate position with curved path using sinusoidal deflection
+                            float progress = (float)i / steps;
+                            float deflectionAmount = sin(progress * 3.14159f) * deflection;
+                            
+                            float perpX = -sin(connectAngle) * deflectionAmount * 20.0f;
+                            float perpY = cos(connectAngle) * deflectionAmount * 20.0f;
+                            
+                            int x = x1 + (int)((x2 - x1) * progress + perpX);
+                            int y = y1 + (int)((y2 - y1) * progress + perpY);
+                            
+                            // Variable tunnel width - wider in middle
+                            float widthMod = 1.0f + sin(progress * 3.14159f) * 0.5f;
+                            int radius = (int)(tunnelWidth * widthMod);
+                            
+                            // Carve connection tunnel
+                            for (int cy = -radius; cy <= radius; ++cy) {
+                                for (int cx = -radius; cx <= radius; ++cx) {
+                                    // Slightly more horizontal ellipse for easier traversal
+                                    float scaledX = cx / 1.2f;
+                                    float scaledY = cy;
+                                    
+                                    if ((scaledX*scaledX + scaledY*scaledY) <= radius*radius) {
+                                        int wx = x + cx;
+                                        int wy = y + cy;
+                                        
+                                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                            if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                                set(wx, wy, MaterialType::Empty);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Create smooth floor as needed
+                            int floorY = y + radius - 2;
+                            int floorWidth = (int)(radius * 1.5f);
+                            
+                            for (int fx = -floorWidth; fx <= floorWidth; fx++) {
+                                int wx = x + fx;
+                                // Gentle undulations
+                                int floorOffset = (int)(sin(i * 0.1f + fx * 0.1f) * 1.5f);
+                                int wy = floorY + floorOffset;
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                    // Only add floor if there's something below to stand on
+                                    if (wy + 1 < m_height && get(wx, wy + 1) != MaterialType::Empty) {
+                                        set(wx, wy, MaterialType::Empty);
+                                        
+                                        // Ensure headroom
+                                        for (int clearY = 1; clearY <= 3; clearY++) {
+                                            if (wy - clearY >= 0 && get(wx, wy - clearY) != MaterialType::Empty) {
+                                                set(wx, wy - clearY, MaterialType::Empty);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Add varied decorative features throughout the complex
+                std::uniform_int_distribution<int> featureCountDist(15, 40);      // Many more features
+                std::uniform_int_distribution<int> featureTypeDist(0, 3);         // Different feature types
+                std::uniform_int_distribution<int> featureSizeDist(4, 14);        // Larger features
+                
+                int numFeatures = featureCountDist(m_rng);
+                
+                for (int f = 0; f < numFeatures; f++) {
+                    // Place features at random points along the cave paths
+                    int pointIdx = f % allPathPoints.size();
+                    int baseX = allPathPoints[pointIdx].first;
+                    int baseY = allPathPoints[pointIdx].second;
+                    
+                    // Add some randomness to position
+                    int featureX = baseX + (m_rng() % 30 - 15);
+                    int featureY = baseY + (m_rng() % 30 - 15);
+                    
+                    // Bounds check
+                    if (featureX < 15 || featureX >= m_width - 15 || 
+                        featureY < m_height / 4 + 10 || featureY >= m_height - 15) {
+                        continue;
+                    }
+                    
+                    // Only place if there's empty space nearby
+                    if (get(featureX, featureY) != MaterialType::Empty) {
+                        // Search for empty space nearby
+                        bool foundSpace = false;
+                        for (int sy = -5; sy <= 5 && !foundSpace; sy++) {
+                            for (int sx = -5; sx <= 5 && !foundSpace; sx++) {
+                                int checkX = featureX + sx;
+                                int checkY = featureY + sy;
+                                
+                                if (checkX >= 0 && checkX < m_width && checkY >= 0 && checkY < m_height) {
+                                    if (get(checkX, checkY) == MaterialType::Empty) {
+                                        featureX = checkX;
+                                        featureY = checkY;
+                                        foundSpace = true;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (!foundSpace) continue;
+                    }
+                    
+                    // Determine feature type and size
+                    int featureType = featureTypeDist(m_rng);
+                    int size = featureSizeDist(m_rng);
+                    
+                    switch (featureType) {
+                        case 0: // Classic stalactite/stalagmite
+                        {
+                            bool isCeiling = m_rng() % 2 == 0;
+                            
+                            // Create the formation with natural taper
+                            for (int h = 0; h < size; h++) {
+                                float taperRatio = (float)h / size;
+                                int width = (int)(size * (1.0f - taperRatio * 0.8f));
+                                
+                                for (int w = -width/2; w <= width/2; w++) {
+                                    int wx = featureX + w;
+                                    int wy = isCeiling ? featureY - h : featureY + h;
+                                    
+                                    if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                        // Use varied materials
+                                        MaterialType material = MaterialType::Stone;
+                                        if (m_rng() % 20 == 0) material = MaterialType::Gravel;
+                                        
+                                        set(wx, wy, material);
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                        
+                        case 1: // Rock column (connects floor to ceiling)
+                        {
+                            // Find floor and ceiling
+                            int floorY = featureY;
+                            int ceilingY = featureY;
+                            
+                            // Search downward for floor
+                            while (floorY < m_height - 1 && get(featureX, floorY) == MaterialType::Empty) {
+                                floorY++;
+                            }
+                            
+                            // Search upward for ceiling
+                            while (ceilingY > 0 && get(featureX, ceilingY) == MaterialType::Empty) {
+                                ceilingY--;
+                            }
+                            
+                            // If too close or invalid, skip
+                            if (floorY - ceilingY < 10) continue;
+                            
+                            // Create a natural-looking column
+                            for (int y = ceilingY + 1; y < floorY; y++) {
+                                // Calculate width at this point - bulge in middle
+                                float heightRatio = (float)(y - ceilingY) / (floorY - ceilingY);
+                                // Bell curve shape: y = sin(x*pi)
+                                float widthMod = sin(heightRatio * 3.14159f);
+                                int width = 2 + (int)(size/2 * widthMod);
+                                
+                                for (int x = -width; x <= width; x++) {
+                                    int wx = featureX + x;
+                                    int wy = y;
+                                    
+                                    if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                        // Make columns visually interesting with varied materials
+                                        MaterialType material = MaterialType::Stone;
+                                        if ((y % 5 == 0 && abs(x) < width/2) || m_rng() % 25 == 0) {
+                                            material = MaterialType::Gravel;
+                                        }
+                                        
+                                        set(wx, wy, material);
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                        
+                        case 2: // Rock outcropping (horizontal ledge)
+                        {
+                            // Find a wall to attach to
+                            int wallX = featureX;
+                            bool foundWall = false;
+                            int searchRadius = 15;
+                            
+                            for (int searchDist = 1; searchDist <= searchRadius && !foundWall; searchDist++) {
+                                // Try both left and right
+                                if (featureX - searchDist >= 0 && get(featureX - searchDist, featureY) != MaterialType::Empty) {
+                                    wallX = featureX - searchDist + 1; // Just inside the wall
+                                    foundWall = true;
+                                    break;
+                                }
+                                if (featureX + searchDist < m_width && get(featureX + searchDist, featureY) != MaterialType::Empty) {
+                                    wallX = featureX + searchDist - 1; // Just inside the wall
+                                    foundWall = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (!foundWall) continue;
+                            
+                            // Determine direction (positive = right, negative = left)
+                            int direction = (wallX < featureX) ? 1 : -1;
+                            
+                            // Create an outcropping/ledge
+                            int ledgeWidth = size / 2 + (m_rng() % 6);
+                            int ledgeHeight = 1 + (m_rng() % 3);
+                            
+                            for (int x = 0; x <= ledgeWidth; x++) {
+                                // Taper the ledge as it extends
+                                float taperRatio = (float)x / ledgeWidth;
+                                int height = ledgeHeight * (1.0f - taperRatio * 0.7f);
+                                if (height < 1) height = 1;
+                                
+                                for (int y = 0; y < height; y++) {
+                                    int wx = wallX + x * direction;
+                                    int wy = featureY + y;
+                                    
+                                    if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                        set(wx, wy, MaterialType::Stone);
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                        
+                        case 3: // Small mineral deposit/crystal formation
+                        {
+                            // Find a surface to attach to
+                            bool foundSurface = false;
+                            int attachX = featureX;
+                            int attachY = featureY;
+                            
+                            // Check nearby for non-empty cells
+                            for (int sy = -3; sy <= 3 && !foundSurface; sy++) {
+                                for (int sx = -3; sx <= 3 && !foundSurface; sx++) {
+                                    if (abs(sx) + abs(sy) > 1) { // Skip center point
+                                        int checkX = featureX + sx;
+                                        int checkY = featureY + sy;
+                                        
+                                        if (checkX >= 0 && checkX < m_width && checkY >= 0 && checkY < m_height) {
+                                            if (get(checkX, checkY) != MaterialType::Empty) {
+                                                // Found a surface to attach to
+                                                attachX = checkX;
+                                                attachY = checkY;
+                                                foundSurface = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (!foundSurface) continue;
+                            
+                            // Determine growth direction (away from attachment point)
+                            int growthX = featureX - attachX;
+                            int growthY = featureY - attachY;
+                            
+                            // Normalize and scale
+                            float length = sqrt(growthX*growthX + growthY*growthY);
+                            if (length < 0.1f) {
+                                growthX = 0;
+                                growthY = -1; // Default to growing downward
+                            } else {
+                                growthX = (int)((growthX / length) * 1.5f);
+                                growthY = (int)((growthY / length) * 1.5f);
+                            }
+                            
+                            // Create crystal/mineral formation
+                            int formationSize = 2 + (m_rng() % 4); // Smaller than other features
+                            
+                            for (int i = 0; i < formationSize; i++) {
+                                int cx = attachX + growthX * i;
+                                int cy = attachY + growthY * i;
+                                
+                                // Spread out as we go further
+                                int width = 1;
+                                if (i > formationSize/2) width = 2;
+                                
+                                for (int w = -width; w <= width; w++) {
+                                    for (int h = -width; h <= width; h++) {
+                                        if (w*w + h*h <= width*width) {
+                                            int wx = cx + w;
+                                            int wy = cy + h;
+                                            
+                                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                                // Use interesting materials for crystal formations
+                                                MaterialType material = MaterialType::Stone;
+                                                int matRoll = m_rng() % 10;
+                                                
+                                                if (matRoll < 3) {
+                                                    material = MaterialType::Coal; // Different visual
+                                                } else if (matRoll < 6) {
+                                                    material = MaterialType::Gravel; // Different visual
+                                                }
+                                                
+                                                set(wx, wy, material);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+    
+    // Second pass - add global interconnections between major cave systems
+    std::uniform_int_distribution<int> connectChanceDist(0, 100);
+    
+    // Higher chance of connections, almost guaranteed (95%)
+    if (connectChanceDist(m_rng) < 95) {
+        std::uniform_int_distribution<int> numConnectionsDist(8, 15); // Much more connections
+        std::uniform_int_distribution<int> tunnelWidthDist(3, 8);    // Wider tunnels
+        std::uniform_int_distribution<int> searchBoxSizeDist(50, 100); // Larger search area
+        
+        int numConnections = numConnectionsDist(m_rng);
+        
+        // Build a catalog of major empty spaces to connect
+        std::vector<std::pair<int, int>> majorCavePoints;
+        
+        // Find potential connection points by sampling the world
+        for (int samples = 0; samples < 100; samples++) {
+            int sampleX = m_width / 10 + (m_rng() % (m_width * 8 / 10)); // Stay away from edges
+            int sampleY = m_height / 4 + (m_rng() % (m_height * 3 / 4 - m_height / 4));
+            
+            // Only consider points that are empty
+            if (get(sampleX, sampleY) == MaterialType::Empty) {
+                // Check if this is a substantial cave by measuring empty space around it
+                int emptyCount = 0;
+                for (int checkY = -10; checkY <= 10; checkY++) {
+                    for (int checkX = -10; checkX <= 10; checkX++) {
+                        int wx = sampleX + checkX;
+                        int wy = sampleY + checkY;
+                        
+                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                            if (get(wx, wy) == MaterialType::Empty) {
+                                emptyCount++;
+                            }
+                        }
+                    }
+                }
+                
+                // If at least 60% of surrounding area is empty, consider it a significant cave space
+                if (emptyCount > 120) { // 60% of 21x21 area = ~264
+                    // Check if we already have a point nearby (avoid duplicates)
+                    bool tooClose = false;
+                    for (const auto& point : majorCavePoints) {
+                        if (abs(point.first - sampleX) < 40 && abs(point.second - sampleY) < 40) {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!tooClose) {
+                        majorCavePoints.push_back(std::make_pair(sampleX, sampleY));
+                    }
+                }
+            }
+        }
+        
+        // If we found enough major points, connect them
+        if (majorCavePoints.size() >= 2) {
+            // Adjust number of connections based on available points
+            numConnections = std::min(numConnections, (int)(majorCavePoints.size() * 1.5));
+            
+            for (int c = 0; c < numConnections; c++) {
+                // Pick two different points to connect
+                int idx1 = m_rng() % majorCavePoints.size();
+                int idx2 = (idx1 + 1 + (m_rng() % (majorCavePoints.size() - 1))) % majorCavePoints.size();
+                
+                int x1 = majorCavePoints[idx1].first;
+                int y1 = majorCavePoints[idx1].second;
+                int x2 = majorCavePoints[idx2].first;
+                int y2 = majorCavePoints[idx2].second;
+                
+                // Only connect if points are reasonably far apart
+                if (abs(x2 - x1) < 80 && abs(y2 - y1) < 80) {
+                    continue;
+                }
+                
+                // Create a tunnel between them with natural curves
+                int steps = sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+                double tunnelAngle = atan2(y2 - y1, x2 - x1);
+                
+                // Tunnel width varies along the path
+                int baseWidth = tunnelWidthDist(m_rng);
+                
+                // Add curving deflection to make natural-looking passages
+                float deflectionAmount = (m_rng() % 20 - 10) / 10.0f; // -1.0 to 1.0
+                
+                for (int i = 0; i <= steps; i++) {
+                    float progress = (float)i / steps;
+                    
+                    // Calculate position with deflection to create natural curves
+                    // Use sine curve for smooth deflection
+                    float deflection = sin(progress * 3.14159f) * deflectionAmount;
+                    
+                    // Calculate perpendicular direction for deflection
+                    float perpX = -sin(tunnelAngle) * 20.0f * deflection;
+                    float perpY = cos(tunnelAngle) * 20.0f * deflection;
+                    
+                    // Calculate position along curved path
+                    int x = x1 + (int)((x2 - x1) * progress + perpX);
+                    int y = y1 + (int)((y2 - y1) * progress + perpY);
+                    
+                    // Tunnel width varies along the path - wider in the middle
+                    float widthMod = 1.0f + sin(progress * 3.14159f) * 0.5f;
+                    int radius = (int)(baseWidth * widthMod);
+                    
+                    // Carve the tunnel with an elliptical cross-section
+                    // Horizontal stretch for easier walking
+                    float xStretch = 1.3f;
+                    float yStretch = 1.0f;
+                    
+                    for (int cy = -radius*2; cy <= radius*2; ++cy) {
+                        for (int cx = -radius*2; cx <= radius*2; ++cx) {
+                            float scaledX = cx / xStretch;
+                            float scaledY = cy / yStretch;
+                            
+                            // Core tunnel area
+                            if (scaledX*scaledX + scaledY*scaledY <= radius*radius) {
                                 int wx = x + cx;
                                 int wy = y + cy;
                                 
@@ -3171,194 +4262,276 @@ void World::generateCaves() {
                         }
                     }
                     
-                    // Change direction gradually
-                    mainAngle += (m_rng() % 100 - 50) / 500.0;
+                    // Smooth floor for walking
+                    int floorY = y + radius - 1; // Slightly above bottom
+                    int floorWidth = radius * 3; // Wider floor than tunnel
                     
-                    // Move to next point
-                    x += static_cast<int>(cos(mainAngle) * 2);
-                    y += static_cast<int>(sin(mainAngle) * 2);
-                    
-                    // Bounds checking and reflection
-                    if (x < 10) { x = 10; mainAngle = 3.14159 - mainAngle; }
-                    if (x >= m_width - 10) { x = m_width - 10; mainAngle = 3.14159 - mainAngle; }
-                    if (y < m_height / 4) { y = m_height / 4; mainAngle = -mainAngle; }
-                    if (y >= m_height - 10) { y = m_height - 10; mainAngle = -mainAngle; }
+                    for (int fx = -floorWidth; fx <= floorWidth; fx++) {
+                        int wx = x + fx;
+                        // Create gentle undulations for natural feel
+                        float floorVariation = sin(progress * 5.0f + fx * 0.1f) * 1.5f;
+                        int wy = floorY + (int)floorVariation;
+                        
+                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                            // Create smooth floor
+                            set(wx, wy, MaterialType::Empty);
+                            
+                            // Ensure headroom
+                            for (int clearY = 1; clearY <= 4; clearY++) {
+                                if (wy - clearY >= 0 && get(wx, wy - clearY) != MaterialType::Empty) {
+                                    set(wx, wy - clearY, MaterialType::Empty);
+                                }
+                            }
+                            
+                            // Create solid ground beneath
+                            for (int groundY = 1; groundY <= 2; groundY++) {
+                                if (wy + groundY < m_height && get(wx, wy + groundY) == MaterialType::Empty) {
+                                    set(wx, wy + groundY, MaterialType::Stone);
+                                }
+                            }
+                        }
+                    }
                 }
                 
-                // Create branches from the saved junction points
-                int numBranches = branchCountDist(m_rng);
-                numBranches = std::min(numBranches, (int)junctionPoints.size());
-                
-                for (int b = 0; b < numBranches; b++) {
-                    if (junctionPoints.empty()) break;
+                // Add occasional side branches or chambers along the path
+                if (steps > 100 && m_rng() % 100 < 75) { // 75% chance for side features on long tunnels
+                    int numSideFeatures = 1 + (m_rng() % 3); // 1-3 side branches/chambers
                     
-                    // Pick a junction point
-                    int jIndex = m_rng() % junctionPoints.size();
-                    int branchX = std::get<0>(junctionPoints[jIndex]);
-                    int branchY = std::get<1>(junctionPoints[jIndex]);
-                    double branchAngle = std::get<2>(junctionPoints[jIndex]);
-                    
-                    // Remove used junction point
-                    junctionPoints.erase(junctionPoints.begin() + jIndex);
-                    
-                    // Create the branch
-                    int branchLength = lengthDist(m_rng) / 2;
-                    
-                    for (int step = 0; step < branchLength; ++step) {
-                        int radius = radiusDist(m_rng) - 2; // Slightly smaller than main tunnel
+                    for (int sf = 0; sf < numSideFeatures; sf++) {
+                        // Position along the tunnel
+                        float featurePos = 0.2f + (m_rng() % 60) / 100.0f; // 20%-80% along tunnel
+                        int featureX = x1 + (int)((x2 - x1) * featurePos);
+                        int featureY = y1 + (int)((y2 - y1) * featurePos);
                         
-                        // Create smaller chambers along branches
-                        if (step % 25 < 3) {
-                            radius += 3;
+                        // Adjust for curve deflection
+                        float deflection = sin(featurePos * 3.14159f) * deflectionAmount;
+                        featureX += (int)(-sin(tunnelAngle) * 20.0f * deflection);
+                        featureY += (int)(cos(tunnelAngle) * 20.0f * deflection);
+                        
+                        if (featureX < 10 || featureX >= m_width - 10 || 
+                            featureY < m_height/4 + 5 || featureY >= m_height - 10) {
+                            continue; // Skip if too close to world edge
                         }
                         
-                        // Carve the branch tunnel
-                        for (int cy = -radius; cy <= radius; ++cy) {
-                            for (int cx = -radius; cx <= radius; ++cx) {
-                                if (cx*cx + cy*cy <= radius*radius) {
-                                    int wx = branchX + cx;
-                                    int wy = branchY + cy;
+                        // 50% chance for small chamber, 50% for side tunnel
+                        if (m_rng() % 100 < 50) {
+                            // Create a small chamber
+                            int chamberSize = 5 + (m_rng() % 8); // 5-12 radius
+                            
+                            for (int cy = -chamberSize; cy <= chamberSize; cy++) {
+                                for (int cx = -chamberSize; cx <= chamberSize; cx++) {
+                                    float dist = sqrt(cx*cx + cy*cy);
                                     
-                                    if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
-                                        if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
-                                            set(wx, wy, MaterialType::Empty);
+                                    if (dist <= chamberSize) {
+                                        int wx = featureX + cx;
+                                        int wy = featureY + cy;
+                                        
+                                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                            if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                                set(wx, wy, MaterialType::Empty);
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
-                        
-                        // Change direction gradually but more erratically for branches
-                        branchAngle += (m_rng() % 100 - 50) / 400.0;
-                        
-                        // Move to next point in branch
-                        branchX += static_cast<int>(cos(branchAngle) * 2);
-                        branchY += static_cast<int>(sin(branchAngle) * 2);
-                        
-                        // Bounds checking and end branch if it hits boundaries
-                        if (branchX < 5 || branchX >= m_width - 5 || 
-                            branchY < m_height / 4 || branchY >= m_height - 5) {
-                            break;
-                        }
-                    }
-                }
-                
-                // Add some decorative features - stalactites, stalagmites
-                std::uniform_int_distribution<int> featureCountDist(5, 15);
-                int numFeatures = featureCountDist(m_rng);
-                
-                for (int f = 0; f < numFeatures; f++) {
-                    // Randomly place within the massive complex area
-                    int featureX = startX + (m_rng() % 100 - 50);
-                    int featureY = startY + (m_rng() % 100 - 50);
-                    
-                    // Bounds check
-                    if (featureX < 10 || featureX >= m_width - 10 || 
-                        featureY < m_height / 4 || featureY >= m_height - 10) {
-                        continue;
-                    }
-                    
-                    // Only place if there's empty space
-                    if (get(featureX, featureY) != MaterialType::Empty) {
-                        continue;
-                    }
-                    
-                    // Decide formation type and size
-                    bool isStalactite = m_rng() % 2 == 0;
-                    int size = 3 + (m_rng() % 6);
-                    
-                    // Create the formation
-                    for (int h = 0; h < size; h++) {
-                        int width = size - h;
-                        
-                        for (int w = -width/2; w <= width/2; w++) {
-                            int wx = featureX + w;
-                            int wy = isStalactite ? featureY - h : featureY + h;
                             
-                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
-                                // Use stone or other material types for variety
-                                MaterialType formationMaterial = MaterialType::Stone;
-                                if (m_rng() % 10 == 0) {
-                                    formationMaterial = MaterialType::Gravel;
+                            // Add a flat floor
+                            int floorY = featureY + chamberSize - 3;
+                            for (int fx = -chamberSize; fx <= chamberSize; fx++) {
+                                int wx = featureX + fx;
+                                int wy = floorY + (int)(sin(fx * 0.2f) * 2.0f);
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                    set(wx, wy, MaterialType::Empty);
+                                    
+                                    // Ensure solid ground
+                                    if (wy + 1 < m_height) {
+                                        set(wx, wy + 1, MaterialType::Stone);
+                                    }
+                                }
+                            }
+                        } else {
+                            // Create a side branch
+                            double branchAngle = tunnelAngle + 3.14159/2.0; // Perpendicular
+                            branchAngle += (m_rng() % 60 - 30) / 100.0; // Add variation
+                            
+                            int branchLength = 20 + (m_rng() % 30);
+                            int branchWidth = 3 + (m_rng() % 3);
+                            
+                            for (int step = 0; step < branchLength; step++) {
+                                // Curve the branch
+                                branchAngle += (m_rng() % 40 - 20) / 500.0f;
+                                
+                                int branchX = featureX + (int)(cos(branchAngle) * step);
+                                int branchY = featureY + (int)(sin(branchAngle) * step);
+                                
+                                // Create the branch tunnel
+                                for (int cy = -branchWidth; cy <= branchWidth; cy++) {
+                                    for (int cx = -branchWidth; cx <= branchWidth; cx++) {
+                                        if (cx*cx + cy*cy <= branchWidth*branchWidth) {
+                                            int wx = branchX + cx;
+                                            int wy = branchY + cy;
+                                            
+                                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                                if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                                    set(wx, wy, MaterialType::Empty);
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 
-                                set(wx, wy, formationMaterial);
+                                // Create walkable floor
+                                int floorY = branchY + branchWidth - 1;
+                                for (int fx = -branchWidth-1; fx <= branchWidth+1; fx++) {
+                                    int wx = branchX + fx;
+                                    int wy = floorY + (int)(sin(step * 0.1f + fx * 0.2f) * 1.0f);
+                                    
+                                    if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                        set(wx, wy, MaterialType::Empty);
+                                        
+                                        // Clear space above
+                                        for (int cy = 1; cy <= 3; cy++) {
+                                            if (wy - cy >= 0) {
+                                                set(wx, wy - cy, MaterialType::Empty);
+                                            }
+                                        }
+                                        
+                                        // Ensure solid ground below
+                                        if (wy + 1 < m_height) {
+                                            set(wx, wy + 1, MaterialType::Stone);
+                                        }
+                                    }
+                                }
+                                
+                                // Bounds check
+                                if (branchX < 10 || branchX >= m_width - 10 ||
+                                    branchY < m_height/4 + 5 || branchY >= m_height - 10) {
+                                    break;
+                                }
                             }
                         }
                     }
                 }
-                break;
             }
-        }
-    }
-    
-    // Second pass - add interconnections between nearby caves
-    std::uniform_int_distribution<int> connectChanceDist(0, 100);
-    
-    if (connectChanceDist(m_rng) < 70) { // 70% chance to add some connections
-        std::uniform_int_distribution<int> numConnectionsDist(2, 5);
-        int numConnections = numConnectionsDist(m_rng);
-        
-        for (int c = 0; c < numConnections; c++) {
-            // Find two random empty spaces that might be caves
-            int x1 = m_width / 4 + (m_rng() % (m_width / 2));
-            int y1 = m_height / 3 + (m_rng() % (m_height / 2));
+        } else {
+            // Fall back to simpler connection method if we couldn't find major points
+            numConnections = std::min(numConnections, 5);
             
-            // Search for an actual empty space (cave)
-            bool foundFirst = false;
-            for (int searchY = y1; searchY < y1 + 50 && !foundFirst; searchY++) {
-                for (int searchX = x1; searchX < x1 + 50 && !foundFirst; searchX++) {
-                    if (searchX >= 0 && searchX < m_width && searchY >= 0 && searchY < m_height) {
-                        if (get(searchX, searchY) == MaterialType::Empty) {
-                            x1 = searchX;
-                            y1 = searchY;
-                            foundFirst = true;
+            for (int c = 0; c < numConnections; c++) {
+                // Find two random empty spaces that might be caves
+                int x1 = m_width / 4 + (m_rng() % (m_width / 2));
+                int y1 = m_height / 3 + (m_rng() % (m_height / 2));
+                
+                // Larger search area for finding significant cave spaces
+                int searchBoxSize = searchBoxSizeDist(m_rng);
+                
+                // Search for an actual empty space (cave)
+                bool foundFirst = false;
+                for (int searchY = y1; searchY < y1 + searchBoxSize && !foundFirst; searchY++) {
+                    for (int searchX = x1; searchX < x1 + searchBoxSize && !foundFirst; searchX++) {
+                        if (searchX >= 0 && searchX < m_width && searchY >= 0 && searchY < m_height) {
+                            if (get(searchX, searchY) == MaterialType::Empty) {
+                                x1 = searchX;
+                                y1 = searchY;
+                                foundFirst = true;
+                            }
                         }
                     }
                 }
-            }
-            
-            if (!foundFirst) continue;
-            
-            // Find a second point in another direction
-            int x2 = m_width / 4 + (m_rng() % (m_width / 2));
-            int y2 = m_height / 3 + (m_rng() % (m_height / 2));
-            
-            bool foundSecond = false;
-            for (int searchY = y2; searchY < y2 + 50 && !foundSecond; searchY++) {
-                for (int searchX = x2; searchX < x2 + 50 && !foundSecond; searchX++) {
-                    if (searchX >= 0 && searchX < m_width && searchY >= 0 && searchY < m_height) {
-                        if (get(searchX, searchY) == MaterialType::Empty && 
-                            (abs(searchX - x1) > 50 || abs(searchY - y1) > 50)) {
-                            x2 = searchX;
-                            y2 = searchY;
-                            foundSecond = true;
+                
+                if (!foundFirst) continue;
+                
+                // Find a second point in another direction
+                int x2 = m_width / 10 + (m_rng() % (m_width * 8 / 10));
+                int y2 = m_height / 3 + (m_rng() % (m_height / 2));
+                
+                bool foundSecond = false;
+                for (int searchY = y2; searchY < y2 + searchBoxSize && !foundSecond; searchY++) {
+                    for (int searchX = x2; searchX < x2 + searchBoxSize && !foundSecond; searchX++) {
+                        if (searchX >= 0 && searchX < m_width && searchY >= 0 && searchY < m_height) {
+                            if (get(searchX, searchY) == MaterialType::Empty && 
+                                (abs(searchX - x1) > 100 || abs(searchY - y1) > 100)) {
+                                x2 = searchX;
+                                y2 = searchY;
+                                foundSecond = true;
+                            }
                         }
                     }
                 }
-            }
-            
-            if (!foundSecond) continue;
-            
-            // Create a tunnel between them
-            int steps = sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
-            
-            for (int i = 0; i <= steps; i++) {
-                int x = x1 + (x2 - x1) * i / steps;
-                int y = y1 + (y2 - y1) * i / steps;
                 
-                // Create a small tunnel
-                int radius = 2 + (m_rng() % 2);  // 2-3 radius tunnel
+                if (!foundSecond) continue;
                 
-                for (int cy = -radius; cy <= radius; cy++) {
-                    for (int cx = -radius; cx <= radius; cx++) {
-                        if (cx*cx + cy*cy <= radius*radius) {
-                            int wx = x + cx;
-                            int wy = y + cy;
+                // Create a tunnel between them with natural curvature
+                int steps = sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+                double baseAngle = atan2(y2 - y1, x2 - x1);
+                double curAngle = baseAngle;
+                
+                int x = x1;
+                int y = y1;
+                
+                // Tunnel with variable width and floor
+                int tunnelWidth = 4 + (m_rng() % 4); // 4-7
+                
+                for (int step = 0; step <= steps; step++) {
+                    // Add slight curve to make it look natural
+                    curAngle = baseAngle + sin(step * 0.05f) * 0.3f;
+                    
+                    // Calculate position
+                    float progress = (float)step / steps;
+                    x = x1 + (int)(cos(curAngle) * step);
+                    y = y1 + (int)(sin(curAngle) * step);
+                    
+                    // Tunnel radius varies along the way
+                    float radiusMod = 1.0f + sin(progress * 3.14159f) * 0.4f;
+                    int radius = (int)(tunnelWidth * radiusMod);
+                    
+                    // Create an elliptical tunnel cross-section for better traversal
+                    float xStretch = 1.2f;
+                    float yStretch = 1.0f;
+                    
+                    for (int cy = -radius; cy <= radius; cy++) {
+                        for (int cx = -radius; cx <= radius; cx++) {
+                            float scaledX = cx / xStretch;
+                            float scaledY = cy / yStretch;
                             
-                            if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
-                                if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
-                                    set(wx, wy, MaterialType::Empty);
+                            if (scaledX*scaledX + scaledY*scaledY <= radius*radius) {
+                                int wx = x + cx;
+                                int wy = y + cy;
+                                
+                                if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height) {
+                                    if (get(wx, wy) != MaterialType::Empty && wy > m_height/4) {
+                                        set(wx, wy, MaterialType::Empty);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Create a smooth floor with gentle elevation changes
+                    int floorY = y + radius - 2;
+                    int floorWidth = radius * 2;
+                    
+                    for (int fx = -floorWidth; fx <= floorWidth; fx++) {
+                        int wx = x + fx;
+                        int floorOffset = (int)(sin(step * 0.03f + fx * 0.1f) * 1.5f);
+                        int wy = floorY + floorOffset;
+                        
+                        if (wx >= 0 && wx < m_width && wy >= 0 && wy < m_height && wy < y + radius) {
+                            // Create smooth floor
+                            set(wx, wy, MaterialType::Empty);
+                            
+                            // Ensure headroom
+                            for (int clearY = 1; clearY <= 3; clearY++) {
+                                if (wy - clearY >= 0 && get(wx, wy - clearY) != MaterialType::Empty) {
+                                    set(wx, wy - clearY, MaterialType::Empty);
+                                }
+                            }
+                            
+                            // Ensure solid ground beneath
+                            for (int groundY = 1; groundY <= 2; groundY++) {
+                                if (wy + groundY < m_height && get(wx, wy + groundY) == MaterialType::Empty) {
+                                    set(wx, wy + groundY, MaterialType::Stone);
                                 }
                             }
                         }
