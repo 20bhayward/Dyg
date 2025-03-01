@@ -10,9 +10,15 @@
 #define SDL_MAIN_HANDLED
 #endif
 
+#ifdef USE_VULKAN
+// Vulkan headers
+#include <vulkan/vulkan.h>
+#include <SDL2/SDL_vulkan.h>
+#else
 // GLEW must be included before any OpenGL headers
 #include <GL/glew.h>
 #include <GL/gl.h>
+#endif
 
 #include "../include/Materials.h"
 #include "../include/World.h"
@@ -37,7 +43,7 @@ const bool ENABLE_CULLING = false; // Disable culling for better quality
 int WINAPI WinMain(HINSTANCE /*hInstance*/, HINSTANCE /*hPrevInstance*/, LPSTR /*lpCmdLine*/, int /*nCmdShow*/) {
 #else
 // For Linux and other platforms, use standard main
-int main(int /*argc*/, char* /*argv*/[]) {
+int main(int argc, char* argv[]) {
 #endif
 
     // Initialize SDL
@@ -46,6 +52,10 @@ int main(int /*argc*/, char* /*argv*/[]) {
         return 1;
     }
 
+#ifdef USE_VULKAN
+    // For Vulkan we don't need any OpenGL attributes
+    std::cout << "Initializing with Vulkan backend" << std::endl;
+#else
     // Set OpenGL attributes
     // Request legacy OpenGL 2.1 for immediate mode to be available
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
@@ -55,14 +65,27 @@ int main(int /*argc*/, char* /*argv*/[]) {
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     
     std::cout << "OpenGL attributes set to 2.1 compatibility mode" << std::endl;
+#endif
 
     // Create window (windowed by default, will toggle fullscreen via UI)
+    // Create a separate window for Vulkan vs OpenGL
+#ifdef USE_VULKAN
+    std::cout << "Creating window with Vulkan support" << std::endl;
+    SDL_Window* window = SDL_CreateWindow(
+        "PixelPhys2D (Vulkan)",
+        SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+        WINDOW_WIDTH, WINDOW_HEIGHT,
+        SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
+    );
+#else
+    std::cout << "Creating window with OpenGL support" << std::endl;
     SDL_Window* window = SDL_CreateWindow(
         "PixelPhys2D",
         SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
         WINDOW_WIDTH, WINDOW_HEIGHT,
         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
     );
+#endif
 
     if (!window) {
         std::cerr << "Window could not be created! SDL_Error: " << SDL_GetError() << std::endl;
@@ -77,6 +100,13 @@ int main(int /*argc*/, char* /*argv*/[]) {
     int actualWidth, actualHeight;
     SDL_GetWindowSize(window, &actualWidth, &actualHeight);
 
+#ifdef USE_VULKAN
+    // No need to create OpenGL context for Vulkan
+    SDL_GLContext glContext = nullptr;
+    
+    // For Vulkan we'll skip OpenGL-specific initialization
+    
+#else
     // Create OpenGL context
     SDL_GLContext glContext = SDL_GL_CreateContext(window);
     if (!glContext) {
@@ -104,6 +134,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
     // Set up vsync
     SDL_GL_SetSwapInterval(1);
+#endif
     
     // Show the system cursor instead of using a custom one
     SDL_ShowCursor(SDL_ENABLE);
@@ -119,8 +150,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
     SDL_Delay(200);
     
     // Create the renderer with the actual window size
-    PixelPhys::Renderer renderer(actualWidth, actualHeight);
-    if (!renderer.initialize()) {
+    auto renderer = std::make_shared<PixelPhys::Renderer>(actualWidth, actualHeight);
+    if (!renderer->initialize()) {
         std::cerr << "Failed to initialize renderer!" << std::endl;
         SDL_GL_DeleteContext(glContext);
         SDL_DestroyWindow(window);
@@ -221,6 +252,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     actualWidth = newWidth;
                     actualHeight = newHeight;
                     
+#ifndef USE_VULKAN
                     // Create a new orthographic projection based on the new window size
                     glMatrixMode(GL_PROJECTION);
                     glLoadIdentity();
@@ -229,6 +261,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     // Reset the modelview matrix
                     glMatrixMode(GL_MODELVIEW);
                     glLoadIdentity();
+#endif
                     
                     // Debug output for new dimensions
                     std::cout << "Window resized to " << actualWidth << "x" << actualHeight << std::endl;
@@ -292,6 +325,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     actualWidth = newWidth;
                     actualHeight = newHeight;
                     
+#ifndef USE_VULKAN
                     // Create a new orthographic projection based on the new window size
                     glMatrixMode(GL_PROJECTION);
                     glLoadIdentity();
@@ -300,6 +334,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     // Reset the modelview matrix
                     glMatrixMode(GL_MODELVIEW);
                     glLoadIdentity();
+#endif
                     
                     // Debug output for manual resize
                     std::cout << "Window manually resized to " << actualWidth << "x" << actualHeight << std::endl;
@@ -571,7 +606,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
             }
         }
 
-        // Clear the screen with a gray background
+#ifndef USE_VULKAN
+        // Clear the screen with a gray background (OpenGL specific code)
         glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
@@ -590,15 +626,18 @@ int main(int /*argc*/, char* /*argv*/[]) {
         
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
+#endif
         
         // Remove border UI elements for a cleaner look
         
         // Render the world
+#ifndef USE_VULKAN
         glPushMatrix();
         
         // Setup transformation to center the view properly with no gaps
         // Start by translating to the view area top-left corner
         glTranslatef(viewRect.x, viewRect.y, 0.0f);
+#endif
         
         // Force integer zoom values to prevent subpixel rendering issues
         float integerZoom = roundf(zoomLevel);
@@ -617,20 +656,25 @@ int main(int /*argc*/, char* /*argv*/[]) {
         float horizontalOffset = (viewRect.w - (WORLD_WIDTH / integerZoom) * uniformScale) / 2;
         float verticalOffset = (viewRect.h - (WORLD_HEIGHT / integerZoom) * uniformScale) / 2;
         
+#ifndef USE_VULKAN
         // Apply the centering offset
         glTranslatef(horizontalOffset, verticalOffset, 0.0f);
+#endif
         
+        // Calculate aligned camera position (used for both OpenGL and Vulkan rendering)
+        float alignedCameraX = roundf(WORLD_WIDTH/2.0f + cameraX - (WORLD_WIDTH/integerZoom)/2.0f);
+        float alignedCameraY = roundf(WORLD_HEIGHT/2.0f + cameraY - (WORLD_HEIGHT/integerZoom)/2.0f);
+
+#ifndef USE_VULKAN
         // Apply the uniform scale
         glScalef(uniformScale, uniformScale, 1.0f);
         
-        // Ensure camera position is aligned to integer grid for pixel-perfect rendering
-        float alignedCameraX = roundf(WORLD_WIDTH/2.0f + cameraX - (WORLD_WIDTH/integerZoom)/2.0f);
-        float alignedCameraY = roundf(WORLD_HEIGHT/2.0f + cameraY - (WORLD_HEIGHT/integerZoom)/2.0f);
-        
         // Apply the camera transformation
         glTranslatef(-alignedCameraX, -alignedCameraY, 0.0f);
+#endif
         
-        // Batch render the world - render each material type separately
+#ifndef USE_VULKAN
+        // Batch render the world - render each material type separately (OpenGL code)
         
         // For each material type
         for (int materialIndex = 1; materialIndex < static_cast<int>(PixelPhys::MaterialType::COUNT); materialIndex++) {
@@ -713,10 +757,15 @@ int main(int /*argc*/, char* /*argv*/[]) {
             
         // Use GL_QUADS for rendering tightly packed pixels with no gaps
         glBegin(GL_QUADS);
+#else
+        // For Vulkan, the rendering would be handle by the VulkanBackend
+        // All the material calculation is common, but the actual drawing
+        // is done by the renderer instead of immediate mode OpenGL
+#endif
         
         // Calculate visible area in world coordinates based on camera position and zoom
         // Use integer zoom for pixel-perfect alignment
-        float integerZoom = roundf(zoomLevel);
+        // Note: integerZoom was already calculated earlier, no need to recalculate
         float visibleWorldWidth = WORLD_WIDTH / integerZoom;
         float visibleWorldHeight = WORLD_HEIGHT / integerZoom;
         
@@ -787,6 +836,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                 // Only check pixels within visible part of this chunk
                 for (int y = renderStartY; y < renderEndY; y += step) {
                     for (int x = renderStartX; x < renderEndX; x += step) {
+#ifndef USE_VULKAN
                         if (world.get(x, y) == currentMat) {
                             // Draw a quad for each pixel to ensure no gaps
                             // This creates perfectly tiled pixels like in Noita
@@ -795,12 +845,23 @@ int main(int /*argc*/, char* /*argv*/[]) {
                             glVertex2i(x+1, y+1);           // Top right
                             glVertex2i(x, y+1);             // Top left
                         }
+#else
+                        // For Vulkan path, we would still check if pixel is of material type
+                        // but we'd add it to a buffer for batch rendering instead
+                        PixelPhys::MaterialType pixelMaterial = world.get(x, y);
+                        // In a real Vulkan implementation, we would check material types and add to draw buffer
+                        if (pixelMaterial != PixelPhys::MaterialType::Empty) {
+                            // In the Vulkan implementation, we would add this pixel to a draw buffer
+                        }
+#endif
                     }
                 }
             }
         }
+#ifndef USE_VULKAN
         glEnd();
         }
+#endif
         
         // Render the player character
         if (!freeCam) { // Only render the player in follow mode
@@ -861,6 +922,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
                     const float MAX_DIG_DISTANCE = 50.0f;
                     
                     // Color and line style for digging range
+#ifndef USE_VULKAN
                     if (distance <= MAX_DIG_DISTANCE) {
                         // Within digging range - show green line
                         glColor4f(0.0f, 1.0f, 0.0f, 0.5f);
@@ -908,17 +970,28 @@ int main(int /*argc*/, char* /*argv*/[]) {
                         }
                         glEnd();
                     }
+#else
+                    // For Vulkan rendering, we'd represent the dig radius indicator
+                    // in a different way or add it to our render buffer
+#endif
+                    }
                 }
             }
         }
         
+#ifndef USE_VULKAN
         // Reset transform
         glPopMatrix();
+#endif
         
         // Remove UI text elements for a cleaner look
         
-        // Update the screen
+        // Render the world using either backend
+        renderer->render(world);
+#ifndef USE_VULKAN
+        // For OpenGL we need to swap the window buffers - Vulkan backend does this internally
         SDL_GL_SwapWindow(window);
+#endif
         
         // FPS calculation
         frameCount++;
@@ -935,9 +1008,22 @@ int main(int /*argc*/, char* /*argv*/[]) {
         }
     }
 
-    // Clean up
-    renderer.cleanup();
-    SDL_GL_DeleteContext(glContext);
+    // Clean up all resources
+    std::cout << "Cleaning up resources" << std::endl;
+    
+    // Renderer cleanup
+    if (renderer) {
+        renderer->cleanup();
+    }
+    
+#ifndef USE_VULKAN
+    // OpenGL specific cleanup
+    if (glContext) {
+        SDL_GL_DeleteContext(glContext);
+    }
+#endif
+    
+    // SDL cleanup
     SDL_DestroyWindow(window);
     SDL_Quit();
 

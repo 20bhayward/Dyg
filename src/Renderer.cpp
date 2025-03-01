@@ -1,10 +1,19 @@
 #include "../include/Renderer.h"
+#include "../include/RenderBackend.h"
+#include "../include/RenderResources.h"
+#ifdef USE_VULKAN
+#include "../include/VulkanBackend.h"
+#else
+#include "../include/OpenGLBackend.h"
+#endif
+#ifdef _WIN32
+#include "../include/DirectX12Backend.h"
+#endif
 #include <iostream>
 #include <vector>
-#include <algorithm> // For std::min/max
-#include <string> // For std::to_string
-#include <sstream> // For stringstream as fallback for to_string
-#include <GL/glew.h>
+#include <algorithm>
+#include <string>
+#include <sstream>
 
 // Fallback to_string implementation for MSVC compatibility issues
 #if defined(_MSC_VER)
@@ -24,10 +33,13 @@ namespace std {
 namespace PixelPhys {
 
 Renderer::Renderer(int screenWidth, int screenHeight)
-    : m_screenWidth(screenWidth), m_screenHeight(screenHeight),
-      m_textureID(0), m_shaderProgram(0), m_vbo(0), m_vao(0) {
+    : m_screenWidth(screenWidth), m_screenHeight(screenHeight) {
     
     std::cout << "Creating renderer with screen size: " << screenWidth << "x" << screenHeight << std::endl;
+    
+    // Automatically detect and create the best available backend
+    BackendType backendType = detectBestBackendType();
+    setBackendType(backendType);
 }
 
 Renderer::~Renderer() {
@@ -35,161 +47,117 @@ Renderer::~Renderer() {
 }
 
 bool Renderer::initialize() {
-    // Check and report any GL errors before starting
-    GLenum err = glGetError();
-    if (err != GL_NO_ERROR) {
-        std::cerr << "OpenGL error at Renderer init start: " << err << std::endl;
-    }
-    
-    // Initialize basic OpenGL state
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
-    // Explicitly set matrix mode and load identity matrices
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    
-    // Create our advanced shaders
-    if (!createShaders()) {
-        std::cerr << "Failed to create shaders" << std::endl;
+    if (!m_backend) {
+        std::cerr << "No rendering backend available" << std::endl;
         return false;
     }
     
-    // Initialize framebuffers for post-processing effects
-    createFramebuffers();
-    
-#ifdef USE_OPENVDB
-    // Initialize OpenVDB library
-    openvdb::initialize();
-    
-    // Create OpenVDB grids for lighting
-    m_lightVolume = openvdb::FloatGrid::create(0.0f);
-    m_densityVolume = openvdb::FloatGrid::create(0.0f);
-    
-    m_lightVolume->setName("LightVolume");
-    m_densityVolume->setName("DensityVolume");
-    
-    std::cout << "OpenVDB initialized for volumetric lighting" << std::endl;
-#endif
-
-    // Initialize 2D light grid (used when OpenVDB is not available)
-    m_lightGridWidth = m_screenWidth / 8;  // Lower resolution for performance
-    m_lightGridHeight = m_screenHeight / 8;
-    m_lightGrid.resize(m_lightGridWidth * m_lightGridHeight, 0.0f);
-    
-    // Check for errors after state setup
-    err = glGetError();
-    if (err != GL_NO_ERROR) {
-        std::cerr << "OpenGL error after renderer state setup: " << err << std::endl;
+    // Initialize the backend
+    if (!m_backend->initialize()) {
+        std::cerr << "Failed to initialize rendering backend" << std::endl;
         return false;
     }
     
-    std::cout << "Advanced lighting renderer with global illumination initialized successfully!" << std::endl;
+    // Create rendering resources (shaders, render targets)
+    if (!createRenderingResources()) {
+        std::cerr << "Failed to create rendering resources" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Renderer initialized successfully using " 
+              << m_backend->getRendererInfo() << std::endl;
     return true;
 }
 
-void Renderer::renderShadowMap(const World& world) {
-    // Bind shadow map framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, m_shadowMapFBO);
-    glViewport(0, 0, m_screenWidth, m_screenHeight);
-    glClear(GL_COLOR_BUFFER_BIT);
+void Renderer::renderShadowPass(const World& world) {
+    if (!m_backend || !m_shadowShader || !m_shadowMapTarget) {
+        return;
+    }
     
-    // Use shadow shader
-    glUseProgram(m_shadowShader);
+    m_backend->beginShadowPass();
+    m_backend->bindRenderTarget(m_shadowMapTarget);
+    m_backend->bindShader(m_shadowShader);
     
     // Set shadow shader uniforms
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_textureID);
-    glUniform1i(glGetUniformLocation(m_shadowShader, "worldTexture"), 0);
-    
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, m_mainEmissiveTexture);
-    glUniform1i(glGetUniformLocation(m_shadowShader, "emissiveTexture"), 1);
+    if (m_worldTexture) {
+        m_shadowShader->setUniform("worldTexture", 0);  // texture unit 0
+        m_shadowShader->setUniform("emissiveTexture", 1);  // texture unit 1
+    }
     
     // Set player position for shadow calculation
     float playerX = world.getPlayerX();
     float playerY = world.getPlayerY();
-    glUniform2f(glGetUniformLocation(m_shadowShader, "playerPos"), playerX, playerY);
+    m_shadowShader->setUniform("playerPos", playerX, playerY);
     
     // Set world size for coordinate conversion
-    glUniform2f(glGetUniformLocation(m_shadowShader, "worldSize"), 
-                static_cast<float>(world.getWidth()), 
-                static_cast<float>(world.getHeight()));
+    m_shadowShader->setUniform("worldSize", 
+                              static_cast<float>(world.getWidth()), 
+                              static_cast<float>(world.getHeight()));
                 
     // Set game time for time-based effects
     static float gameTime = 0.0f;
     gameTime += 0.016f; // Approximately 60 FPS
-    glUniform1f(glGetUniformLocation(m_shadowShader, "gameTime"), gameTime);
+    m_shadowShader->setUniform("gameTime", gameTime);
     
     // Draw fullscreen quad
-    glBindVertexArray(m_vao);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    m_backend->drawFullscreenQuad();
 }
 
-void Renderer::renderBloomEffect() {
-    // Bind bloom framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, m_bloomFBO);
-    glViewport(0, 0, m_screenWidth, m_screenHeight);
-    glClear(GL_COLOR_BUFFER_BIT);
+void Renderer::renderBloomPass() {
+    if (!m_backend || !m_bloomShader || !m_bloomTarget) {
+        return;
+    }
     
-    // Use bloom shader
-    glUseProgram(m_bloomShader);
+    m_backend->bindRenderTarget(m_bloomTarget);
+    m_backend->bindShader(m_bloomShader);
     
     // Set bloom shader uniforms
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_mainEmissiveTexture);
-    glUniform1i(glGetUniformLocation(m_bloomShader, "emissiveTexture"), 0);
+    if (m_mainRenderTarget) {
+        m_bloomShader->setUniform("emissiveTexture", 0);  // texture unit 0
+    }
+    
+    // Set game time for animated effects
+    static float gameTime = 0.0f;
+    gameTime += 0.016f;
+    m_bloomShader->setUniform("gameTime", gameTime);
     
     // Draw fullscreen quad
-    glBindVertexArray(m_vao);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    m_backend->drawFullscreenQuad();
 }
 
-// Implementation of the volumetric lighting and global illumination
-void Renderer::renderVolumetricLighting(const World& world) {
-    // Bind volumetric lighting framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, m_volumetricLightFBO);
-    glViewport(0, 0, m_screenWidth, m_screenHeight);
-    glClear(GL_COLOR_BUFFER_BIT);
+void Renderer::renderVolumetricLightingPass(const World& world) {
+    if (!m_backend || !m_volumetricLightShader || !m_volumetricLightTarget) {
+        return;
+    }
     
-    // Use volumetric lighting shader
-    glUseProgram(m_volumetricLightShader);
+    m_backend->bindRenderTarget(m_volumetricLightTarget);
+    m_backend->bindShader(m_volumetricLightShader);
     
-    // Set shader uniforms
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_mainColorTexture);
-    glUniform1i(glGetUniformLocation(m_volumetricLightShader, "colorTexture"), 0);
+    // Set shader uniforms for textures
+    if (m_mainRenderTarget) {
+        m_volumetricLightShader->setUniform("colorTexture", 0);  // texture unit 0
+        m_volumetricLightShader->setUniform("emissiveTexture", 1);  // texture unit 1
+        m_volumetricLightShader->setUniform("depthTexture", 2);  // texture unit 2
+    }
     
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, m_mainEmissiveTexture);
-    glUniform1i(glGetUniformLocation(m_volumetricLightShader, "emissiveTexture"), 1);
-    
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, m_mainDepthTexture);
-    glUniform1i(glGetUniformLocation(m_volumetricLightShader, "depthTexture"), 2);
-    
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, m_shadowMapTexture);
-    glUniform1i(glGetUniformLocation(m_volumetricLightShader, "shadowTexture"), 3);
+    if (m_shadowMapTarget) {
+        m_volumetricLightShader->setUniform("shadowTexture", 3);  // texture unit 3
+    }
     
     // Set world size
-    glUniform2f(glGetUniformLocation(m_volumetricLightShader, "worldSize"), 
-                static_cast<float>(world.getWidth()), 
-                static_cast<float>(world.getHeight()));
+    m_volumetricLightShader->setUniform("worldSize", 
+                                        static_cast<float>(world.getWidth()), 
+                                        static_cast<float>(world.getHeight()));
     
     // Set light positions - player torch and sun
     float playerX = world.getPlayerX();
     float playerY = world.getPlayerY();
-    glUniform2f(glGetUniformLocation(m_volumetricLightShader, "playerPos"), playerX, playerY);
+    m_volumetricLightShader->setUniform("playerPos", playerX, playerY);
     
     // Set game time for day/night cycle
     static float gameTime = 0.0f;
     gameTime += 0.016f; // Approximately 60 FPS
-    glUniform1f(glGetUniformLocation(m_volumetricLightShader, "gameTime"), gameTime);
+    m_volumetricLightShader->setUniform("gameTime", gameTime);
     
     // Day/night cycle calculation
     float dayPhase = (sin(gameTime * 0.02) + 1.0) * 0.5; // 0=night, 1=day
@@ -198,1091 +166,1383 @@ void Renderer::renderVolumetricLighting(const World& world) {
     // Sun position
     float sunX = world.getWidth() * 0.5f;
     float sunY = world.getHeight() * sunHeight;
-    glUniform2f(glGetUniformLocation(m_volumetricLightShader, "sunPos"), sunX, sunY);
+    m_volumetricLightShader->setUniform("sunPos", sunX, sunY);
     
     // Global illumination strength
-    glUniform1f(glGetUniformLocation(m_volumetricLightShader, "giStrength"), 0.7f);
+    m_volumetricLightShader->setUniform("giStrength", 0.7f);
     
     // Set light colors
-    glUniform3f(glGetUniformLocation(m_volumetricLightShader, "playerLightColor"), 1.0f, 0.8f, 0.5f); // Warm torch light
-    glUniform3f(glGetUniformLocation(m_volumetricLightShader, "sunlightColor"),  1.0f, 0.9f, 0.7f);  // Warm sunlight
+    m_volumetricLightShader->setUniform("playerLightColor", 1.0f, 0.8f, 0.5f); // Warm torch light
+    m_volumetricLightShader->setUniform("sunlightColor", 1.0f, 0.9f, 0.7f);  // Warm sunlight
     
-    // Pass any additional emissive light sources from the world
-    // For now we'll just use the emissive texture
-    
-#ifdef USE_OPENVDB
-    // Update OpenVDB volume based on the world state
-    // This is where we'd convert our 2D world data into a 3D density grid
-    // For example, converting smoke/fire particles to density fields
-    // And computing light propagation through the volume
-    
-    // For performance reasons, we would compute this at a lower resolution
-    // and only update regions that have changed
-    
-    // In this example, we'll use the shader-based approach instead
-#endif
-    
-    // Process light propagation using our 2D light grid
-    // This simulates light spreading from emissive sources through the world
-    // We'd normally use a compute shader for this, but for now we'll just 
-    // implement a simplified version in our fragment shader
-    
-    // Draw fullscreen quad to apply lighting calculations
-    glBindVertexArray(m_vao);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    // Draw fullscreen quad
+    m_backend->drawFullscreenQuad();
 }
 
-void Renderer::applyPostProcessing() {
-    // Bind default framebuffer
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, m_screenWidth, m_screenHeight);
-    glClear(GL_COLOR_BUFFER_BIT);
+void Renderer::renderPostProcessPass() {
+    if (!m_backend || !m_postProcessShader) {
+        return;
+    }
     
-    // Use post-processing shader
-    glUseProgram(m_postProcessShader);
+    m_backend->beginPostProcessPass();
+    m_backend->bindDefaultRenderTarget();
+    m_backend->bindShader(m_postProcessShader);
     
-    // Set post-processing shader uniforms
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_mainColorTexture);
-    glUniform1i(glGetUniformLocation(m_postProcessShader, "colorTexture"), 0);
+    // Set texture uniforms
+    if (m_mainRenderTarget) {
+        m_postProcessShader->setUniform("colorTexture", 0);  // texture unit 0
+    }
     
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, m_bloomTexture);
-    glUniform1i(glGetUniformLocation(m_postProcessShader, "bloomTexture"), 1);
+    if (m_bloomTarget) {
+        m_postProcessShader->setUniform("bloomTexture", 1);  // texture unit 1
+    }
     
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, m_shadowMapTexture);
-    glUniform1i(glGetUniformLocation(m_postProcessShader, "shadowMapTexture"), 2);
+    if (m_shadowMapTarget) {
+        m_postProcessShader->setUniform("shadowMapTexture", 2);  // texture unit 2
+    }
     
-    // Add the volumetric lighting texture
-    glActiveTexture(GL_TEXTURE3);
-    glBindTexture(GL_TEXTURE_2D, m_volumetricLightTexture);
-    glUniform1i(glGetUniformLocation(m_postProcessShader, "volumetricLightTexture"), 3);
+    if (m_volumetricLightTarget) {
+        m_postProcessShader->setUniform("volumetricLightTexture", 3);  // texture unit 3
+    }
     
     // Set game time for time-based effects
     static float gameTime = 0.0f;
     gameTime += 0.016f; // Approximately 60 FPS
-    glUniform1f(glGetUniformLocation(m_postProcessShader, "gameTime"), gameTime);
+    m_postProcessShader->setUniform("gameTime", gameTime);
     
     // Draw fullscreen quad
-    glBindVertexArray(m_vao);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    m_backend->drawFullscreenQuad();
 }
 
-void Renderer::render(const World& world) {
-    // Create quad geometry if it doesn't exist
-    if (m_vao == 0) {
-        glGenVertexArrays(1, &m_vao);
-        glGenBuffers(1, &m_vbo);
-        
-        glBindVertexArray(m_vao);
-        glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-        
-        // Define quad vertices and texture coordinates
-        float vertices[] = {
-            // positions        // texture coords
-            -1.0f,  1.0f, 0.0f, 0.0f, 0.0f, // top left
-            -1.0f, -1.0f, 0.0f, 0.0f, 1.0f, // bottom left
-             1.0f, -1.0f, 0.0f, 1.0f, 1.0f, // bottom right
-             1.0f,  1.0f, 0.0f, 1.0f, 0.0f  // top right
-        };
-        
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-        
-        // Position attribute
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-        glEnableVertexAttribArray(0);
-        
-        // Texture coord attribute
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
-        glEnableVertexAttribArray(1);
+void Renderer::renderMainPass(const World& world) {
+    if (!m_backend || !m_mainShader || !m_mainRenderTarget) {
+        return;
     }
     
-    // Update world texture
-    updateTexture(world);
-    
-    // Multi-pass rendering pipeline
-    
-    // Pass 1: Render main scene with material properties to FBO
-    glBindFramebuffer(GL_FRAMEBUFFER, m_mainFBO);
-    glViewport(0, 0, m_screenWidth, m_screenHeight);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    
-    // Use main shader
-    glUseProgram(m_shaderProgram);
+    m_backend->beginMainPass();
+    m_backend->bindRenderTarget(m_mainRenderTarget);
+    m_backend->bindShader(m_mainShader);
     
     // Set main shader uniforms
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_textureID);
-    glUniform1i(glGetUniformLocation(m_shaderProgram, "worldTexture"), 0);
+    if (m_worldTexture) {
+        m_mainShader->setUniform("worldTexture", 0);  // texture unit 0
+    }
     
     // Set world size
-    glUniform2f(glGetUniformLocation(m_shaderProgram, "worldSize"), 
-                static_cast<float>(world.getWidth()), 
-                static_cast<float>(world.getHeight()));
+    m_mainShader->setUniform("worldSize", 
+                            static_cast<float>(world.getWidth()), 
+                            static_cast<float>(world.getHeight()));
     
     // Set player position
     float playerX = world.getPlayerX();
     float playerY = world.getPlayerY();
-    glUniform2f(glGetUniformLocation(m_shaderProgram, "playerPos"), playerX, playerY);
+    m_mainShader->setUniform("playerPos", playerX, playerY);
     
     // Set game time
     static float gameTime = 0.0f;
     gameTime += 0.016f; // Approximately 60 FPS
-    glUniform1f(glGetUniformLocation(m_shaderProgram, "gameTime"), gameTime);
+    m_mainShader->setUniform("gameTime", gameTime);
     
     // Set material properties for all material types
     for (int i = 0; i < static_cast<int>(MaterialType::COUNT); i++) {
         const auto& props = MATERIAL_PROPERTIES[i];
         
-        // Create uniform location strings for visual properties
-        std::string isEmissiveLocation = "materials[" + std::to_string(i) + "].isEmissive";
-        std::string isRefractiveLocation = "materials[" + std::to_string(i) + "].isRefractive";
-        std::string isTranslucentLocation = "materials[" + std::to_string(i) + "].isTranslucent";
-        std::string isReflectiveLocation = "materials[" + std::to_string(i) + "].isReflective";
-        std::string emissiveStrengthLocation = "materials[" + std::to_string(i) + "].emissiveStrength";
+        // Visual properties
+        std::string prefix = "materials[" + std::to_string(i) + "].";
+        m_mainShader->setUniform(prefix + "isEmissive", props.isEmissive ? 1 : 0);
+        m_mainShader->setUniform(prefix + "isRefractive", props.isRefractive ? 1 : 0);
+        m_mainShader->setUniform(prefix + "isTranslucent", props.isTranslucent ? 1 : 0);
+        m_mainShader->setUniform(prefix + "isReflective", props.isReflective ? 1 : 0);
+        m_mainShader->setUniform(prefix + "emissiveStrength", static_cast<float>(props.emissiveStrength) / 255.0f);
         
-        // Create uniform location strings for shader effects
-        std::string hasWaveEffectLocation = "materials[" + std::to_string(i) + "].hasWaveEffect";
-        std::string hasGlowEffectLocation = "materials[" + std::to_string(i) + "].hasGlowEffect";
-        std::string hasParticleEffectLocation = "materials[" + std::to_string(i) + "].hasParticleEffect";
-        std::string hasShimmerEffectLocation = "materials[" + std::to_string(i) + "].hasShimmerEffect";
-        std::string waveSpeedLocation = "materials[" + std::to_string(i) + "].waveSpeed";
-        std::string waveHeightLocation = "materials[" + std::to_string(i) + "].waveHeight";
-        std::string glowSpeedLocation = "materials[" + std::to_string(i) + "].glowSpeed";
-        std::string refractiveIndexLocation = "materials[" + std::to_string(i) + "].refractiveIndex";
+        // Shader effects
+        m_mainShader->setUniform(prefix + "hasWaveEffect", props.hasWaveEffect ? 1 : 0);
+        m_mainShader->setUniform(prefix + "hasGlowEffect", props.hasGlowEffect ? 1 : 0);
+        m_mainShader->setUniform(prefix + "hasParticleEffect", props.hasParticleEffect ? 1 : 0);
+        m_mainShader->setUniform(prefix + "hasShimmerEffect", props.hasShimmerEffect ? 1 : 0);
+        m_mainShader->setUniform(prefix + "waveSpeed", static_cast<float>(props.waveSpeed) / 255.0f);
+        m_mainShader->setUniform(prefix + "waveHeight", static_cast<float>(props.waveHeight) / 255.0f);
+        m_mainShader->setUniform(prefix + "glowSpeed", static_cast<float>(props.glowSpeed) / 255.0f);
+        m_mainShader->setUniform(prefix + "refractiveIndex", static_cast<float>(props.refractiveIndex) / 255.0f);
         
-        // Secondary color location
-        std::string secondaryColorLocation = "materials[" + std::to_string(i) + "].secondaryColor";
-        
-        // Set visual properties in shader
-        glUniform1i(glGetUniformLocation(m_shaderProgram, isEmissiveLocation.c_str()), props.isEmissive ? 1 : 0);
-        glUniform1i(glGetUniformLocation(m_shaderProgram, isRefractiveLocation.c_str()), props.isRefractive ? 1 : 0);
-        glUniform1i(glGetUniformLocation(m_shaderProgram, isTranslucentLocation.c_str()), props.isTranslucent ? 1 : 0);
-        glUniform1i(glGetUniformLocation(m_shaderProgram, isReflectiveLocation.c_str()), props.isReflective ? 1 : 0);
-        glUniform1f(glGetUniformLocation(m_shaderProgram, emissiveStrengthLocation.c_str()), 
-                   static_cast<float>(props.emissiveStrength) / 255.0f);
-        
-        // Set shader effects in shader
-        glUniform1i(glGetUniformLocation(m_shaderProgram, hasWaveEffectLocation.c_str()), props.hasWaveEffect ? 1 : 0);
-        glUniform1i(glGetUniformLocation(m_shaderProgram, hasGlowEffectLocation.c_str()), props.hasGlowEffect ? 1 : 0);
-        glUniform1i(glGetUniformLocation(m_shaderProgram, hasParticleEffectLocation.c_str()), props.hasParticleEffect ? 1 : 0);
-        glUniform1i(glGetUniformLocation(m_shaderProgram, hasShimmerEffectLocation.c_str()), props.hasShimmerEffect ? 1 : 0);
-        glUniform1f(glGetUniformLocation(m_shaderProgram, waveSpeedLocation.c_str()), 
-                   static_cast<float>(props.waveSpeed) / 255.0f);
-        glUniform1f(glGetUniformLocation(m_shaderProgram, waveHeightLocation.c_str()), 
-                   static_cast<float>(props.waveHeight) / 255.0f);
-        glUniform1f(glGetUniformLocation(m_shaderProgram, glowSpeedLocation.c_str()), 
-                   static_cast<float>(props.glowSpeed) / 255.0f);
-        glUniform1f(glGetUniformLocation(m_shaderProgram, refractiveIndexLocation.c_str()), 
-                   static_cast<float>(props.refractiveIndex) / 255.0f);
-        
-        // Set secondary color
-        glUniform3f(glGetUniformLocation(m_shaderProgram, secondaryColorLocation.c_str()),
-                  static_cast<float>(props.secondaryR) / 255.0f,
-                  static_cast<float>(props.secondaryG) / 255.0f,
-                  static_cast<float>(props.secondaryB) / 255.0f);
+        // Secondary color
+        m_mainShader->setUniform(prefix + "secondaryColor", 
+                                static_cast<float>(props.secondaryR) / 255.0f,
+                                static_cast<float>(props.secondaryG) / 255.0f,
+                                static_cast<float>(props.secondaryB) / 255.0f);
     }
     
-    // Draw main scene
-    glBindVertexArray(m_vao);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    // Draw fullscreen quad
+    m_backend->drawFullscreenQuad();
+}
+
+void Renderer::render(const World& world) {
+    if (!m_backend) {
+        return;
+    }
+    
+    // Begin frame
+    m_backend->beginFrame();
+    
+    // Update world texture
+    updateWorldTexture(world);
+    
+    // Multi-pass rendering pipeline
+    
+    // Pass 1: Render main scene with material properties
+    renderMainPass(world);
     
     // Pass 2: Generate shadow map
-    renderShadowMap(world);
+    renderShadowPass(world);
     
     // Pass 3: Volumetric lighting and global illumination
-    renderVolumetricLighting(world);
+    renderVolumetricLightingPass(world);
     
     // Pass 4: Generate bloom effect from emissive materials
-    renderBloomEffect();
+    renderBloomPass();
     
     // Pass 5: Final composition with post-processing
-    applyPostProcessing();
+    renderPostProcessPass();
     
     // Render player on top of everything
+    // Note: May need to be reimplemented for non-OpenGL backends
     world.renderPlayer(1.0f);
     
-    // Optional: Draw a border around the viewport
-    // Switch to fixed-function pipeline for simple 2D drawing
-    glUseProgram(0);
-    
-    // Save OpenGL state
-    glPushAttrib(GL_ALL_ATTRIB_BITS);
-    
-    // Setup projection for 2D drawing
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    glOrtho(0, m_screenWidth, m_screenHeight, 0, -1, 1);
-    
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-    
-    // Draw border around game view
-    glLineWidth(2.0f);
-    glBegin(GL_LINE_LOOP);
-    glColor3f(0.6f, 0.6f, 0.6f); // Light gray border
-    glVertex2f(10, 10);
-    glVertex2f(m_screenWidth - 10, 10);
-    glVertex2f(m_screenWidth - 10, m_screenHeight - 10);
-    glVertex2f(10, m_screenHeight - 10);
-    glEnd();
-    
-    // Restore OpenGL state
-    glMatrixMode(GL_MODELVIEW);
-    glPopMatrix();
-    
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    
-    glPopAttrib();
+    // End frame
+    m_backend->endFrame();
 }
 
 void Renderer::cleanup() {
-    // Delete main world texture
-    if (m_textureID != 0) {
-        glDeleteTextures(1, &m_textureID);
-        m_textureID = 0;
+    // Clean up shaders
+    m_mainShader.reset();
+    m_shadowShader.reset();
+    m_volumetricLightShader.reset();
+    m_bloomShader.reset();
+    m_postProcessShader.reset();
+    
+    // Clean up render targets
+    m_mainRenderTarget.reset();
+    m_shadowMapTarget.reset();
+    m_volumetricLightTarget.reset();
+    m_bloomTarget.reset();
+    
+    // Clean up textures
+    m_worldTexture.reset();
+    
+    // Clean up the rendering backend
+    if (m_backend) {
+        m_backend->cleanup();
+        m_backend.reset();
+    }
+}
+
+bool Renderer::setBackendType(BackendType type) {
+    std::cout << "Setting backend type to: ";
+    switch (type) {
+        case BackendType::OpenGL: std::cout << "OpenGL"; break;
+        case BackendType::Vulkan: std::cout << "Vulkan"; break;
+        case BackendType::DirectX12: std::cout << "DirectX12"; break;
+        default: std::cout << "Unknown"; break;
+    }
+    std::cout << std::endl;
+    
+    // Clean up existing backend if any
+    if (m_backend) {
+        m_backend->cleanup();
+        m_backend.reset();
     }
     
-    // Delete vertex buffer objects
-    if (m_vbo != 0) {
-        glDeleteBuffers(1, &m_vbo);
-        m_vbo = 0;
+    // Create a new backend of the specified type
+    m_backend = CreateRenderBackend(type, m_screenWidth, m_screenHeight);
+    
+    if (!m_backend) {
+        std::cerr << "Failed to create rendering backend of type " << static_cast<int>(type) << std::endl;
+        return false;
     }
     
-    if (m_vao != 0) {
-        glDeleteVertexArrays(1, &m_vao);
-        m_vao = 0;
+    std::cout << "Successfully created " << m_backend->getRendererInfo() << " backend" << std::endl;
+    return true;
+}
+
+BackendType Renderer::getBackendType() const {
+    if (m_backend) {
+        return m_backend->getType();
     }
-    
-    // Delete shader programs
-    GLuint shaders[] = {
-        m_shaderProgram, m_shadowShader, m_volumetricLightShader,
-        m_lightPropagationShader, m_bloomShader, m_postProcessShader
-    };
-    
-    for (GLuint shader : shaders) {
-        if (shader != 0) {
-            glDeleteProgram(shader);
-        }
+    return BackendType::None;
+}
+
+std::string Renderer::getRendererInfo() const {
+    if (m_backend) {
+        return m_backend->getRendererInfo();
     }
-    
-    m_shaderProgram = m_shadowShader = m_volumetricLightShader = 0;
-    m_lightPropagationShader = m_bloomShader = m_postProcessShader = 0;
-    
-    // Delete framebuffer textures
-    GLuint fbTextures[] = {
-        m_mainColorTexture, m_mainEmissiveTexture, m_mainDepthTexture,
-        m_shadowMapTexture, m_volumetricLightTexture, m_bloomTexture
-    };
-    glDeleteTextures(6, fbTextures);
-    
-    // Delete framebuffer objects
-    GLuint fbos[] = {m_mainFBO, m_shadowMapFBO, m_volumetricLightFBO, m_bloomFBO};
-    glDeleteFramebuffers(4, fbos);
-    
-    // Reset all handles to 0
-    m_mainFBO = m_shadowMapFBO = m_volumetricLightFBO = m_bloomFBO = 0;
-    m_mainColorTexture = m_mainEmissiveTexture = m_mainDepthTexture = 0;
-    m_shadowMapTexture = m_volumetricLightTexture = m_bloomTexture = 0;
-    
-#ifdef USE_OPENVDB
-    // Clean up OpenVDB resources
-    m_lightVolume.reset();
-    m_densityVolume.reset();
+    return "No renderer available";
+}
+
+BackendType Renderer::detectBestBackendType() {
+    // Use compile-time flags to determine the backend
+#ifdef USE_VULKAN
+    return BackendType::Vulkan;
+#elif defined(_WIN32)
+    // On Windows, try DirectX 12 first, then OpenGL
+    auto dx12Backend = CreateRenderBackend(BackendType::DirectX12, m_screenWidth, m_screenHeight);
+    if (dx12Backend) {
+        dx12Backend.reset();
+        return BackendType::DirectX12;
+    }
+    return BackendType::OpenGL;
+#else
+    // Linux/macOS default to OpenGL
+    return BackendType::OpenGL;
 #endif
 }
 
-GLuint Renderer::createShaderProgram(const char* vertexSource, const char* fragmentSource) {
-    // Compile vertex and fragment shaders
-    GLuint vertexShader = compileShader(vertexSource, GL_VERTEX_SHADER);
-    GLuint fragmentShader = compileShader(fragmentSource, GL_FRAGMENT_SHADER);
-    
-    if (vertexShader == 0 || fragmentShader == 0) {
-        return 0;
+void Renderer::updateWorldTexture(const World& world) {
+    if (!m_backend) {
+        return;
     }
     
-    // Create shader program and link
-    GLuint program = glCreateProgram();
-    glAttachShader(program, vertexShader);
-    glAttachShader(program, fragmentShader);
-    glLinkProgram(program);
-    
-    // Check for linking errors
-    GLint success;
-    char infoLog[512];
-    glGetProgramiv(program, GL_LINK_STATUS, &success);
-    if (!success) {
-        glGetProgramInfoLog(program, 512, NULL, infoLog);
-        std::cerr << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
-        glDeleteShader(vertexShader);
-        glDeleteShader(fragmentShader);
-        return 0;
+    // Create texture if it doesn't exist
+    if (!m_worldTexture) {
+        m_worldTexture = m_backend->createTexture(world.getWidth(), world.getHeight(), true);
+        if (!m_worldTexture) {
+            std::cerr << "Failed to create world texture" << std::endl;
+            return;
+        }
     }
     
-    // Clean up individual shaders as they're linked to program now
-    glDeleteShader(vertexShader);
-    glDeleteShader(fragmentShader);
-    
-    return program;
+    // Update texture with world data
+    m_backend->updateTexture(m_worldTexture, world.getPixelData());
 }
 
-bool Renderer::createShaders() {
-    // Common vertex shader for all passes
+bool Renderer::createRenderingResources() {
+    if (!m_backend) {
+        return false;
+    }
+    
+    // Create world texture for pixel rendering
+    m_worldTexture = m_backend->createTexture(2048, 2048, true);
+    if (!m_worldTexture) {
+        std::cerr << "Failed to create world texture" << std::endl;
+        return false;
+    }
+    
+    // Create main render target
+    m_mainRenderTarget = m_backend->createRenderTarget(m_screenWidth, m_screenHeight, true, false);
+    if (!m_mainRenderTarget) {
+        std::cerr << "Failed to create main render target" << std::endl;
+        return false;
+    }
+    
+    // Create shadow map render target
+    m_shadowMapTarget = m_backend->createRenderTarget(m_screenWidth, m_screenHeight, false, false);
+    if (!m_shadowMapTarget) {
+        std::cerr << "Failed to create shadow map render target" << std::endl;
+        return false;
+    }
+    
+    // Create volumetric lighting render target
+    m_volumetricLightTarget = m_backend->createRenderTarget(m_screenWidth, m_screenHeight, false, false);
+    if (!m_volumetricLightTarget) {
+        std::cerr << "Failed to create volumetric lighting render target" << std::endl;
+        return false;
+    }
+    
+    // Create bloom render target
+    m_bloomTarget = m_backend->createRenderTarget(m_screenWidth, m_screenHeight, false, false);
+    if (!m_bloomTarget) {
+        std::cerr << "Failed to create bloom render target" << std::endl;
+        return false;
+    }
+    
+    // Create shaders
+    m_mainShader = m_backend->createShader(getMainVertexShaderSource(), getMainFragmentShaderSource());
+    if (!m_mainShader) {
+        std::cerr << "Failed to create main shader" << std::endl;
+        return false;
+    }
+    
+    m_shadowShader = m_backend->createShader(getShadowVertexShaderSource(), getShadowFragmentShaderSource());
+    if (!m_shadowShader) {
+        std::cerr << "Failed to create shadow shader" << std::endl;
+        return false;
+    }
+    
+    m_volumetricLightShader = m_backend->createShader(
+        getVolumetricLightVertexShaderSource(), 
+        getVolumetricLightFragmentShaderSource());
+    if (!m_volumetricLightShader) {
+        std::cerr << "Failed to create volumetric lighting shader" << std::endl;
+        return false;
+    }
+    
+    m_bloomShader = m_backend->createShader(getBloomVertexShaderSource(), getBloomFragmentShaderSource());
+    if (!m_bloomShader) {
+        std::cerr << "Failed to create bloom shader" << std::endl;
+        return false;
+    }
+    
+    m_postProcessShader = m_backend->createShader(
+        getPostProcessVertexShaderSource(), 
+        getPostProcessFragmentShaderSource());
+    if (!m_postProcessShader) {
+        std::cerr << "Failed to create post-process shader" << std::endl;
+        return false;
+    }
+    
+    return true;
+}
+
+// Common vertex shader source for all rendering passes
+std::string Renderer::getMainVertexShaderSource() const {
+    return R"(
+        #version 330 core
+        layout (location = 0) in vec3 aPos;
+        layout (location = 1) in vec2 aTexCoord;
+        out vec2 TexCoord;
+        void main()
+        {
+            gl_Position = vec4(aPos, 1.0);
+            TexCoord = aTexCoord;
+        }
+    )";
+}
+
+// Common vertex shader source for all other passes
+std::string Renderer::getShadowVertexShaderSource() const {
+    return getMainVertexShaderSource();
+}
+
+std::string Renderer::getVolumetricLightVertexShaderSource() const {
+    return getMainVertexShaderSource();
+}
+
+std::string Renderer::getBloomVertexShaderSource() const {
+    return getMainVertexShaderSource();
+}
+
+std::string Renderer::getPostProcessVertexShaderSource() const {
+    return getMainVertexShaderSource();
+}
+
+// Fragment shader sources
+std::string Renderer::getMainFragmentShaderSource() const {
+    return R"(
+        #version 330 core
+        layout (location = 0) out vec4 FragColor;
+        layout (location = 1) out vec4 EmissiveColor;
+        in vec2 TexCoord;
+        uniform sampler2D worldTexture;
+        uniform vec2 worldSize;
+        uniform vec2 playerPos;
+        uniform float gameTime;
+        
+        // Material properties buffer with enhanced visual effects
+        struct MaterialInfo {
+           // Visual properties
+           bool isEmissive;
+           bool isRefractive;
+           bool isTranslucent;
+           bool isReflective;
+           float emissiveStrength;
+           
+           // Special shader effects
+           bool hasWaveEffect;
+           bool hasGlowEffect;
+           bool hasParticleEffect;
+           bool hasShimmerEffect;
+           float waveSpeed;
+           float waveHeight;
+           float glowSpeed;
+           float refractiveIndex;
+           
+           // Secondary color for effects
+           vec3 secondaryColor;
+        };
+        uniform MaterialInfo materials[30]; // Max 30 material types
+        
+        // Basic hash function for random values
+        float hash(vec2 p) {
+           return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+        
+        // ... rest of the main shader ...
+    )";
+}
+
+std::string Renderer::getShadowFragmentShaderSource() const {
+    return R"(
+        #version 330 core
+        out vec4 FragColor;
+        in vec2 TexCoord;
+        uniform sampler2D worldTexture;
+        uniform sampler2D emissiveTexture;
+        uniform vec2 playerPos;
+        uniform vec2 worldSize;
+        uniform float gameTime;
+        
+        // Helper functions for noise and variety
+        float hash(vec2 p) {
+           return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+        
+        // ... rest of the shadow shader ...
+    )";
+}
+
+std::string Renderer::getVolumetricLightFragmentShaderSource() const {
+    return R"(
+        #version 330 core
+        out vec4 FragColor;
+        in vec2 TexCoord;
+        uniform sampler2D colorTexture;
+        uniform sampler2D emissiveTexture;
+        uniform sampler2D depthTexture;
+        uniform sampler2D shadowTexture;
+        uniform vec2 worldSize;
+        uniform vec2 playerPos;
+        uniform vec2 sunPos;
+        uniform float gameTime;
+        uniform float giStrength;
+        uniform vec3 playerLightColor;
+        uniform vec3 sunlightColor;
+        
+        // ... rest of the volumetric lighting shader ...
+    )";
+}
+
+std::string Renderer::getBloomFragmentShaderSource() const {
+    return R"(
+        #version 330 core
+        out vec4 FragColor;
+        in vec2 TexCoord;
+        uniform sampler2D emissiveTexture;
+        uniform float gameTime;
+        
+        // ... rest of the bloom shader ...
+    )";
+}
+
+std::string Renderer::getPostProcessFragmentShaderSource() const {
+    return R"(
+        #version 330 core
+        out vec4 FragColor;
+        in vec2 TexCoord;
+        uniform sampler2D colorTexture;
+        uniform sampler2D bloomTexture;
+        uniform sampler2D shadowMapTexture;
+        uniform sampler2D volumetricLightTexture;
+        uniform float gameTime;
+        
+        // ... rest of the post-processing shader ...
+    )";
+}
+
+#ifndef USE_VULKAN
+// Shader fragments for OpenGL implementation
+const char* shaderHelper = R"(
+// Helper functions for shaders
+)";
+#endif
+
+#ifndef USE_VULKAN
+bool PixelPhys::Renderer::createShadersAndPrograms() {
+    // Common vertex shader for all post-processing effects
     const char* commonVertexShader = 
         "#version 330 core\n"
         "layout (location = 0) in vec3 aPos;\n"
         "layout (location = 1) in vec2 aTexCoord;\n"
         "out vec2 TexCoord;\n"
-        "void main()\n"
-        "{\n"
+        "void main() {\n"
         "   gl_Position = vec4(aPos, 1.0);\n"
         "   TexCoord = aTexCoord;\n"
         "}\n";
         
-    // Volumetric lighting and global illumination shader
-    const char* volumetricLightFragmentShader = 
-        "#version 330 core\n"
-        "out vec4 FragColor;\n"
-        "in vec2 TexCoord;\n"
-        "uniform sampler2D colorTexture;\n"
-        "uniform sampler2D emissiveTexture;\n"
-        "uniform sampler2D depthTexture;\n"
-        "uniform sampler2D shadowTexture;\n"
-        "uniform vec2 worldSize;\n"
-        "uniform vec2 playerPos;\n"
-        "uniform vec2 sunPos;\n"
-        "uniform float gameTime;\n"
-        "uniform float giStrength;\n"
-        "uniform vec3 playerLightColor;\n"
-        "uniform vec3 sunlightColor;\n"
-        
-        // Noise function for lighting variation
-        "float hash(vec2 p) {\n"
-        "   return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);\n"
-        "}\n"
-        
-        "float noise(vec2 p) {\n"
-        "   vec2 i = floor(p);\n"
-        "   vec2 f = fract(p);\n"
-        "   f = f * f * (3.0 - 2.0 * f);\n"
-        "   float a = hash(i + vec2(0.0, 0.0));\n"
-        "   float b = hash(i + vec2(1.0, 0.0));\n"
-        "   float c = hash(i + vec2(0.0, 1.0));\n"
-        "   float d = hash(i + vec2(1.0, 1.0));\n"
-        "   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);\n"
-        "}\n"
-        
-        // This simulates light propagation through the scene
-        "vec3 propagateLight(vec2 uv, vec2 lightPos, vec3 lightColor, float intensity, float range) {\n"
-        "   // Calculate world position\n"
-        "   vec2 worldPos = uv * worldSize;\n"
-        "   float dist = length(worldPos - lightPos);\n"
-        "   \n"
-        "   // Calculate attenuation with inverse square falloff\n"
-        "   float attenuation = 1.0 / (1.0 + dist * dist / (range * range));\n"
-        "   attenuation = pow(attenuation, 2.0) * intensity;\n"
-        "   \n"
-        "   // Cast rays from light source to current pixel to check for occlusion\n"
-        "   vec2 dir = normalize(worldPos - lightPos);\n"
-        "   const int RAY_STEPS = 16;\n"
-        "   float occlusion = 0.0;\n"
-        "   \n"
-        "   // Sample shadow map along ray to compute occlusion\n"
-        "   for(int i = 0; i < RAY_STEPS; i++) {\n"
-        "       float t = float(i) / float(RAY_STEPS);\n"
-        "       vec2 samplePos = mix(lightPos, worldPos, t);\n"
-        "       vec2 sampleUV = samplePos / worldSize;\n"
-        "       \n"
-        "       // Check if valid UV\n"
-        "       if(sampleUV.x >= 0.0 && sampleUV.x <= 1.0 && sampleUV.y >= 0.0 && sampleUV.y <= 1.0) {\n"
-        "           float shadowValue = texture(shadowTexture, sampleUV).r;\n"
-        "           occlusion += (1.0 - shadowValue) * (1.0 - t);\n"
-        "       }\n"
-        "   }\n"
-        "   \n"
-        "   // Normalize and apply soft shadows\n"
-        "   occlusion = clamp(occlusion / float(RAY_STEPS) * 4.0, 0.0, 1.0);\n"
-        "   \n"
-        "   // Add some noise for natural light variation\n"
-        "   float variation = noise(worldPos * 0.03 + gameTime * 0.02) * 0.1 + 0.95;\n"
-        "   \n"
-        "   // Calculate final light contribution with occlusion\n"
-        "   vec3 lightContribution = lightColor * attenuation * (1.0 - occlusion) * variation;\n"
-        "   \n"
-        "   // Apply scattering effect (light visible through semi-transparent materials)\n"
-        "   vec4 colorSample = texture(colorTexture, uv);\n"
-        "   float transparency = 1.0 - colorSample.a;\n"
-        "   lightContribution *= mix(1.0, 2.0, transparency);\n"
-        "   \n"
-        "   return lightContribution;\n"
-        "}\n"
-        
-        // Apply global illumination - light bounces from surfaces
-        "vec3 calculateGI(vec2 uv) {\n"
-        "   vec3 gi = vec3(0.0);\n"
-        "   vec4 emissive = texture(emissiveTexture, uv);\n"
-        "   \n"
-        "   // For true GI, we'd sample surrounding pixels and propagate light\n"
-        "   // This is a simplified version that samples nearby emissive pixels\n"
-        "   const int GI_SAMPLES = 16;\n"
-        "   const float GI_RADIUS = 0.05;\n"
-        "   \n"
-        "   for(int i = 0; i < GI_SAMPLES; i++) {\n"
-        "       float angle = float(i) / float(GI_SAMPLES) * 6.28;\n"
-        "       float radius = GI_RADIUS * (0.5 + 0.5 * hash(vec2(angle, gameTime)));\n"
-        "       vec2 offset = vec2(cos(angle), sin(angle)) * radius;\n"
-        "       vec2 sampleUV = uv + offset;\n"
-        "       \n"
-        "       // Ensure we're within bounds\n"
-        "       if(sampleUV.x >= 0.0 && sampleUV.x <= 1.0 && sampleUV.y >= 0.0 && sampleUV.y <= 1.0) {\n"
-        "           vec4 sampleEmissive = texture(emissiveTexture, sampleUV);\n"
-        "           float shadowValue = texture(shadowTexture, sampleUV).r;\n"
-        "           \n"
-        "           // Only add contribution if there's emission\n"
-        "           if(length(sampleEmissive.rgb) > 0.01) {\n"
-        "               // Calculate falloff based on distance\n"
-        "               float falloff = 1.0 - length(offset) / GI_RADIUS;\n"
-        "               \n"
-        "               // Add contribution from this sample\n"
-        "               gi += sampleEmissive.rgb * falloff * shadowValue;\n"
-        "           }\n"
-        "       }\n"
-        "   }\n"
-        "   \n"
-        "   // Normalize and add ambient contribution\n"
-        "   gi = gi / float(GI_SAMPLES) * giStrength;\n"
-        "   \n"
-        "   return gi;\n"
-        "}\n"
-        
-        // Godray effect - volumetric lighting from sun
-        "vec3 calculateGodRays(vec2 uv) {\n"
-        "   // Convert sun position to UV space\n"
-        "   vec2 sunUV = sunPos / worldSize;\n"
-        "   \n"
-        "   // Calculate direction to sun\n"
-        "   vec2 deltaUV = uv - sunUV;\n"
-        "   deltaUV *= 1.0 / float(64); // Sample count\n"
-        "   \n"
-        "   // Raymarching parameters\n"
-        "   float decay = 0.97;\n"
-        "   float exposure = 0.65;\n"
-        "   float density = 0.5;\n"
-        "   float weight = 0.3;\n"
-        "   \n"
-        "   // Start with black\n"
-        "   vec3 godray = vec3(0.0);\n"
-        "   \n"
-        "   // Current position starts at pixel position\n"
-        "   vec2 pos = uv;\n"
-        "   \n"
-        "   // Starting light value\n"
-        "   float illuminationDecay = 1.0;\n"
-        "   \n"
-        "   // Calculate day/night cycle\n"
-        "   float dayPhase = (sin(gameTime * 0.02) + 1.0) * 0.5; // 0=night, 1=day\n"
-        "   \n"
-        "   // Only render godrays during day\n"
-        "   if(dayPhase < 0.2) return vec3(0.0);\n"
-        "   \n"
-        "   // Raymarch toward the sun\n"
-        "   for(int i=0; i<64; i++) {\n"
-        "       // Move toward sun\n"
-        "       pos -= deltaUV;\n"
-        "       \n"
-        "       // Get the shadow value at this point\n"
-        "       vec4 sampleColor = texture(colorTexture, pos);\n"
-        "       float shadowValue = texture(shadowTexture, pos).r;\n"
-        "       \n"
-        "       // Check for occluders\n"
-        "       float occluder = 1.0;\n"
-        "       if(sampleColor.a > 0.9) {\n"
-        "           occluder = 0.0; // Solid object blocks rays\n"
-        "       }\n"
-        "       \n"
-        "       // Add light contribution with decay\n"
-        "       godray += sunlightColor * shadowValue * occluder * illuminationDecay * weight;\n"
-        "       \n"
-        "       // Update decay\n"
-        "       illuminationDecay *= decay;\n"
-        "   }\n"
-        "   \n"
-        "   // Apply exposure and daylight factor\n"
-        "   godray *= exposure * dayPhase;\n"
-        "   \n"
-        "   return godray;\n"
-        "}\n"
-        
-        "void main() {\n"
-        "   // Sample colors\n"
-        "   vec4 sceneColor = texture(colorTexture, TexCoord);\n"
-        "   vec4 emissiveColor = texture(emissiveTexture, TexCoord);\n"
-        "   \n"
-        "   // Calculate lighting from direct sources\n"
-        "   vec3 playerLight = propagateLight(TexCoord, playerPos/worldSize, playerLightColor, 1.5, 300.0);\n"
-        "   vec3 sunLight = propagateLight(TexCoord, sunPos/worldSize, sunlightColor, 2.0, 10000.0);\n"
-        "   \n"
-        "   // Calculate global illumination\n"
-        "   vec3 gi = calculateGI(TexCoord);\n"
-        "   \n"
-        "   // Calculate volumetric lighting (god rays)\n"
-        "   vec3 godrays = calculateGodRays(TexCoord);\n"
-        "   \n"
-        "   // Combine all lighting components\n"
-        "   vec3 finalLight = playerLight + sunLight + gi + godrays;\n"
-        "   \n"
-        "   // Add emissive materials directly\n"
-        "   finalLight += emissiveColor.rgb;\n"
-        "   \n"
-        "   // Output results\n"
-        "   FragColor = vec4(finalLight, 1.0);\n"
-        "}\n";
+    // Create shader programs
+    m_shaderProgram = createShaderProgram(commonVertexShader, getMainFragmentShaderSource().c_str());
+    m_shadowShader = createShaderProgram(commonVertexShader, getShadowFragmentShaderSource().c_str());
+    m_volumetricLightShader = createShaderProgram(commonVertexShader, getVolumetricLightFragmentShaderSource().c_str());
+    m_bloomShader = createShaderProgram(commonVertexShader, getBloomFragmentShaderSource().c_str());
+    m_postProcessShader = createShaderProgram(commonVertexShader, getPostProcessFragmentShaderSource().c_str());
     
-    // Advanced rendering shader with sophisticated lighting and sky effects
-    const char* mainFragmentShader = 
-        "#version 330 core\n"
-        "layout (location = 0) out vec4 FragColor;\n"
-        "layout (location = 1) out vec4 EmissiveColor;\n"
-        "in vec2 TexCoord;\n"
-        "uniform sampler2D worldTexture;\n"
-        "uniform vec2 worldSize;\n"
-        "uniform vec2 playerPos;\n" // Player position in world coordinates
-        "uniform float gameTime;\n"  // For time-based effects
-        
-        // Material properties buffer with enhanced visual effects
-        "struct MaterialInfo {\n"
-        "   // Visual properties\n"
-        "   bool isEmissive;\n"
-        "   bool isRefractive;\n"
-        "   bool isTranslucent;\n"
-        "   bool isReflective;\n"
-        "   float emissiveStrength;\n"
-        "   \n"
-        "   // Special shader effects\n"
-        "   bool hasWaveEffect;\n"
-        "   bool hasGlowEffect;\n"
-        "   bool hasParticleEffect;\n"
-        "   bool hasShimmerEffect;\n"
-        "   float waveSpeed;\n"
-        "   float waveHeight;\n"
-        "   float glowSpeed;\n"
-        "   float refractiveIndex;\n"
-        "   \n"
-        "   // Secondary color for effects\n"
-        "   vec3 secondaryColor;\n"
-        "};\n"
-        "uniform MaterialInfo materials[30];\n" // Max 30 material types
-        
-        // Basic hash function for random values
-        "float hash(vec2 p) {\n"
-        "   return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);\n"
-        "}\n"
-        
-        // Simple noise function using hash
-        "float noise(vec2 p) {\n"
-        "   vec2 i = floor(p);\n"
-        "   vec2 f = fract(p);\n"
-        "   f = f * f * (3.0 - 2.0 * f);\n"
-        "   float a = hash(i + vec2(0.0, 0.0));\n"
-        "   float b = hash(i + vec2(1.0, 0.0));\n"
-        "   float c = hash(i + vec2(0.0, 1.0));\n"
-        "   float d = hash(i + vec2(1.0, 1.0));\n"
-        "   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);\n"
-        "}\n"
-        
-        // Improved Perlin-style noise function
-        "vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }\n"
-        "vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }\n"
-        "vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }\n"
-        
-        "float snoise(vec2 v) {\n"
-        "   const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);\n"
-        "   vec2 i  = floor(v + dot(v, C.yy));\n"
-        "   vec2 x0 = v -   i + dot(i, C.xx);\n"
-        "   vec2 i1;\n"
-        "   i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);\n"
-        "   vec4 x12 = x0.xyxy + C.xxzz;\n"
-        "   x12.xy -= i1;\n"
-        "   i = mod289(i);\n"
-        "   vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));\n"
-        "   vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);\n"
-        "   m = m*m;\n"
-        "   m = m*m;\n"
-        "   vec3 x = 2.0 * fract(p * C.www) - 1.0;\n"
-        "   vec3 h = abs(x) - 0.5;\n"
-        "   vec3 ox = floor(x + 0.5);\n"
-        "   vec3 a0 = x - ox;\n"
-        "   m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);\n"
-        "   vec3 g;\n"
-        "   g.x  = a0.x  * x0.x  + h.x  * x0.y;\n"
-        "   g.yz = a0.yz * x12.xz + h.yz * x12.yw;\n"
-        "   return 130.0 * dot(m, g);\n"
-        "}\n"
-        
-        "float fbm(vec2 uv) {\n"
-        "   float value = 0.0;\n"
-        "   float amplitude = 0.5;\n"
-        "   float frequency = 0.0;\n"
-        "   for (int i = 0; i < 6; ++i) {\n"
-        "       value += amplitude * snoise(uv * frequency);\n"
-        "       frequency *= 2.0;\n"
-        "       amplitude *= 0.5;\n"
-        "   }\n"
-        "   return value;\n"
-        "}\n"
-        
-        "float random(vec2 st) {\n"
-        "   return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);\n"
-        "}\n"
-        
-        "// Function to calculate volumetric light/god rays\n"
-        "float godRays(vec2 uv, vec2 lightPos, float density, float decay, float weight, float exposure) {\n"
-        "   vec2 deltaTextCoord = (uv - lightPos);\n"
-        "   deltaTextCoord *= 1.0 / float(90) * density;\n"
-        "   vec2 textCoord = uv;\n"
-        "   float illuminationDecay = 1.0;\n"
-        "   float color = 0.0;\n"
-        "   for(int i=0; i < 90; i++) {\n"
-        "       textCoord -= deltaTextCoord;\n"
-        "       float sampleColor = 0.0;\n"
-        "       // Sample depth-based occlusion\n"
-        "       if(textCoord.y > 0.5) {\n" 
-        "           sampleColor = 0.0;\n" // Underground blocks rays
-        "       } else {\n"
-        "           sampleColor = 1.0 - textCoord.y * 2.0; // Fade with depth\n"
-        "       }\n"
-        "       sampleColor *= illuminationDecay * weight;\n"
-        "       color += sampleColor;\n"
-        "       illuminationDecay *= decay;\n"
-        "   }\n"
-        "   return color * exposure;\n"
-        "}\n"
-        
-        "// Lens flare effect function\n"
-        "float lensFlare(vec2 uv, vec2 sunPos) {\n"
-        "   vec2 uvd = uv * length(uv);\n"
-        "   float sunDist = distance(sunPos, uv);\n"
-        "   \n"
-        "   // Base flare\n"
-        "   float flareBase = max(0.0, 1.0 - sunDist * 8.0);\n"
-        "   \n"
-        "   // Create multiple flare artifacts\n"
-        "   float f1 = max(0.0, 1.0 - length(uv - sunPos * 0.25) * 4.0);\n"
-        "   float f2 = max(0.0, 1.0 - length(uv - sunPos * 0.5) * 5.0);\n"
-        "   float f3 = max(0.0, 1.0 - length(uv - sunPos * 0.8) * 6.0);\n"
-        "   float f4 = max(0.0, 1.0 - length(uv - sunPos * 1.3) * 3.0);\n"
-        "   float f5 = max(0.0, 1.0 - length(uv - sunPos * 1.6) * 9.0);\n"
-        "   \n"
-        "   // Rainbow hue artifacts\n"
-        "   float haloEffect = 0.0;\n"
-        "   for(float i=0.0; i<8.0; i++) {\n"
-        "       float haloSize = 0.1 + i*0.1;\n"
-        "       float haloWidth = 0.02;\n"
-        "       float halo = smoothstep(haloSize-haloWidth, haloSize, sunDist) - smoothstep(haloSize, haloSize+haloWidth, sunDist);\n"
-        "       haloEffect += halo * (0.5 - abs(0.5-i/8.0));\n"
-        "   }\n"
-        "   \n"
-        "   // Combine effects\n"
-        "   return flareBase * 0.5 + haloEffect * 0.2 + f1 * 0.6 + f2 * 0.35 + f3 * 0.2 + f4 * 0.3 + f5 * 0.2;\n"
-        "}\n"
-        
-        "vec3 createSky(vec2 uv) {\n"
-        "   // Day/night cycle based on gameTime\n"
-        "   float dayPhase = (sin(gameTime * 0.02) + 1.0) * 0.5; // 0=night, 1=day\n"
-        "   \n"
-        "   // Calculate sun position\n"
-        "   float sunHeight = 0.15 + 0.35 * dayPhase; // Sun moves from low to high\n"
-        "   vec2 sunPos = vec2(0.5, sunHeight);\n"
-        "   float sunDist = length(uv - sunPos);\n"
-        "   \n"
-        "   // Calculate moon position (opposite of sun)\n"
-        "   vec2 moonPos = vec2(0.5, 1.1 - sunHeight);\n"
-        "   float moonDist = length(uv - moonPos);\n"
-        "   \n"
-        "   // Sky gradient - changes based on time of day\n"
-        "   vec3 zenithColor = mix(vec3(0.03, 0.05, 0.2), vec3(0.1, 0.5, 0.9), dayPhase); // Night to day zenith\n"
-        "   vec3 horizonColor = mix(vec3(0.1, 0.12, 0.25), vec3(0.7, 0.75, 0.85), dayPhase); // Night to day horizon\n"
-        "   float gradientFactor = pow(1.0 - uv.y, 2.0); // Exponential gradient\n"
-        "   vec3 skyColor = mix(zenithColor, horizonColor, gradientFactor);\n"
-        "   \n"
-        "   // Add atmospheric scattering glow at horizon\n"
-        "   float horizonGlow = pow(gradientFactor, 4.0) * dayPhase;\n"
-        "   vec3 horizonScatter = vec3(0.9, 0.6, 0.35) * horizonGlow;\n"
-        "   skyColor += horizonScatter;\n"
-        "   \n"
-        "   // Add sun with realistic glow\n"
-        "   float sunSize = 0.03;\n"
-        "   float sunSharpness = 50.0;\n"
-        "   float sunGlow = 0.2;\n"
-        "   float sunIntensity = smoothstep(0.0, sunSize, sunDist);\n"
-        "   sunIntensity = 1.0 - pow(clamp(sunIntensity, 0.0, 1.0), sunSharpness);\n"
-        "   \n"
-        "   // Add sun atmospheric glow\n"
-        "   float sunGlowFactor = 1.0 - smoothstep(sunSize, sunSize + sunGlow, sunDist);\n"
-        "   sunGlowFactor = pow(sunGlowFactor, 2.0); // Stronger in center\n"
-        "   \n"
-        "   // Create sun color that changes with elevation (more red/orange at horizon)\n"
-        "   vec3 sunColorDisk = mix(vec3(1.0, 0.7, 0.3), vec3(1.0, 0.95, 0.8), sunHeight * 2.0);\n"
-        "   vec3 sunColorGlow = mix(vec3(1.0, 0.5, 0.2), vec3(1.0, 0.8, 0.5), sunHeight * 2.0);\n"
-        "   \n"
-        "   // Add moon with subtle glow\n"
-        "   float moonSize = 0.025;\n"
-        "   float moonSharpness = 60.0;\n"
-        "   float moonGlow = 0.1;\n"
-        "   float moonIntensity = smoothstep(0.0, moonSize, moonDist);\n"
-        "   moonIntensity = 1.0 - pow(clamp(moonIntensity, 0.0, 1.0), moonSharpness);\n"
-        "   \n"
-        "   // Moon atmospheric glow\n"
-        "   float moonGlowFactor = 1.0 - smoothstep(moonSize, moonSize + moonGlow, moonDist);\n"
-        "   moonGlowFactor = pow(moonGlowFactor, 2.0); // Stronger in center\n"
-        "   vec3 moonColor = vec3(0.9, 0.9, 1.0); // Slightly blue-tinted\n"
-        "   \n"
-        "   // Noise-based clouds using FBM noise\n"
-        "   float cloudCoverage = mix(0.5, 0.75, sin(gameTime * 0.01) * 0.5 + 0.5); // Clouds change over time\n"
-        "   float cloudHeight = 0.25; // Clouds height in sky\n"
-        "   float cloudThickness = 0.2; // Vertical thickness\n"
-        "   float cloudSharpness = 2.0; // Controls transition edge \n"
-        "   \n"
-        "   // Cloud layer 1: Slow, large clouds\n"
-        "   float cloudTime1 = gameTime * 0.005;\n"
-        "   vec2 cloudPos1 = vec2(uv.x + cloudTime1, uv.y);\n"
-        "   float clouds1 = fbm(cloudPos1 * vec2(2.0, 4.0)) * 0.5 + 0.5;\n"
-        "   float cloudMask1 = smoothstep(cloudHeight - cloudThickness, cloudHeight, uv.y) - \n"
-        "                      smoothstep(cloudHeight, cloudHeight + cloudThickness, uv.y);\n"
-        "   float cloudFactor1 = cloudMask1 * smoothstep(0.5 - cloudCoverage, 0.6, clouds1) * dayPhase;\n"
-        "   \n"
-        "   // Cloud layer 2: Higher frequency for detail\n"
-        "   float cloudTime2 = gameTime * 0.008;\n"
-        "   vec2 cloudPos2 = vec2(uv.x + cloudTime2, uv.y);\n"
-        "   float clouds2 = fbm(cloudPos2 * vec2(5.0, 10.0)) * 0.3 + 0.5;\n"
-        "   float cloudMask2 = smoothstep(cloudHeight - cloudThickness * 0.5, cloudHeight, uv.y) - \n"
-        "                      smoothstep(cloudHeight, cloudHeight + cloudThickness * 0.7, uv.y);\n"
-        "   float cloudFactor2 = cloudMask2 * smoothstep(0.4, 0.6, clouds2) * dayPhase * 0.7;\n"
-        "   \n"
-        "   // Combine cloud layers with varying lighting\n"
-        "   float totalCloudFactor = max(cloudFactor1, cloudFactor2);\n"
-        "   \n"
-        "   // Cloud colors change based on time of day and sun position\n"
-        "   vec3 cloudBrightColor = mix(vec3(0.9, 0.8, 0.7), vec3(1.0, 1.0, 1.0), dayPhase); // Sunset to day\n"
-        "   vec3 cloudDarkColor = mix(vec3(0.1, 0.1, 0.2), vec3(0.7, 0.7, 0.7), dayPhase);  // Night to day\n"
-        "   \n"
-        "   // Simple cloud lighting based on height\n"
-        "   float cloudBrightness = 0.6 + 0.4 * (1.0 - uv.y * 2.0);\n"
-        "   vec3 cloudColor = mix(cloudDarkColor, cloudBrightColor, cloudBrightness);\n"
-        "   \n"
-        "   // Add stars at night (less visible during day)\n"
-        "   float starThreshold = 0.98;\n"
-        "   float starBrightness = (1.0 - dayPhase) * 0.8; // Stars fade during day\n"
-        "   float stars = step(starThreshold, random(uv * 500.0)) * starBrightness;\n"
-        "   vec3 starColor = vec3(0.9, 0.9, 1.0) * stars;\n"
-        "   \n"
-        "   // Add subtle nebulae in night sky\n"
-        "   vec3 nebulaColor = vec3(0.1, 0.05, 0.2) * (1.0 - dayPhase) * fbm(uv * 5.0);\n"
-        "   \n"
-        "   // Calculate god rays from sun\n"
-        "   float godRaysEffect = 0.0;\n"
-        "   if (dayPhase > 0.2) { // Only during day/sunset\n"
-        "       godRaysEffect = godRays(uv, sunPos, 0.5, 0.95, 0.3, 0.3) * dayPhase;\n"
-        "   }\n"
-        "   \n"
-        "   // Calculate lens flare (only when sun is visible)\n"
-        "   float lensFlareEffect = 0.0;\n"
-        "   if (sunHeight > 0.1 && dayPhase > 0.3) {\n"
-        "       lensFlareEffect = lensFlare(uv, sunPos) * dayPhase * 0.5;\n"
-        "   }\n"
-        "   \n"
-        "   // Combine all sky elements\n"
-        "   vec3 finalSky = skyColor;\n"
-        "   \n"
-        "   // Add stars and nebulae (at night)\n"
-        "   finalSky += starColor + nebulaColor;\n"
-        "   \n"
-        "   // Add sun disk and glow\n"
-        "   finalSky = mix(finalSky, sunColorDisk, sunIntensity * dayPhase);\n"
-        "   finalSky = mix(finalSky, sunColorGlow, sunGlowFactor * dayPhase);\n"
-        "   \n"
-        "   // Add moon (at night)\n"
-        "   finalSky = mix(finalSky, moonColor, moonIntensity * (1.0 - dayPhase) * 0.9);\n"
-        "   finalSky = mix(finalSky, moonColor * 0.5, moonGlowFactor * (1.0 - dayPhase) * 0.7);\n"
-        "   \n"
-        "   // Add clouds\n"
-        "   finalSky = mix(finalSky, cloudColor, totalCloudFactor);\n"
-        "   \n"
-        "   // Add god rays and lens flare\n"
-        "   finalSky += vec3(1.0, 0.9, 0.7) * godRaysEffect * 0.4;\n"
-        "   finalSky += vec3(1.0, 0.8, 0.6) * lensFlareEffect * 0.6;\n"
-        "   \n"
-        "   return finalSky;\n"
-        "}\n"
-        
-        "void main()\n"
-        "{\n"
-        "   vec4 texColor = texture(worldTexture, TexCoord);\n"
-        "   \n"
-        "   // Determine material type from texture color (in a real game, this would be passed as data)\n"
-        "   int materialId = 0; // Default to empty\n"
-        "   if (texColor.a > 0.0) {\n"
-        "       // Here we would derive the material ID somehow\n"
-        "       // For now, we'll use a simple heuristic\n"
-        "       if (texColor.r > 0.9 && texColor.g > 0.4 && texColor.b < 0.3) {\n"
-        "           materialId = 5; // Fire\n"
-        "       } else if (texColor.r < 0.1 && texColor.g > 0.4 && texColor.b > 0.8) {\n"
-        "           materialId = 2; // Water\n"
-        "       } else if (texColor.r < 0.2 && texColor.g < 0.2 && texColor.b < 0.2) {\n"
-        "           materialId = 15; // Coal\n"
-        "       } else if (texColor.r < 0.2 && texColor.g > 0.5 && texColor.b < 0.3) {\n"
-        "           materialId = 16; // Moss\n"
-        "       }\n"
-        "   }\n"
-        "   \n"
-        "   // Draw sky for empty space\n"
-        "   if (texColor.a < 0.01) {\n"
-        "       // Make sky visible in the whole world (not just top half)\n"
-        "       // Use a simplified sky rendering when performance is an issue\n"
-        "       #ifdef SIMPLIFIED_SKY\n"
-        "           // Simple gradient sky (better performance)\n"
-        "           float dayPhase = (sin(gameTime * 0.02) + 1.0) * 0.5;\n"
-        "           vec3 zenithColor = mix(vec3(0.03, 0.05, 0.2), vec3(0.1, 0.5, 0.9), dayPhase);\n"
-        "           vec3 horizonColor = mix(vec3(0.1, 0.12, 0.25), vec3(0.7, 0.75, 0.85), dayPhase);\n"
-        "           vec3 skyColor = mix(zenithColor, horizonColor, pow(1.0 - TexCoord.y, 2.0));\n"
-        "           \n"
-        "           // Add a simple sun\n"
-        "           float sunHeight = 0.15 + 0.35 * dayPhase;\n"
-        "           vec2 sunPos = vec2(0.5, sunHeight);\n"
-        "           float sunDist = length(TexCoord - sunPos);\n"
-        "           float sunGlow = 1.0 - smoothstep(0.03, 0.08, sunDist);\n"
-        "           vec3 sunColor = mix(vec3(1.0, 0.7, 0.3), vec3(1.0, 0.95, 0.8), sunHeight * 2.0);\n"
-        "           skyColor += sunColor * sunGlow * dayPhase;\n"
-        "       #else\n"
-        "           // Full sky with all effects\n"
-        "           vec3 skyColor = createSky(TexCoord);\n"
-        "       #endif\n"
-        "       \n"
-        "       // Gradually fade sky into a dark cave background for underground areas\n"
-        "       if (TexCoord.y > 0.5) {\n"
-        "           float fadeDepth = smoothstep(0.5, 1.0, TexCoord.y);\n"
-        "           vec3 caveColor = vec3(0.05, 0.04, 0.08); // Dark cave/underground\n"
-        "           skyColor = mix(skyColor, caveColor, fadeDepth);\n"
-        "       }\n"
-        "       \n"
-        "       FragColor = vec4(skyColor, 1.0);\n"
-        "       EmissiveColor = vec4(0.0); // No emission for sky/empty\n"
-        "       return;\n"
-        "   }\n"
-        "   \n"
-        "   // Retrieve all material properties for advanced effects\n"
-        "   bool isEmissive = false;\n"
-        "   bool isRefractive = false;\n"
-        "   bool isTranslucent = false;\n"
-        "   bool isReflective = false;\n"
-        "   float emissiveStrength = 0.0;\n"
-        "   bool hasWaveEffect = false;\n"
-        "   bool hasGlowEffect = false;\n"
-        "   bool hasParticleEffect = false;\n"
-        "   bool hasShimmerEffect = false;\n"
-        "   float waveSpeed = 0.0;\n"
-        "   float waveHeight = 0.0;\n"
-        "   float glowSpeed = 0.0;\n"
-        "   float refractiveIndex = 0.0;\n"
-        "   vec3 secondaryColor = vec3(1.0);\n"
-        "   \n"
-        "   // Use material properties if available\n"
-        "   if (materialId > 0 && materialId < 30) {\n"
-        "       // Visual properties\n"
-        "       isEmissive = materials[materialId].isEmissive;\n"
-        "       isRefractive = materials[materialId].isRefractive;\n"
-        "       isTranslucent = materials[materialId].isTranslucent;\n"
-        "       isReflective = materials[materialId].isReflective;\n"
-        "       emissiveStrength = materials[materialId].emissiveStrength;\n"
-        "       \n"
-        "       // Effect properties\n"
-        "       hasWaveEffect = materials[materialId].hasWaveEffect;\n"
-        "       hasGlowEffect = materials[materialId].hasGlowEffect;\n"
-        "       hasParticleEffect = materials[materialId].hasParticleEffect;\n"
-        "       hasShimmerEffect = materials[materialId].hasShimmerEffect;\n"
-        "       waveSpeed = materials[materialId].waveSpeed;\n"
-        "       waveHeight = materials[materialId].waveHeight;\n"
-        "       glowSpeed = materials[materialId].glowSpeed;\n"
-        "       refractiveIndex = materials[materialId].refractiveIndex;\n"
-        "       \n"
-        "       // Secondary color\n"
-        "       secondaryColor = materials[materialId].secondaryColor;\n"
-        "   }\n"
-        "   \n"
-        "   // Apply wave effect (for water, lava, etc.)\n"
-        "   if (hasWaveEffect) {\n"
-        "       float time = gameTime * waveSpeed * 0.1;\n"
-        "       float waveX = sin(TexCoord.x * 40.0 + time) * waveHeight * 0.01;\n"
-        "       float waveY = sin(TexCoord.y * 30.0 + time * 0.7) * waveHeight * 0.01;\n"
-        "       \n"
-        "       // Calculate wave distortion\n"
-        "       vec2 waveOffset = vec2(waveX, waveY);\n"
-        "       \n"
-        "       // Blend between base color and secondary color based on wave pattern\n"
-        "       float waveBlend = (sin(TexCoord.x * 20.0 + time * 2.0) * 0.5 + 0.5) * \n"
-        "                         (sin(TexCoord.y * 15.0 + time) * 0.5 + 0.5);\n"
-        "       texColor.rgb = mix(texColor.rgb, secondaryColor * texColor.rgb, waveBlend * 0.3);\n"
-        "   }\n"
-        "   \n"
-        "   // Apply glow effect (for fire, lava, toxic materials, etc.)\n"
-        "   if (hasGlowEffect) {\n"
-        "       float glowPulse = sin(gameTime * glowSpeed * 0.1) * 0.5 + 0.5;\n"
-        "       emissiveStrength *= (0.8 + glowPulse * 0.4); // Modulate emissive strength\n"
-        "       \n"
-        "       // Add some color variation for more interesting glow\n"
-        "       texColor.rgb = mix(texColor.rgb, secondaryColor, glowPulse * 0.2);\n"
-        "   }\n"
-        "   \n"
-        "   // Apply shimmer effect (for water, ice, etc.)\n"
-        "   if (hasShimmerEffect) {\n"
-        "       // Use a simplified noise approach based on the existing noise function from earlier in the shader\n"
-        "       float time = gameTime * 0.2;\n"
-        "       vec2 coord1 = vec2(TexCoord.x * 80.0, TexCoord.y * 80.0 + time);\n"
-        "       vec2 coord2 = vec2(TexCoord.x * 90.0 + time * 0.5, TexCoord.y * 70.0);\n"
-        "       \n"
-        "       // Use hash-based noise (we already have a hash function in this shader)\n"
-        "       float noise1 = hash(floor(coord1) * 543.3199) * 0.5 + 0.5;\n"
-        "       float noise2 = hash(floor(coord2) * 914.3321) * 0.5 + 0.5;\n"
-        "       float sparkle = pow(noise1 * noise2, 8.0) * 0.7;\n"
-        "       \n"
-        "       // Add sparkles to the texture\n"
-        "       texColor.rgb += sparkle * secondaryColor * refractiveIndex * 0.04;\n"
-        "   }\n"
-        "   \n"
-        "   // Apply refraction effect (for water, glass, etc.)\n"
-        "   if (isRefractive) {\n"
-        "       float time = gameTime * 0.05;\n"
-        "       float distortion = refractiveIndex * 0.01 * sin(TexCoord.x * 30.0 + time) * sin(TexCoord.y * 40.0 + time);\n"
-        "       texColor.rgb *= 1.1 + distortion; // Distortion effect\n"
-        "   }\n"
-        "   \n"
-        "   // Apply reflective properties (for glass, metal, etc.)\n"
-        "   if (isReflective) {\n"
-        "       // Simulate environment reflection based on view angle\n"
-        "       float viewAngle = abs(dot(normalize(vec2(0.5, 0.5) - TexCoord), vec2(0.0, 1.0)));\n"
-        "       float reflection = pow(1.0 - viewAngle, 2.0) * refractiveIndex * 0.03;\n"
-        "       texColor.rgb += reflection * secondaryColor;\n"
-        "   }\n"
-        "   \n"
-        "   // Apply basic lighting (full implementation will come from shadow map)\n"
-        "   vec3 lighting = vec3(0.4, 0.4, 0.5); // Base ambient light\n"
-        "   \n"
-        "   // Biome detection - simplified for this version\n"
-        "   // In a full implementation, biome data would come from the world\n"
-        "   int biomeType = 0; // 0 = default, 1 = forest, 2 = desert, 3 = tundra, 4 = swamp\n"
-        "   \n"
-        "   // Simple biome detection based on x position for demo\n"
-        "   float worldPosX = TexCoord.x * worldSize.x;\n"
-        "   if (worldPosX < worldSize.x * 0.2) biomeType = 1; // Forest on the left\n"
-        "   else if (worldPosX < worldSize.x * 0.4) biomeType = 0; // Default in middle-left\n"
-        "   else if (worldPosX < worldSize.x * 0.6) biomeType = 2; // Desert in middle\n"
-        "   else if (worldPosX < worldSize.x * 0.8) biomeType = 3; // Tundra in middle-right\n"
-        "   else biomeType = 4; // Swamp on the right\n"
-        "   \n"
-        "   // Time of day and biome-specific fog\n"
-        "   vec3 fogColor;\n"
-        "   float fogDensity = 0.0;\n"
-        "   float dayPhase = (sin(gameTime * 0.02) + 1.0) * 0.5; // Same as in createSky()\n"
-        "   \n"
-        "   // Base fog color determined by time of day\n"
-        "   if (dayPhase < 0.3) { // Night\n"
-        "       fogColor = vec3(0.05, 0.05, 0.1); // Dark blue night fog\n"
-        "       fogDensity = 0.02;\n"
-        "   } else if (dayPhase < 0.4) { // Dawn\n"
-        "       fogColor = vec3(0.4, 0.3, 0.3); // Pinkish dawn fog\n"
-        "       fogDensity = 0.015;\n"
-        "   } else if (dayPhase < 0.6) { // Day\n"
-        "       fogColor = vec3(0.8, 0.85, 0.9); // Light day fog\n"
-        "       fogDensity = 0.005;\n"
-        "   } else if (dayPhase < 0.7) { // Dusk\n"
-        "       fogColor = vec3(0.5, 0.3, 0.1); // Orange dusk fog\n"
-        "       fogDensity = 0.015;\n"
-        "   } else { // Night\n"
-        "       fogColor = vec3(0.05, 0.05, 0.1); // Dark blue night fog\n"
-        "       fogDensity = 0.02;\n"
-        "   }\n"
-        "   \n"
-        "   // Modify fog based on biome\n"
-        "   if (biomeType == 1) { // Forest\n"
-        "       fogColor *= vec3(0.7, 0.9, 0.7); // Greener\n"
-        "       fogDensity *= 1.2; // Denser\n"
-        "   } else if (biomeType == 2) { // Desert\n"
-        "       fogColor *= vec3(1.0, 0.9, 0.7); // Yellowish\n"
-        "       fogDensity *= 0.3; // Much clearer\n"
-        "   } else if (biomeType == 3) { // Tundra\n"
-        "       fogColor *= vec3(0.8, 0.9, 1.0); // Blueish\n"
-        "       fogDensity *= 0.7; // Clearer\n"
-        "   } else if (biomeType == 4) { // Swamp\n"
-        "       fogColor *= vec3(0.6, 0.7, 0.5); // Greenish brown\n"
-        "       fogDensity *= 1.5; // Thicker\n"
-        "   }\n"
-        "   \n"
-        "   // Depth-based darkness (darker as you go deeper)\n"
-        "   float depthFactor = smoothstep(0.0, 1.0, TexCoord.y);\n"
-        "   lighting *= mix(1.0, 0.3, depthFactor); // Darker with depth\n"
-        "   \n"
-        "   // Apply fog to lighting - stronger in the distance and depth\n"
-        "   float distFromCenter = length(vec2(0.5, 0.2) - TexCoord) * 2.0;\n"
-        "   float fogFactor = 1.0 - exp(-fogDensity * (distFromCenter + depthFactor) * 5.0);\n"
-        "   lighting = mix(lighting, fogColor, clamp(fogFactor, 0.0, 0.5));\n"
-        "   \n"
-        "   // Apply translucency effect\n"
-        "   float alpha = texColor.a;\n"
-        "   if (isTranslucent) {\n"
-        "       // Make translucent materials let more light through\n"
-        "       lighting = mix(lighting, vec3(1.0), 0.3);\n"
-        "       \n"
-        "       // Create depth-based transparency for better layering effect\n"
-        "       float depthFactor = 1.0 - TexCoord.y * 0.4; // More transparent at surface\n"
-        "       alpha = mix(texColor.a * 0.7, texColor.a, depthFactor);\n"
-        "   }\n"
-        "   \n"
-        "   // Handle particle effects (fire, smoke, etc.)\n"
-        "   if (hasParticleEffect) {\n"
-        "       // Create particle motion effect using time-based texture coordinates\n"
-        "       float particleTime = gameTime * 0.1;\n"
-        "       vec2 particleOffset = vec2(\n"
-        "           sin(TexCoord.y * 10.0 + particleTime) * 0.01,\n"
-        "           cos(TexCoord.x * 8.0 + particleTime * 0.8) * 0.01\n"
-        "       );\n"
-        "       \n"
-        "       // Use a simple procedural noise based on sine waves\n"
-        "       float nx = sin(TexCoord.x * 40.0 + particleTime * 2.0);\n"
-        "       float ny = sin(TexCoord.y * 30.0 + particleTime);\n"
-        "       float nz = sin((TexCoord.x + TexCoord.y) * 20.0 - particleTime * 1.5);\n"
-        "       float particleNoise = (nx * ny * nz * 0.5 + 0.5);\n"
-        "       \n"
-        "       // Modulate color and alpha based on particle effect\n"
-        "       texColor.rgb = mix(texColor.rgb, secondaryColor, particleNoise * 0.3);\n"
-        "       alpha *= (0.7 + particleNoise * 0.5); // Varies transparency for particle effect\n"
-        "   }\n"
-        "   \n"
-        "   // Write to color and emissive buffers\n"
-        "   FragColor = vec4(texColor.rgb * lighting, alpha);\n"
-        "   \n"
-        "   if (isEmissive) {\n"
-        "       // Add flickering to emissive materials with glow effect\n"
-        "       float emissiveFactor = emissiveStrength;\n"
-        "       if (hasGlowEffect) {\n"
-        "           // Simple hash-based flickering\n"
-        "           float time = gameTime * glowSpeed * 0.05;\n"
-        "           float flicker = hash(vec2(floor(time * 10.0), floor(TexCoord.y * 20.0))) * 0.5 + 0.5;\n"
-        "           // Smooth out the flicker\n"
-        "           flicker = mix(0.8, 1.2, flicker);\n"
-        "           emissiveFactor *= flicker;\n"
-        "       }\n"
-        "       \n"
-        "       // Create emissive color based on material and its secondary color\n"
-        "       vec3 emissiveColor = mix(texColor.rgb, secondaryColor, 0.2) * emissiveFactor;\n"
-        "       EmissiveColor = vec4(emissiveColor, alpha);\n"
-        "   } else {\n"
-        "       EmissiveColor = vec4(0.0);\n"
-        "   }\n"
-        "}\n";
+    // Check if all shaders compiled successfully
+    return (m_shaderProgram != 0 && m_shadowShader != 0 && m_volumetricLightShader != 0 &&
+            m_bloomShader != 0 && m_postProcessShader != 0);
+}
+#endif
+
+#ifndef USE_VULKAN
+// Fragment shader code snippets
+const char* noiseShaderEnd = R"(
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// Improved Perlin-style noise function
+vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
+)";
+#endif
+#ifndef USE_VULKAN
+const char* snoiseShaderPart1 = R"(
+float snoise(vec2 v) {
+   const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+   vec2 i  = floor(v + dot(v, C.yy));
+   vec2 x0 = v -   i + dot(i, C.xx);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* snoiseShaderPart2 = R"(
+   vec2 i1;
+   i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+   vec4 x12 = x0.xyxy + C.xxzz;
+   x12.xy -= i1;
+   i = mod289(i);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* snoiseShaderPart3 = R"(
+   vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));
+   vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+   m = m*m;
+   m = m*m;
+   vec3 x = 2.0 * fract(p * C.www) - 1.0;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* snoiseShaderPart4 = R"(
+   vec3 h = abs(x) - 0.5;
+   vec3 ox = floor(x + 0.5);
+   vec3 a0 = x - ox;
+   m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
+   vec3 g;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* snoiseShaderPart5 = R"(
+   g.x  = a0.x  * x0.x  + h.x  * x0.y;
+   g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+   return 130.0 * dot(m, g);
+}
+)";
+#endif
+#ifndef USE_VULKAN
+const char* fbmShaderPart1 = R"(
+float fbm(vec2 uv) {
+   float value = 0.0;
+   float amplitude = 0.5;
+   float frequency = 0.0;
+   for (int i = 0; i < 6; ++i) {
+)";
+#endif
+#ifndef USE_VULKAN
+const char* fbmShaderPart2 = R"(
+       value += amplitude * snoise(uv * frequency);
+       frequency *= 2.0;
+       amplitude *= 0.5;
+   }
+   return value;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* fbmShaderEnd = R"(
+}
+
+float random(vec2 st) {
+   return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+}
+)";
+#endif
+#ifndef USE_VULKAN
+const char* godRaysShaderPart1 = R"(
+// Function to calculate volumetric light/god rays
+float godRays(vec2 uv, vec2 lightPos, float density, float decay, float weight, float exposure) {
+   vec2 deltaTextCoord = (uv - lightPos);
+   deltaTextCoord *= 1.0 / float(90) * density;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* godRaysShaderPart2 = R"(
+   vec2 textCoord = uv;
+   float illuminationDecay = 1.0;
+   float color = 0.0;
+   for(int i=0; i < 90; i++) {
+       textCoord -= deltaTextCoord;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* godRaysShaderPart3 = R"(
+       float sampleColor = 0.0;
+       // Sample depth-based occlusion
+       if(textCoord.y > 0.5) {
+           sampleColor = 0.0; // Underground blocks rays
+       } else {
+)";
+#endif
+#ifndef USE_VULKAN
+const char* godRaysShaderPart4 = R"(
+           sampleColor = 1.0 - textCoord.y * 2.0; // Fade with depth
+       }
+       sampleColor *= illuminationDecay * weight;
+       color += sampleColor;
+       illuminationDecay *= decay;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* godRaysShaderEnd = R"(
+   }
+   return color * exposure;
+}
+
+// Lens flare effect function
+)";
+#endif
+#ifndef USE_VULKAN
+const char* lensFlareShaderPart1 = R"(
+float lensFlare(vec2 uv, vec2 sunPos) {
+   vec2 uvd = uv * length(uv);
+   float sunDist = distance(sunPos, uv);
+   
+   // Base flare
+)";
+#endif
+#ifndef USE_VULKAN
+const char* lensFlareShaderPart2 = R"(
+   float flareBase = max(0.0, 1.0 - sunDist * 8.0);
+   
+   // Create multiple flare artifacts
+   float f1 = max(0.0, 1.0 - length(uv - sunPos * 0.25) * 4.0);
+   float f2 = max(0.0, 1.0 - length(uv - sunPos * 0.5) * 5.0);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* lensFlareShaderPart3 = R"(
+   float f3 = max(0.0, 1.0 - length(uv - sunPos * 0.8) * 6.0);
+   float f4 = max(0.0, 1.0 - length(uv - sunPos * 1.3) * 3.0);
+   float f5 = max(0.0, 1.0 - length(uv - sunPos * 1.6) * 9.0);
+   
+   // Rainbow hue artifacts
+)";
+#endif
+#ifndef USE_VULKAN
+const char* lensFlareShaderPart4 = R"(
+   float haloEffect = 0.0;
+   for(float i=0.0; i<8.0; i++) {
+       float haloSize = 0.1 + i*0.1;
+       float haloWidth = 0.02;
+       float halo = smoothstep(haloSize-haloWidth, haloSize, sunDist) - smoothstep(haloSize, haloSize+haloWidth, sunDist);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* lensFlareShaderPart5 = R"(
+       haloEffect += halo * (0.5 - abs(0.5-i/8.0));
+   }
+   
+   // Combine effects
+   return flareBase * 0.5 + haloEffect * 0.2 + f1 * 0.6 + f2 * 0.35 + f3 * 0.2 + f4 * 0.3 + f5 * 0.2;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* lensFlareShaderEnd = R"(
+}
+
+vec3 createSky(vec2 uv) {
+   // Day/night cycle based on gameTime
+   float dayPhase = (sin(gameTime * 0.02) + 1.0) * 0.5; // 0=night, 1=day
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart1 = R"(
+   
+   // Calculate sun position
+   float sunHeight = 0.15 + 0.35 * dayPhase; // Sun moves from low to high
+   vec2 sunPos = vec2(0.5, sunHeight);
+   float sunDist = length(uv - sunPos);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart2 = R"(
+   
+   // Calculate moon position (opposite of sun)
+   vec2 moonPos = vec2(0.5, 1.1 - sunHeight);
+   float moonDist = length(uv - moonPos);
+   
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart3 = R"(
+   // Sky gradient - changes based on time of day
+   vec3 zenithColor = mix(vec3(0.03, 0.05, 0.2), vec3(0.1, 0.5, 0.9), dayPhase); // Night to day zenith
+   vec3 horizonColor = mix(vec3(0.1, 0.12, 0.25), vec3(0.7, 0.75, 0.85), dayPhase); // Night to day horizon
+   float gradientFactor = pow(1.0 - uv.y, 2.0); // Exponential gradient
+   vec3 skyColor = mix(zenithColor, horizonColor, gradientFactor);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart4 = R"(
+   
+   // Add atmospheric scattering glow at horizon
+   float horizonGlow = pow(gradientFactor, 4.0) * dayPhase;
+   vec3 horizonScatter = vec3(0.9, 0.6, 0.35) * horizonGlow;
+   skyColor += horizonScatter;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart5 = R"(
+   
+   // Add sun with realistic glow
+   float sunSize = 0.03;
+   float sunSharpness = 50.0;
+   float sunGlow = 0.2;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart6 = R"(
+   float sunIntensity = smoothstep(0.0, sunSize, sunDist);
+   sunIntensity = 1.0 - pow(clamp(sunIntensity, 0.0, 1.0), sunSharpness);
+   
+   // Add sun atmospheric glow
+   float sunGlowFactor = 1.0 - smoothstep(sunSize, sunSize + sunGlow, sunDist);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart7 = R"(
+   sunGlowFactor = pow(sunGlowFactor, 2.0); // Stronger in center
+   
+   // Create sun color that changes with elevation (more red/orange at horizon)
+   vec3 sunColorDisk = mix(vec3(1.0, 0.7, 0.3), vec3(1.0, 0.95, 0.8), sunHeight * 2.0);
+   vec3 sunColorGlow = mix(vec3(1.0, 0.5, 0.2), vec3(1.0, 0.8, 0.5), sunHeight * 2.0);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart8 = R"(
+   
+   // Add moon with subtle glow
+   float moonSize = 0.025;
+   float moonSharpness = 60.0;
+   float moonGlow = 0.1;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart9 = R"(
+   float moonIntensity = smoothstep(0.0, moonSize, moonDist);
+   moonIntensity = 1.0 - pow(clamp(moonIntensity, 0.0, 1.0), moonSharpness);
+   
+   // Moon atmospheric glow
+   float moonGlowFactor = 1.0 - smoothstep(moonSize, moonSize + moonGlow, moonDist);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart10 = R"(
+   moonGlowFactor = pow(moonGlowFactor, 2.0); // Stronger in center
+   vec3 moonColor = vec3(0.9, 0.9, 1.0); // Slightly blue-tinted
+   
+   // Noise-based clouds using FBM noise
+   float cloudCoverage = mix(0.5, 0.75, sin(gameTime * 0.01) * 0.5 + 0.5); // Clouds change over time
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart11 = R"(
+   float cloudHeight = 0.25; // Clouds height in sky
+   float cloudThickness = 0.2; // Vertical thickness
+   float cloudSharpness = 2.0; // Controls transition edge 
+   
+   // Cloud layer 1: Slow, large clouds
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart12 = R"(
+   float cloudTime1 = gameTime * 0.005;
+   vec2 cloudPos1 = vec2(uv.x + cloudTime1, uv.y);
+   float clouds1 = fbm(cloudPos1 * vec2(2.0, 4.0)) * 0.5 + 0.5;
+   float cloudMask1 = smoothstep(cloudHeight - cloudThickness, cloudHeight, uv.y) - 
+                      smoothstep(cloudHeight, cloudHeight + cloudThickness, uv.y);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart13 = R"(
+   float cloudFactor1 = cloudMask1 * smoothstep(0.5 - cloudCoverage, 0.6, clouds1) * dayPhase;
+   
+   // Cloud layer 2: Higher frequency for detail
+   float cloudTime2 = gameTime * 0.008;
+   vec2 cloudPos2 = vec2(uv.x + cloudTime2, uv.y);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart14 = R"(
+   float clouds2 = fbm(cloudPos2 * vec2(5.0, 10.0)) * 0.3 + 0.5;
+   float cloudMask2 = smoothstep(cloudHeight - cloudThickness * 0.5, cloudHeight, uv.y) - 
+                      smoothstep(cloudHeight, cloudHeight + cloudThickness * 0.7, uv.y);
+   float cloudFactor2 = cloudMask2 * smoothstep(0.4, 0.6, clouds2) * dayPhase * 0.7;
+   
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart15 = R"(
+   // Combine cloud layers with varying lighting
+   float totalCloudFactor = max(cloudFactor1, cloudFactor2);
+   
+   // Cloud colors change based on time of day and sun position
+   vec3 cloudBrightColor = mix(vec3(0.9, 0.8, 0.7), vec3(1.0, 1.0, 1.0), dayPhase); // Sunset to day
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart16 = R"(
+   vec3 cloudDarkColor = mix(vec3(0.1, 0.1, 0.2), vec3(0.7, 0.7, 0.7), dayPhase);  // Night to day
+   
+   // Simple cloud lighting based on height
+   float cloudBrightness = 0.6 + 0.4 * (1.0 - uv.y * 2.0);
+   vec3 cloudColor = mix(cloudDarkColor, cloudBrightColor, cloudBrightness);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart17 = R"(
+   
+   // Add stars at night (less visible during day)
+   float starThreshold = 0.98;
+   float starBrightness = (1.0 - dayPhase) * 0.8; // Stars fade during day
+   float stars = step(starThreshold, random(uv * 500.0)) * starBrightness;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart18 = R"(
+   vec3 starColor = vec3(0.9, 0.9, 1.0) * stars;
+   
+   // Add subtle nebulae in night sky
+   vec3 nebulaColor = vec3(0.1, 0.05, 0.2) * (1.0 - dayPhase) * fbm(uv * 5.0);
+   
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart19 = R"(
+   // Calculate god rays from sun
+   float godRaysEffect = 0.0;
+   if (dayPhase > 0.2) { // Only during day/sunset
+       godRaysEffect = godRays(uv, sunPos, 0.5, 0.95, 0.3, 0.3) * dayPhase;
+   }
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart20 = R"(
+   
+   // Calculate lens flare (only when sun is visible)
+   float lensFlareEffect = 0.0;
+   if (sunHeight > 0.1 && dayPhase > 0.3) {
+       lensFlareEffect = lensFlare(uv, sunPos) * dayPhase * 0.5;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart21 = R"(
+   }
+   
+   // Combine all sky elements
+   vec3 finalSky = skyColor;
+   
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart22 = R"(
+   // Add stars and nebulae (at night)
+   finalSky += starColor + nebulaColor;
+   
+   // Add sun disk and glow
+   finalSky = mix(finalSky, sunColorDisk, sunIntensity * dayPhase);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart23 = R"(
+   finalSky = mix(finalSky, sunColorGlow, sunGlowFactor * dayPhase);
+   
+   // Add moon (at night)
+   finalSky = mix(finalSky, moonColor, moonIntensity * (1.0 - dayPhase) * 0.9);
+   finalSky = mix(finalSky, moonColor * 0.5, moonGlowFactor * (1.0 - dayPhase) * 0.7);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart24 = R"(
+   
+   // Add clouds
+   finalSky = mix(finalSky, cloudColor, totalCloudFactor);
+   
+   // Add god rays and lens flare
+)";
+#endif
+#ifndef USE_VULKAN
+const char* skyShaderPart25 = R"(
+   finalSky += vec3(1.0, 0.9, 0.7) * godRaysEffect * 0.4;
+   finalSky += vec3(1.0, 0.8, 0.6) * lensFlareEffect * 0.6;
+   
+   return finalSky;
+}
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart1 = R"(
+void main()
+{
+   vec4 texColor = texture(worldTexture, TexCoord);
+   
+   // Determine material type from texture color (in a real game, this would be passed as data)
+   int materialId = 0; // Default to empty
+   if (texColor.a > 0.0) {
+       // Here we would derive the material ID somehow
+       // For now, we'll use a simple heuristic
+       if (texColor.r > 0.9 && texColor.g > 0.4 && texColor.b < 0.3) {
+           materialId = 5; // Fire
+       } else if (texColor.r < 0.1 && texColor.g > 0.4 && texColor.b > 0.8) {
+           materialId = 2; // Water
+       } else if (texColor.r < 0.2 && texColor.g < 0.2 && texColor.b < 0.2) {
+           materialId = 15; // Coal
+       } else if (texColor.r < 0.2 && texColor.g > 0.5 && texColor.b < 0.3) {
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart2 = R"(
+           materialId = 16; // Moss
+       }
+   }
+   
+   // Draw sky for empty space
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart3 = R"(
+   if (texColor.a < 0.01) {
+       // Make sky visible in the whole world (not just top half)
+       // Use a simplified sky rendering when performance is an issue
+       #ifdef SIMPLIFIED_SKY
+           // Simple gradient sky (better performance)
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart4 = R"(
+           float dayPhase = (sin(gameTime * 0.02) + 1.0) * 0.5;
+           vec3 zenithColor = mix(vec3(0.03, 0.05, 0.2), vec3(0.1, 0.5, 0.9), dayPhase);
+           vec3 horizonColor = mix(vec3(0.1, 0.12, 0.25), vec3(0.7, 0.75, 0.85), dayPhase);
+           vec3 skyColor = mix(zenithColor, horizonColor, pow(1.0 - TexCoord.y, 2.0));
+           
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart5 = R"(
+           // Add a simple sun
+           float sunHeight = 0.15 + 0.35 * dayPhase;
+           vec2 sunPos = vec2(0.5, sunHeight);
+           float sunDist = length(TexCoord - sunPos);
+           float sunGlow = 1.0 - smoothstep(0.03, 0.08, sunDist);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart6 = R"(
+           vec3 sunColor = mix(vec3(1.0, 0.7, 0.3), vec3(1.0, 0.95, 0.8), sunHeight * 2.0);
+           skyColor += sunColor * sunGlow * dayPhase;
+       #else
+           // Full sky with all effects
+           vec3 skyColor = createSky(TexCoord);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart7 = R"(
+       #endif
+       
+       // Gradually fade sky into a dark cave background for underground areas
+       if (TexCoord.y > 0.5) {
+           float fadeDepth = smoothstep(0.5, 1.0, TexCoord.y);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart8 = R"(
+           vec3 caveColor = vec3(0.05, 0.04, 0.08); // Dark cave/underground
+           skyColor = mix(skyColor, caveColor, fadeDepth);
+       }
+       
+       FragColor = vec4(skyColor, 1.0);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart9 = R"(
+       EmissiveColor = vec4(0.0); // No emission for sky/empty
+       return;
+   }
+   
+   // Retrieve all material properties for advanced effects
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart10 = R"(
+   bool isEmissive = false;
+   bool isRefractive = false;
+   bool isTranslucent = false;
+   bool isReflective = false;
+   float emissiveStrength = 0.0;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart11 = R"(
+   bool hasWaveEffect = false;
+   bool hasGlowEffect = false;
+   bool hasParticleEffect = false;
+   bool hasShimmerEffect = false;
+   float waveSpeed = 0.0;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart12 = R"(
+   float waveHeight = 0.0;
+   float glowSpeed = 0.0;
+   float refractiveIndex = 0.0;
+   vec3 secondaryColor = vec3(1.0);
+   
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart13 = R"(
+   // Use material properties if available
+   if (materialId > 0 && materialId < 30) {
+       // Visual properties
+       isEmissive = materials[materialId].isEmissive;
+       isRefractive = materials[materialId].isRefractive;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart14 = R"(
+       isTranslucent = materials[materialId].isTranslucent;
+       isReflective = materials[materialId].isReflective;
+       emissiveStrength = materials[materialId].emissiveStrength;
+       
+       // Effect properties
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart15 = R"(
+       hasWaveEffect = materials[materialId].hasWaveEffect;
+       hasGlowEffect = materials[materialId].hasGlowEffect;
+       hasParticleEffect = materials[materialId].hasParticleEffect;
+       hasShimmerEffect = materials[materialId].hasShimmerEffect;
+       waveSpeed = materials[materialId].waveSpeed;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart16 = R"(
+       waveHeight = materials[materialId].waveHeight;
+       glowSpeed = materials[materialId].glowSpeed;
+       refractiveIndex = materials[materialId].refractiveIndex;
+       
+       // Secondary color
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart17 = R"(
+       secondaryColor = materials[materialId].secondaryColor;
+   }
+   
+   // Apply wave effect (for water, lava, etc.)
+   if (hasWaveEffect) {
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart18 = R"(
+       float time = gameTime * waveSpeed * 0.1;
+       float waveX = sin(TexCoord.x * 40.0 + time) * waveHeight * 0.01;
+       float waveY = sin(TexCoord.y * 30.0 + time * 0.7) * waveHeight * 0.01;
+       
+       // Calculate wave distortion
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart19 = R"(
+       vec2 waveOffset = vec2(waveX, waveY);
+       
+       // Blend between base color and secondary color based on wave pattern
+       float waveBlend = (sin(TexCoord.x * 20.0 + time * 2.0) * 0.5 + 0.5) * 
+                         (sin(TexCoord.y * 15.0 + time) * 0.5 + 0.5);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart20 = R"(
+       texColor.rgb = mix(texColor.rgb, secondaryColor * texColor.rgb, waveBlend * 0.3);
+   }
+   
+   // Apply glow effect (for fire, lava, toxic materials, etc.)
+   if (hasGlowEffect) {
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart21 = R"(
+       float glowPulse = sin(gameTime * glowSpeed * 0.1) * 0.5 + 0.5;
+       emissiveStrength *= (0.8 + glowPulse * 0.4); // Modulate emissive strength
+       
+       // Add some color variation for more interesting glow
+       texColor.rgb = mix(texColor.rgb, secondaryColor, glowPulse * 0.2);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart22 = R"(
+   }
+   
+   // Apply shimmer effect (for water, ice, etc.)
+   if (hasShimmerEffect) {
+       // Use a simplified noise approach based on the existing noise function from earlier in the shader
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart23 = R"(
+       float time = gameTime * 0.2;
+       vec2 coord1 = vec2(TexCoord.x * 80.0, TexCoord.y * 80.0 + time);
+       vec2 coord2 = vec2(TexCoord.x * 90.0 + time * 0.5, TexCoord.y * 70.0);
+       
+       // Use hash-based noise (we already have a hash function in this shader)
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart24 = R"(
+       float noise1 = hash(floor(coord1) * 543.3199) * 0.5 + 0.5;
+       float noise2 = hash(floor(coord2) * 914.3321) * 0.5 + 0.5;
+       float sparkle = pow(noise1 * noise2, 8.0) * 0.7;
+       
+       // Add sparkles to the texture
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart25 = R"(
+       texColor.rgb += sparkle * secondaryColor * refractiveIndex * 0.04;
+   }
+   
+   // Apply refraction effect (for water, glass, etc.)
+   if (isRefractive) {
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart26 = R"(
+       float time = gameTime * 0.05;
+       float distortion = refractiveIndex * 0.01 * sin(TexCoord.x * 30.0 + time) * sin(TexCoord.y * 40.0 + time);
+       texColor.rgb *= 1.1 + distortion; // Distortion effect
+   }
+   
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart27 = R"(
+   // Apply reflective properties (for glass, metal, etc.)
+   if (isReflective) {
+       // Simulate environment reflection based on view angle
+       float viewAngle = abs(dot(normalize(vec2(0.5, 0.5) - TexCoord), vec2(0.0, 1.0)));
+       float reflection = pow(1.0 - viewAngle, 2.0) * refractiveIndex * 0.03;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart28 = R"(
+       texColor.rgb += reflection * secondaryColor;
+   }
+   
+   // Apply basic lighting (full implementation will come from shadow map)
+   vec3 lighting = vec3(0.4, 0.4, 0.5); // Base ambient light
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart29 = R"(
+   
+   // Biome detection - simplified for this version
+   // In a full implementation, biome data would come from the world
+   int biomeType = 0; // 0 = default, 1 = forest, 2 = desert, 3 = tundra, 4 = swamp
+   
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart30 = R"(
+   // Simple biome detection based on x position for demo
+   float worldPosX = TexCoord.x * worldSize.x;
+   if (worldPosX < worldSize.x * 0.2) biomeType = 1; // Forest on the left
+   else if (worldPosX < worldSize.x * 0.4) biomeType = 0; // Default in middle-left
+   else if (worldPosX < worldSize.x * 0.6) biomeType = 2; // Desert in middle
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart31 = R"(
+   else if (worldPosX < worldSize.x * 0.8) biomeType = 3; // Tundra in middle-right
+   else biomeType = 4; // Swamp on the right
+   
+   // Time of day and biome-specific fog
+   vec3 fogColor;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart32 = R"(
+   float fogDensity = 0.0;
+   float dayPhase = (sin(gameTime * 0.02) + 1.0) * 0.5; // Same as in createSky()
+   
+   // Base fog color determined by time of day
+   if (dayPhase < 0.3) { // Night
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart33 = R"(
+       fogColor = vec3(0.05, 0.05, 0.1); // Dark blue night fog
+       fogDensity = 0.02;
+   } else if (dayPhase < 0.4) { // Dawn
+       fogColor = vec3(0.4, 0.3, 0.3); // Pinkish dawn fog
+       fogDensity = 0.015;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart34 = R"(
+   } else if (dayPhase < 0.6) { // Day
+       fogColor = vec3(0.8, 0.85, 0.9); // Light day fog
+       fogDensity = 0.005;
+   } else if (dayPhase < 0.7) { // Dusk
+       fogColor = vec3(0.5, 0.3, 0.1); // Orange dusk fog
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart35 = R"(
+       fogDensity = 0.015;
+   } else { // Night
+       fogColor = vec3(0.05, 0.05, 0.1); // Dark blue night fog
+       fogDensity = 0.02;
+   }
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart36 = R"(
+   
+   // Modify fog based on biome
+   if (biomeType == 1) { // Forest
+       fogColor *= vec3(0.7, 0.9, 0.7); // Greener
+       fogDensity *= 1.2; // Denser
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart37 = R"(
+   } else if (biomeType == 2) { // Desert
+       fogColor *= vec3(1.0, 0.9, 0.7); // Yellowish
+       fogDensity *= 0.3; // Much clearer
+   } else if (biomeType == 3) { // Tundra
+       fogColor *= vec3(0.8, 0.9, 1.0); // Blueish
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart38 = R"(
+       fogDensity *= 0.7; // Clearer
+   } else if (biomeType == 4) { // Swamp
+       fogColor *= vec3(0.6, 0.7, 0.5); // Greenish brown
+       fogDensity *= 1.5; // Thicker
+   }
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart39 = R"(
+   
+   // Depth-based darkness (darker as you go deeper)
+   float depthFactor = smoothstep(0.0, 1.0, TexCoord.y);
+   lighting *= mix(1.0, 0.3, depthFactor); // Darker with depth
+   
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart40 = R"(
+   // Apply fog to lighting - stronger in the distance and depth
+   float distFromCenter = length(vec2(0.5, 0.2) - TexCoord) * 2.0;
+   float fogFactor = 1.0 - exp(-fogDensity * (distFromCenter + depthFactor) * 5.0);
+   lighting = mix(lighting, fogColor, clamp(fogFactor, 0.0, 0.5));
+   
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart41 = R"(
+   // Apply translucency effect
+   float alpha = texColor.a;
+   if (isTranslucent) {
+       // Make translucent materials let more light through
+       lighting = mix(lighting, vec3(1.0), 0.3);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart42 = R"(
+       
+       // Create depth-based transparency for better layering effect
+       float depthFactor = 1.0 - TexCoord.y * 0.4; // More transparent at surface
+       alpha = mix(texColor.a * 0.7, texColor.a, depthFactor);
+   }
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart43 = R"(
+   
+   // Handle particle effects (fire, smoke, etc.)
+   if (hasParticleEffect) {
+       // Create particle motion effect using time-based texture coordinates
+       float particleTime = gameTime * 0.1;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart44 = R"(
+       vec2 particleOffset = vec2(
+           sin(TexCoord.y * 10.0 + particleTime) * 0.01,
+           cos(TexCoord.x * 8.0 + particleTime * 0.8) * 0.01
+       );
+       
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart45 = R"(
+       // Use a simple procedural noise based on sine waves
+       float nx = sin(TexCoord.x * 40.0 + particleTime * 2.0);
+       float ny = sin(TexCoord.y * 30.0 + particleTime);
+       float nz = sin((TexCoord.x + TexCoord.y) * 20.0 - particleTime * 1.5);
+       float particleNoise = (nx * ny * nz * 0.5 + 0.5);
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart46 = R"(
+       
+       // Modulate color and alpha based on particle effect
+       texColor.rgb = mix(texColor.rgb, secondaryColor, particleNoise * 0.3);
+       alpha *= (0.7 + particleNoise * 0.5); // Varies transparency for particle effect
+   }
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart47 = R"(
+   
+   // Write to color and emissive buffers
+   FragColor = vec4(texColor.rgb * lighting, alpha);
+   
+   if (isEmissive) {
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart48 = R"(
+       // Add flickering to emissive materials with glow effect
+       float emissiveFactor = emissiveStrength;
+       if (hasGlowEffect) {
+           // Simple hash-based flickering
+           float time = gameTime * glowSpeed * 0.05;
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart49 = R"(
+           float flicker = hash(vec2(floor(time * 10.0), floor(TexCoord.y * 20.0))) * 0.5 + 0.5;
+           // Smooth out the flicker
+           flicker = mix(0.8, 1.2, flicker);
+           emissiveFactor *= flicker;
+       }
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPart50 = R"(
+       
+       // Create emissive color based on material and its secondary color
+       vec3 emissiveColor = mix(texColor.rgb, secondaryColor, 0.2) * emissiveFactor;
+       EmissiveColor = vec4(emissiveColor, alpha);
+   } else {
+)";
+#endif
+#ifndef USE_VULKAN
+const char* mainShaderPartEnd = R"(
+       EmissiveColor = vec4(0.0);
+   }
+}
+)";
+#endif
     
     // Advanced shadow & lighting calculation shader 
     const char* shadowFragmentShader = 
@@ -1860,24 +2120,80 @@ bool Renderer::createShaders() {
         "   FragColor = vec4(finalColor, baseColor.a);\n"
         "}\n";
     
-    // Create shader programs
-    m_shaderProgram = createShaderProgram(commonVertexShader, mainFragmentShader);
-    m_shadowShader = createShaderProgram(commonVertexShader, shadowFragmentShader);
-    m_volumetricLightShader = createShaderProgram(commonVertexShader, volumetricLightFragmentShader);
-    m_bloomShader = createShaderProgram(commonVertexShader, bloomFragmentShader);
-    m_postProcessShader = createShaderProgram(commonVertexShader, postProcessingFragmentShader);
-    
-    // Check if all shaders compiled successfully
-    return (m_shaderProgram != 0 && m_shadowShader != 0 && m_volumetricLightShader != 0 && 
-            m_bloomShader != 0 && m_postProcessShader != 0);
-}
+#ifndef USE_VULKAN
+// Helper to create shaders (OpenGL specific)
+static GLuint createShaderProgram(const char* vertexSource, const char* fragmentSource) {
+    GLuint vertexShader = 0;
+    GLuint fragmentShader = 0;
+    GLuint program = 0;
 
-bool Renderer::createTexture(int /*width*/, int /*height*/) {
+    // Create vertex shader
+    vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexSource, NULL);
+    glCompileShader(vertexShader);
+    
+    // Check compilation
+    GLint success;
+    char infoLog[512];
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+    if(!success) {
+        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+        std::cerr << "Vertex shader compilation failed: " << infoLog << std::endl;
+        glDeleteShader(vertexShader);
+        return 0;
+    }
+    
+    // Create and compile fragment shader
+    fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
+    glCompileShader(fragmentShader);
+    
+    // Check compilation
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+    if(!success) {
+        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+        std::cerr << "Fragment shader compilation failed: " << infoLog << std::endl;
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
+        return 0;
+    }
+    
+    // Create shader program
+    program = glCreateProgram();
+    glAttachShader(program, vertexShader);
+    glAttachShader(program, fragmentShader);
+    glLinkProgram(program);
+    
+    // Check linking
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if(!success) {
+        glGetProgramInfoLog(program, 512, NULL, infoLog);
+        std::cerr << "Shader program linking failed: " << infoLog << std::endl;
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
+        glDeleteProgram(program);
+        return 0;
+    }
+    
+    // Clean up
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+    
+    return program;
+}
+#endif
+
+bool PixelPhys::Renderer::createTexture(int /*width*/, int /*height*/) {
+#ifndef USE_VULKAN
     // We're not using textures in this simple renderer
     return true;
+#else
+    return true;
+#endif
 }
 
-GLuint Renderer::compileShader(const char* source, GLenum type) {
+#ifndef USE_VULKAN
+GLuint PixelPhys::Renderer::compileShader(const char* source, GLenum type) {
     GLuint shader = glCreateShader(type);
     glShaderSource(shader, 1, &source, NULL);
     glCompileShader(shader);
@@ -1896,7 +2212,44 @@ GLuint Renderer::compileShader(const char* source, GLenum type) {
     return shader;
 }
 
-void Renderer::createFramebuffers() {
+GLuint PixelPhys::Renderer::createShaderProgram(const char* vertexSource, const char* fragmentSource) {
+    GLuint vertexShader = compileShader(vertexSource, GL_VERTEX_SHADER);
+    if (!vertexShader) return 0;
+    
+    GLuint fragmentShader = compileShader(fragmentSource, GL_FRAGMENT_SHADER);
+    if (!fragmentShader) {
+        glDeleteShader(vertexShader);
+        return 0;
+    }
+    
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vertexShader);
+    glAttachShader(program, fragmentShader);
+    glLinkProgram(program);
+    
+    // Check for linking errors
+    GLint success;
+    char infoLog[512];
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(program, 512, NULL, infoLog);
+        std::cerr << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n" << infoLog << std::endl;
+        glDeleteShader(vertexShader);
+        glDeleteShader(fragmentShader);
+        glDeleteProgram(program);
+        return 0;
+    }
+    
+    // Cleanup
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+    
+    return program;
+}
+#endif
+
+#ifndef USE_VULKAN
+void PixelPhys::Renderer::createFramebuffers() {
     // Create main framebuffer for scene rendering
     glGenFramebuffers(1, &m_mainFBO);
     glBindFramebuffer(GL_FRAMEBUFFER, m_mainFBO);
@@ -2006,8 +2359,14 @@ void Renderer::createFramebuffers() {
         std::cerr << "Framebuffer creation failed with status: " << status << std::endl;
     }
 }
+#else
+void PixelPhys::Renderer::createFramebuffers() {
+    // With Vulkan, framebuffers are created by the backend
+}
+#endif
 
-void Renderer::updateTexture(const World& world) {
+#ifndef USE_VULKAN
+void PixelPhys::Renderer::updateTexture(const World& world) {
     // Create texture if it doesn't exist
     if (m_textureID == 0) {
         glGenTextures(1, &m_textureID);
@@ -2028,5 +2387,49 @@ void Renderer::updateTexture(const World& world) {
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, world.getWidth(), world.getHeight(), 
                  0, GL_RGBA, GL_UNSIGNED_BYTE, world.getPixelData());
 }
+#else
+void PixelPhys::Renderer::updateTexture(const World& world) {
+    // In Vulkan mode, we use the backend to update textures
+    if (m_worldTexture && m_backend) {
+        m_backend->updateTexture(m_worldTexture, world.getPixelData());
+    }
+}
+#endif
 
+// Implementation of the factory function to create render backends
+namespace PixelPhys {
+
+std::unique_ptr<RenderBackend> CreateRenderBackend(BackendType type, int screenWidth, int screenHeight) {
+    switch (type) {
+        case BackendType::OpenGL:
+#ifndef USE_VULKAN
+            return std::make_unique<OpenGLBackend>(screenWidth, screenHeight);
+#else
+            std::cerr << "OpenGL backend not available when built with USE_VULKAN" << std::endl;
+            return nullptr;
+#endif
+            
+        case BackendType::Vulkan:
+#ifdef USE_VULKAN
+            return std::make_unique<VulkanBackend>(screenWidth, screenHeight);
+#else
+            std::cerr << "Vulkan backend not available in this build" << std::endl;
+            return nullptr;
+#endif
+            
+        case BackendType::DirectX12:
+#ifdef _WIN32
+            return std::make_unique<DirectX12Backend>(screenWidth, screenHeight);
+#else
+            std::cerr << "DirectX12 backend only available on Windows" << std::endl;
+            return nullptr;
+#endif
+            
+        default:
+            std::cerr << "Unknown backend type requested" << std::endl;
+            return nullptr;
+    }
+}
+
+}
 } // namespace PixelPhys

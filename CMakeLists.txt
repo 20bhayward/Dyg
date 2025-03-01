@@ -14,9 +14,20 @@ endif()
 find_package(SDL2 REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
+find_package(Vulkan QUIET)
 find_package(OpenVDB QUIET)
 
 # Optional packages
+option(USE_VULKAN "Use Vulkan rendering backend instead of OpenGL" OFF)
+if(USE_VULKAN)
+    if(Vulkan_FOUND)
+        message(STATUS "Building with Vulkan rendering backend")
+        add_definitions(-DUSE_VULKAN)
+    else()
+        message(WARNING "Vulkan requested but not found. Falling back to OpenGL.")
+    endif()
+endif()
+
 option(USE_OPENVDB "Use OpenVDB for volumetric lighting" OFF)
 if(USE_OPENVDB AND OpenVDB_FOUND)
     message(STATUS "Building with OpenVDB support")
@@ -46,17 +57,42 @@ endif()
 if(GLEW_FOUND)
     include_directories(${GLEW_INCLUDE_DIRS})
 endif()
+if(USE_VULKAN AND Vulkan_FOUND)
+    include_directories(${Vulkan_INCLUDE_DIRS})
+endif()
 if(USE_OPENVDB AND OpenVDB_FOUND)
     include_directories(${OpenVDB_INCLUDE_DIRS})
 endif()
 
 # Add executable
-add_executable(PixelPhys2D 
-    src/main.cpp
-    src/World.cpp
-    src/Renderer.cpp
-    src/UI.cpp        # Added UI implementation
-)
+if(USE_VULKAN AND Vulkan_FOUND)
+    add_executable(PixelPhys2D 
+        src/main_vulkan.cpp
+        src/World.cpp
+        src/Renderer.cpp
+        src/UI.cpp
+        src/VulkanBackend.cpp
+        src/RenderBackend.cpp
+    )
+    # Add a Vulkan-only test executable
+    add_executable(vulkan_simple_test 
+        vulkan_test/vulkan_test.cpp
+    )
+    target_link_libraries(vulkan_simple_test 
+        ${Vulkan_LIBRARIES}
+        $<$<TARGET_EXISTS:SDL2::SDL2>:SDL2::SDL2>
+        $<$<NOT:$<TARGET_EXISTS:SDL2::SDL2>>:${SDL2_LIBRARIES}>
+    )
+else()
+    add_executable(PixelPhys2D 
+        src/main.cpp
+        src/World.cpp
+        src/Renderer.cpp
+        src/UI.cpp
+        src/OpenGLBackend.cpp
+        src/RenderBackend.cpp
+    )
+endif()
 
 # Common libraries for all platforms
 target_link_libraries(PixelPhys2D 
@@ -66,6 +102,11 @@ target_link_libraries(PixelPhys2D
     ${OPENGL_LIBRARIES} 
     ${GLEW_LIBRARIES}
 )
+
+# Vulkan libraries if found and enabled
+if(USE_VULKAN AND Vulkan_FOUND)
+    target_link_libraries(PixelPhys2D ${Vulkan_LIBRARIES})
+endif()
 
 if(USE_OPENVDB AND OpenVDB_FOUND)
     target_link_libraries(PixelPhys2D ${OpenVDB_LIBRARIES})
@@ -162,6 +203,20 @@ if(WIN32)
             ${DLL_FILE}
             $<TARGET_FILE_DIR:PixelPhys2D>)
     endforeach()
+    
+    # For Vulkan builds, also copy vulkan-1.dll if available
+    if(USE_VULKAN AND Vulkan_FOUND AND DEFINED ENV{VULKAN_SDK})
+        file(GLOB VULKAN_DLL "$ENV{VULKAN_SDK}/Bin/vulkan-1.dll")
+        if(VULKAN_DLL)
+            add_custom_command(TARGET PixelPhys2D POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${VULKAN_DLL}
+                $<TARGET_FILE_DIR:PixelPhys2D>)
+            message(STATUS "Found Vulkan DLL: ${VULKAN_DLL}")
+        else()
+            message(STATUS "vulkan-1.dll not found. You may need to copy it manually.")
+        endif()
+    endif()
     
     # Add directory creation command for artifacts
     add_custom_command(TARGET PixelPhys2D POST_BUILD

@@ -1,17 +1,15 @@
 #pragma once
 
 #include "World.h"
+#include "RenderBackend.h"
+#include "RenderResources.h"
 #include <SDL2/SDL.h>
-
-// GLEW must be included before any OpenGL headers
-#include <GL/glew.h>
-#include <GL/gl.h>
+#include <memory>
+#include <string>
 #include <vector>
 
-#ifdef USE_OPENVDB
-#include <openvdb/openvdb.h>
-#include <openvdb/tools/Dense.h>
-#include <openvdb/tools/LevelSetSphere.h>
+#ifndef USE_VULKAN
+#include <GL/glew.h>
 #endif
 
 namespace PixelPhys {
@@ -21,89 +19,113 @@ public:
     Renderer(int screenWidth, int screenHeight);
     ~Renderer();
     
-    // Initialize OpenGL resources
+    // Initialize rendering resources
     bool initialize();
     
     // Render the world to the screen
     void render(const World& world);
     
-    // Clean up OpenGL resources
+    // Clean up rendering resources
     void cleanup();
+    
+    // Set rendering backend manually (default is platform-dependent)
+    // Returns true if successful, false if the backend type is not supported
+    bool setBackendType(BackendType type);
+    
+    // Get current backend type
+    BackendType getBackendType() const;
+    
+    // Get information about the current renderer
+    std::string getRendererInfo() const;
     
 private:
     // Screen dimensions
     int m_screenWidth;
     int m_screenHeight;
     
-    // OpenGL texture ID for the world
-    GLuint m_textureID;
+    // Rendering backend
+    std::unique_ptr<RenderBackend> m_backend;
     
-    // Shader program IDs
-    GLuint m_shaderProgram;           // Main rendering shader
-    GLuint m_shadowShader;            // Shadow calculation shader
-    GLuint m_volumetricLightShader;   // Volumetric lighting and GI shader
-    GLuint m_lightPropagationShader;  // Light propagation compute shader (2D lighting)
-    GLuint m_bloomShader;             // Bloom effect shader
-    GLuint m_postProcessShader;       // Final post-processing shader
+    // Texture resource for the world data
+    std::shared_ptr<Texture> m_worldTexture;
     
-    // Vertex buffer objects
-    GLuint m_vbo;
-    GLuint m_vao;
+    // Shader programs
+    std::shared_ptr<Shader> m_mainShader;          // Main rendering shader
+    std::shared_ptr<Shader> m_shadowShader;        // Shadow calculation shader
+    std::shared_ptr<Shader> m_volumetricLightShader; // Volumetric lighting shader
+    std::shared_ptr<Shader> m_bloomShader;         // Bloom effect shader
+    std::shared_ptr<Shader> m_postProcessShader;   // Final post-processing shader
     
-    // Framebuffer objects for multi-pass rendering
-    GLuint m_mainFBO;             // Main scene render target
-    GLuint m_shadowMapFBO;        // Shadow map
-    GLuint m_volumetricLightFBO;  // Volumetric lighting and GI
-    GLuint m_bloomFBO;            // Bloom effect buffer
+    // Render targets for multi-pass rendering
+    std::shared_ptr<RenderTarget> m_mainRenderTarget;    // Main scene
+    std::shared_ptr<RenderTarget> m_shadowMapTarget;     // Shadow map
+    std::shared_ptr<RenderTarget> m_volumetricLightTarget; // Volumetric lighting 
+    std::shared_ptr<RenderTarget> m_bloomTarget;         // Bloom effect
     
-    // Textures for the framebuffers
-    GLuint m_mainColorTexture;
-    GLuint m_mainEmissiveTexture;
-    GLuint m_mainDepthTexture;    // Depth information for lighting
-    GLuint m_shadowMapTexture;
-    GLuint m_volumetricLightTexture;
-    GLuint m_bloomTexture;
+#ifndef USE_VULKAN
+    // OpenGL specific resources
+    GLuint m_textureID = 0;          // Main world texture ID
+    GLuint m_shaderProgram = 0;      // Main shader program
+    GLuint m_shadowShader = 0;       // Shadow calculation shader
+    GLuint m_volumetricLightShader = 0; // Volumetric lighting shader
+    GLuint m_bloomShader = 0;        // Bloom effect shader
+    GLuint m_postProcessShader = 0;  // Final post-processing shader
     
-#ifdef USE_OPENVDB
-    // OpenVDB grid for volumetric lighting
-    openvdb::FloatGrid::Ptr m_lightVolume;
-    openvdb::FloatGrid::Ptr m_densityVolume;
+    // OpenGL framebuffer objects
+    GLuint m_mainFBO = 0;
+    GLuint m_shadowFBO = 0;
+    GLuint m_volumetricLightFBO = 0;
+    GLuint m_bloomFBO = 0;
+    
+    // OpenGL textures
+    GLuint m_mainColorTexture = 0;
+    GLuint m_mainDepthTexture = 0;
+    GLuint m_shadowDepthTexture = 0;
+    GLuint m_volumetricLightTexture = 0;
+    GLuint m_bloomTexture = 0;
 #endif
-
-    // Light grid for 2D lighting propagation (used when OpenVDB isn't available)
-    std::vector<float> m_lightGrid;
-    int m_lightGridWidth;
-    int m_lightGridHeight;
     
-    // Create our shader programs
-    bool createShaders();
+    // Create shaders and render targets based on the active backend
+    bool createRenderingResources();
+    
+    // Create texture (implementation varies by backend)
+    bool createTexture(int width, int height);
     
     // Create framebuffers for multi-pass rendering
     void createFramebuffers();
     
-    // Create a texture to hold the world pixel data
-    bool createTexture(int width, int height);
-    
-    // Update the texture with world pixel data
+    // Update texture with new data
     void updateTexture(const World& world);
     
-    // Shadow map generation pass
-    void renderShadowMap(const World& world);
+    // Update the world texture with the latest world data
+    void updateWorldTexture(const World& world);
     
-    // Volumetric lighting and global illumination
-    void renderVolumetricLighting(const World& world);
+    // Define shader sources
+    std::string getMainVertexShaderSource() const;
+    std::string getMainFragmentShaderSource() const;
+    std::string getShadowVertexShaderSource() const;
+    std::string getShadowFragmentShaderSource() const;
+    std::string getVolumetricLightVertexShaderSource() const;
+    std::string getVolumetricLightFragmentShaderSource() const;
+    std::string getBloomVertexShaderSource() const;
+    std::string getBloomFragmentShaderSource() const;
+    std::string getPostProcessVertexShaderSource() const;
+    std::string getPostProcessFragmentShaderSource() const;
     
-    // Bloom effect generation pass
-    void renderBloomEffect();
+    // Rendering passes
+    void renderMainPass(const World& world);
+    void renderShadowPass(const World& world);
+    void renderVolumetricLightingPass(const World& world);
+    void renderBloomPass();
+    void renderPostProcessPass();
     
-    // Apply post-processing effects
-    void applyPostProcessing();
+#ifndef USE_VULKAN
+    // OpenGL shader compilation helpers
+    bool createShadersAndPrograms();
+#endif
     
-    // Utility function to create and compile shaders
-    GLuint compileShader(const char* source, GLenum type);
-    
-    // Utility to create a shader program from vertex and fragment sources
-    GLuint createShaderProgram(const char* vertexSource, const char* fragmentSource);
+    // Helper to select the best rendering backend based on the system
+    BackendType detectBestBackendType();
 };
 
 } // namespace PixelPhys

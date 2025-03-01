@@ -1,0 +1,98 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      build_vulkan:
+        description: 'Build with Vulkan support'
+        required: false
+        default: 'true'
+        type: boolean
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install SDL2
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/libsdl-org/SDL/releases/download/release-2.26.5/SDL2-devel-2.26.5-VC.zip" -OutFile "SDL2.zip"
+        Expand-Archive -Path "SDL2.zip" -DestinationPath "SDL2"
+        Move-Item -Path "SDL2\SDL2-2.26.5" -Destination "SDL2-2.26.5"
+
+    - name: Install GLEW
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/nigels-com/glew/releases/download/glew-2.2.0/glew-2.2.0-win32.zip" -OutFile "glew.zip"
+        Expand-Archive -Path "glew.zip" -DestinationPath "glew"
+        Move-Item -Path "glew\glew-2.2.0" -Destination "glew-2.2.0"
+
+    - name: Install Vulkan SDK
+      if: ${{ github.event.inputs.build_vulkan == 'true' }}
+      run: |
+        Invoke-WebRequest -Uri "https://sdk.lunarg.com/sdk/download/1.3.250.0/windows/VulkanSDK-1.3.250.0-Installer.exe" -OutFile "VulkanSDK-Installer.exe"
+        Start-Process -FilePath ".\VulkanSDK-Installer.exe" -ArgumentList "--accept-licenses --default-answer --confirm-command install" -Wait
+        echo "VULKAN_SDK=C:\VulkanSDK\1.3.250.0" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+    - name: Configure CMake (with Vulkan)
+      if: ${{ github.event.inputs.build_vulkan == 'true' }}
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_PREFIX_PATH="$env:GITHUB_WORKSPACE\SDL2-2.26.5;$env:GITHUB_WORKSPACE\glew-2.2.0" -DUSE_VULKAN=ON
+
+    - name: Configure CMake (without Vulkan)
+      if: ${{ github.event.inputs.build_vulkan != 'true' }}
+      run: |
+        mkdir build
+        cd build
+        cmake .. -DCMAKE_PREFIX_PATH="$env:GITHUB_WORKSPACE\SDL2-2.26.5;$env:GITHUB_WORKSPACE\glew-2.2.0"
+
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config Release
+
+    - name: Copy Dependencies
+      run: |
+        Copy-Item "SDL2-2.26.5\lib\x64\SDL2.dll" -Destination "build\Release\"
+        Copy-Item "glew-2.2.0\bin\Release\x64\glew32.dll" -Destination "build\Release\"
+        
+        # Create simplified batch file to run
+        $batchContent = @"
+        @echo off
+        echo Starting PixelPhys2D...
+        PixelPhys2D.exe
+        if %ERRORLEVEL% NEQ 0 (
+            echo Application crashed or failed to start
+            pause
+        )
+        "@
+        Set-Content -Path "build\Release\run_game.bat" -Value $batchContent
+
+    - name: Create Distribution Package
+      run: |
+        mkdir dist
+        Copy-Item "build\Release\PixelPhys2D.exe" -Destination "dist\"
+        Copy-Item "build\Release\SDL2.dll" -Destination "dist\"
+        Copy-Item "build\Release\glew32.dll" -Destination "dist\"
+        Copy-Item "build\Release\run_game.bat" -Destination "dist\"
+        
+        # If Vulkan build, copy Vulkan DLL
+        if ("${{ github.event.inputs.build_vulkan }}" -eq "true") {
+          Copy-Item "$env:VULKAN_SDK\Bin\vulkan-1.dll" -Destination "dist\"
+        }
+        
+        Compress-Archive -Path "dist\*" -DestinationPath "PixelPhys2D-Windows.zip"
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: PixelPhys2D-Windows
+        path: PixelPhys2D-Windows.zip
+        retention-days: 7

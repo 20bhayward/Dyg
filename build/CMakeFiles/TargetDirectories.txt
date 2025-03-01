@@ -1,3 +1,4 @@
 /home/bhayward/Dyg/build/CMakeFiles/PixelPhys2D.dir
+/home/bhayward/Dyg/build/CMakeFiles/vulkan_simple_test.dir
 /home/bhayward/Dyg/build/CMakeFiles/edit_cache.dir
 /home/bhayward/Dyg/build/CMakeFiles/rebuild_cache.dir
