@@ -32,13 +32,16 @@ namespace std {
 
 namespace PixelPhys {
 
-Renderer::Renderer(int screenWidth, int screenHeight)
+Renderer::Renderer(int screenWidth, int screenHeight, BackendType type)
     : m_screenWidth(screenWidth), m_screenHeight(screenHeight) {
     
     std::cout << "Creating renderer with screen size: " << screenWidth << "x" << screenHeight << std::endl;
     
-    // Automatically detect and create the best available backend
-    BackendType backendType = detectBestBackendType();
+    // Set the specified backend type or auto-detect
+    BackendType backendType = type;
+    if (backendType == BackendType::Auto) {
+        backendType = detectBestBackendType();
+    }
     setBackendType(backendType);
 }
 
@@ -67,6 +70,56 @@ bool Renderer::initialize() {
     std::cout << "Renderer initialized successfully using " 
               << m_backend->getRendererInfo() << std::endl;
     return true;
+}
+
+bool Renderer::initialize(SDL_Window* window) {
+    // This method is primarily for Vulkan which needs the window handle
+    if (!m_backend) {
+        std::cerr << "No rendering backend available" << std::endl;
+        return false;
+    }
+    
+    // For OpenGL we just call the regular initialize
+    if (m_backend->getType() != BackendType::Vulkan) {
+        return initialize();
+    }
+    
+    // For Vulkan, we would need to pass the window to the backend
+    // For now, just call initialize() since our VulkanBackend doesn't take a window yet
+    return initialize();
+}
+
+void Renderer::beginFrame() {
+    if (m_backend) {
+        m_backend->beginFrame();
+    }
+}
+
+void Renderer::endFrame() {
+    if (m_backend) {
+        m_backend->endFrame();
+    }
+}
+
+std::shared_ptr<Buffer> Renderer::createVertexBuffer(size_t size, const void* data) {
+    if (m_backend) {
+        return m_backend->createVertexBuffer(size, data);
+    }
+    return nullptr;
+}
+
+std::shared_ptr<Buffer> Renderer::createIndexBuffer(size_t size, const void* data) {
+    if (m_backend) {
+        return m_backend->createIndexBuffer(size, data);
+    }
+    return nullptr;
+}
+
+std::shared_ptr<Shader> Renderer::createShader(const std::string& vertexSource, const std::string& fragmentSource) {
+    if (m_backend) {
+        return m_backend->createShader(vertexSource, fragmentSource);
+    }
+    return nullptr;
 }
 
 void Renderer::renderShadowPass(const World& world) {
@@ -287,26 +340,151 @@ void Renderer::render(const World& world) {
     // Update world texture
     updateWorldTexture(world);
     
-    // Multi-pass rendering pipeline
-    
-    // Pass 1: Render main scene with material properties
-    renderMainPass(world);
-    
-    // Pass 2: Generate shadow map
-    renderShadowPass(world);
-    
-    // Pass 3: Volumetric lighting and global illumination
-    renderVolumetricLightingPass(world);
-    
-    // Pass 4: Generate bloom effect from emissive materials
-    renderBloomPass();
-    
-    // Pass 5: Final composition with post-processing
-    renderPostProcessPass();
-    
-    // Render player on top of everything
-    // Note: May need to be reimplemented for non-OpenGL backends
-    world.renderPlayer(1.0f);
+    // For Vulkan backend, render the world with material-based shading
+    if (m_backend->getType() == BackendType::Vulkan) {
+        m_backend->setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        m_backend->clear();
+        
+        // Bind default render target
+        m_backend->bindDefaultRenderTarget();
+        
+        // Bind material shader for enhanced rendering
+        if (m_mainShader) {
+            m_backend->bindShader(m_mainShader);
+            
+            // Get screen dimensions
+            int screenWidth = m_backend->getScreenWidth();
+            int screenHeight = m_backend->getScreenHeight();
+            
+            // Get camera information
+            int cameraX = static_cast<int>(world.getPlayerX()) - screenWidth / 2;
+            int cameraY = static_cast<int>(world.getPlayerY()) - screenHeight / 2;
+            
+            // Apply custom material-based rendering
+            int pixelSize = 1; // Size of each world pixel in screen pixels
+            int worldWidth = world.getWidth();
+            int worldHeight = world.getHeight();
+            
+            // Loop through the visible portion of the world and render each pixel with material properties
+            int viewportStartX = std::max(0, cameraX);
+            int viewportStartY = std::max(0, cameraY);
+            int viewportEndX = std::min(worldWidth, cameraX + screenWidth);
+            int viewportEndY = std::min(worldHeight, cameraY + screenHeight);
+            
+            VulkanBackend* vulkanBackend = static_cast<VulkanBackend*>(m_backend.get());
+            
+            for (int y = viewportStartY; y < viewportEndY; y++) {
+                for (int x = viewportStartX; x < viewportEndX; x++) {
+                    // Get material at this world position
+                    MaterialType material = world.getMaterialAt(x, y);
+                    
+                    // Skip empty space
+                    if (material == MaterialType::Empty) {
+                        continue;
+                    }
+                    
+                    // Convert world coordinates to screen coordinates
+                    float screenX = static_cast<float>(x - cameraX);
+                    float screenY = static_cast<float>(y - cameraY);
+                    
+                    // DIRECT COLOR APPROACH: Convert material directly to a fixed color
+                    // For specific materials, use custom colors to ensure they're visible
+                    float r, g, b;
+                    
+                    switch (material) {
+                        case MaterialType::Fire: 
+                            // Bright orange-red for fire
+                            r = 1.0f; g = 0.4f; b = 0.0f;
+                            break;
+                            
+                        case MaterialType::Water:
+                            // Vibrant blue for water  
+                            r = 0.0f; g = 0.4f; b = 0.9f;
+                            break;
+                            
+                        case MaterialType::Lava:
+                            // Bright orange for lava
+                            r = 1.0f; g = 0.3f; b = 0.0f;
+                            break;
+                        
+                        case MaterialType::Sand:
+                            // Golden sand
+                            r = 0.95f; g = 0.8f; b = 0.2f;
+                            break;
+                            
+                        case MaterialType::Stone:
+                            // Medium gray for stone
+                            r = 0.6f; g = 0.6f; b = 0.6f;
+                            break;
+                            
+                        case MaterialType::Wood:
+                            // Brown for wood
+                            r = 0.6f; g = 0.4f; b = 0.2f;
+                            break;
+                            
+                        case MaterialType::Dirt:
+                            // Brown for dirt
+                            r = 0.5f; g = 0.3f; b = 0.1f;
+                            break;
+                            
+                        case MaterialType::Glass:
+                            // Light blue tint for glass
+                            r = 0.8f; g = 0.9f; b = 1.0f;
+                            break;
+                            
+                        case MaterialType::Grass:
+                            // Green for grass
+                            r = 0.2f; g = 0.8f; b = 0.2f;
+                            break;
+                            
+                        case MaterialType::Coal:
+                            // Dark gray/black for coal
+                            r = 0.15f; g = 0.15f; b = 0.15f;
+                            break;
+                            
+                        default: {
+                            // For all other materials, get the RGBA color
+                            const auto& props = MATERIAL_PROPERTIES[static_cast<size_t>(material)];
+                            r = props.r / 255.0f;
+                            g = props.g / 255.0f;
+                            b = props.b / 255.0f;
+                        }
+                    }
+                    
+                    // Bypass the material shader system entirely, just draw a colored rectangle
+                    vulkanBackend->drawRectangle(screenX, screenY, pixelSize, pixelSize, r, g, b);
+                }
+            }
+            
+            // Render player
+            world.renderPlayer(1.0f);
+        }
+        else {
+            // Fallback to fullscreen texture rendering if material shader not available
+            m_backend->drawFullscreenQuad();
+        }
+    }
+    else {
+        // Full rendering pipeline for OpenGL
+        
+        // Pass 1: Render main scene with material properties
+        renderMainPass(world);
+        
+        // Pass 2: Generate shadow map
+        renderShadowPass(world);
+        
+        // Pass 3: Volumetric lighting and global illumination
+        renderVolumetricLightingPass(world);
+        
+        // Pass 4: Generate bloom effect from emissive materials
+        renderBloomPass();
+        
+        // Pass 5: Final composition with post-processing
+        renderPostProcessPass();
+        
+        // Render player on top of everything
+        world.renderPlayer(1.0f);
+    }
     
     // End frame
     m_backend->endFrame();
@@ -408,10 +586,26 @@ void Renderer::updateWorldTexture(const World& world) {
             std::cerr << "Failed to create world texture" << std::endl;
             return;
         }
+        std::cout << "Created world texture: " << world.getWidth() << "x" << world.getHeight() << std::endl;
     }
     
+    // Validate pixel data
+    const uint8_t* pixelData = world.getPixelData();
+    if (!pixelData) {
+        std::cerr << "Error: World returned null pixel data" << std::endl;
+        return;
+    }
+    
+    // Debug - check first few pixels
+    std::cout << "First pixels RGBA values: ";
+    for (int i = 0; i < 4; i++) {
+        std::cout << "(" << (int)pixelData[i*4] << "," << (int)pixelData[i*4+1] << "," 
+                 << (int)pixelData[i*4+2] << "," << (int)pixelData[i*4+3] << ") ";
+    }
+    std::cout << std::endl;
+    
     // Update texture with world data
-    m_backend->updateTexture(m_worldTexture, world.getPixelData());
+    m_backend->updateTexture(m_worldTexture, pixelData);
 }
 
 bool Renderer::createRenderingResources() {

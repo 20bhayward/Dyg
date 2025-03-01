@@ -18,6 +18,7 @@ enum class BackendType {
     OpenGL,
     Vulkan,
     DirectX12,
+    Auto,
     None
 };
 

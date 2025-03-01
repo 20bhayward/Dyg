@@ -16,11 +16,20 @@ namespace PixelPhys {
 
 class Renderer {
 public:
-    Renderer(int screenWidth, int screenHeight);
+    Renderer(int screenWidth, int screenHeight, BackendType type = BackendType::OpenGL);
     ~Renderer();
     
     // Initialize rendering resources
     bool initialize();
+    
+    // Initialize with an existing window (for Vulkan)
+    bool initialize(SDL_Window* window);
+    
+    // Begin frame rendering (for direct rendering mode)
+    void beginFrame();
+    
+    // End frame rendering (for direct rendering mode)
+    void endFrame();
     
     // Render the world to the screen
     void render(const World& world);
@@ -34,6 +43,14 @@ public:
     
     // Get current backend type
     BackendType getBackendType() const;
+    
+    // Get access to the backend for direct rendering
+    RenderBackend* getBackend() const { return m_backend.get(); }
+    
+    // Create rendering resources
+    std::shared_ptr<Buffer> createVertexBuffer(size_t size, const void* data);
+    std::shared_ptr<Buffer> createIndexBuffer(size_t size, const void* data);
+    std::shared_ptr<Shader> createShader(const std::string& vertexSource, const std::string& fragmentSource);
     
     // Get information about the current renderer
     std::string getRendererInfo() const;

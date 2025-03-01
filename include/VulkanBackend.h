@@ -2,6 +2,7 @@
 
 #include "RenderBackend.h"
 #include "RenderResources.h"
+#include "Materials.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -61,6 +62,12 @@ private:
     VkDeviceMemory m_stagingMemory;
 };
 
+// Material push constant struct to match shader - super simplified
+struct MaterialPushConstants {
+    // Material type ID only
+    uint32_t materialType;
+};
+
 // Vulkan implementation of Shader
 class VulkanShader : public Shader {
 public:
@@ -80,17 +87,19 @@ public:
     void setUniform(const std::string& name, float x, float y, float z) override;
     void setUniform(const std::string& name, float x, float y, float z, float w) override;
     
+    // Material property setter
+    void setMaterial(MaterialType materialType);
+    
     // Update texture in shader
     void updateTexture(std::shared_ptr<Texture> texture);
+    
+    // Get the currently bound texture
+    std::shared_ptr<Texture> getBoundTexture() const { return m_boundTexture; }
 
 private:
-    // Standard uniform buffer object with common matrices and parameters
+    // Super-simplified uniform buffer with just time
     struct UniformBuffer {
-        float model[4][4];  // Model matrix
-        float view[4][4];   // View matrix
-        float proj[4][4];   // Projection matrix
-        float params1[4];   // Extra parameters 1
-        float params2[4];   // Extra parameters 2
+        float time[4];  // x = total time, y = delta time, z = frame count, w = unused
     };
     
     VkShaderModule m_vertexShaderModule;
@@ -114,6 +123,9 @@ private:
     
     // Currently bound texture
     std::shared_ptr<Texture> m_boundTexture;
+    
+    // Material push constants
+    MaterialPushConstants m_materialPushConstants;
     
     // Map to store uniform values by name
     std::unordered_map<std::string, std::vector<float>> m_uniformValues;
@@ -177,6 +189,13 @@ public:
                  std::shared_ptr<Buffer> indexBuffer, size_t indexCount) override;
     void drawFullscreenQuad() override;
     
+    // Enhanced drawing method for visualizing pixels with material properties
+    void drawRectangle(float x, float y, float width, float height, float r, float g, float b);
+    
+    // Material-based rendering for pixels
+    void drawMaterialRectangle(float x, float y, float width, float height, 
+                              PixelPhys::MaterialType materialType);
+    
     void setViewport(int x, int y, int width, int height) override;
     void setClearColor(float r, float g, float b, float a) override;
     void clear() override;
@@ -197,10 +216,15 @@ public:
     VkQueue getGraphicsQueue() const { return m_graphicsQueue; }
     VkCommandPool getCommandPool() const { return m_commandPool; }
     VkRenderPass getDefaultRenderPass() const { return m_defaultRenderPass; }
+    VkExtent2D getSwapChainExtent() const { return m_swapChainExtent; }
     
     // Access to command buffers and current frame for shader uniform updates
     VkCommandBuffer getCurrentCommandBuffer() const { return m_commandBuffers[m_currentFrame]; }
     size_t getCurrentFrameIndex() const { return m_currentFrame; }
+    
+    // Screen dimensions for rendering
+    int getScreenWidth() const { return m_screenWidth; }
+    int getScreenHeight() const { return m_screenHeight; }
     
     // Memory allocation helpers
     uint32_t findMemoryType(uint32_t typeFilter, VkFlags properties);
@@ -224,6 +248,12 @@ private:
     std::vector<VkImage> m_swapChainImages;
     std::vector<VkImageView> m_swapChainImageViews;
     std::vector<VkFramebuffer> m_swapChainFramebuffers;
+    
+    // Depth resources for framebuffers
+    std::vector<VkImage> m_depthImages;
+    std::vector<VkDeviceMemory> m_depthImageMemories;
+    std::vector<VkImageView> m_depthImageViews;
+    
     VkFormat m_swapChainImageFormat;
     VkExtent2D m_swapChainExtent;
     

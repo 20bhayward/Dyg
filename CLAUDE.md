@@ -1,12 +1,13 @@
 # PixelPhys2D Development Guidelines
 
 ## Build Commands (Linux)
-- Build: `mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && cmake --build . -j$(nproc)`
-- Debug Build: `mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Debug && cmake --build . -j$(nproc)`
-- Build with Vulkan: `mkdir -p build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release -DUSE_VULKAN=ON && cmake --build . -j$(nproc)`
-- Quick rebuild: `cd build && make -j$(nproc)`
-- Run: `./build/PixelPhys2D`
-- Clean: `rm -rf build && mkdir -p build`
+- Standard build: `./build.sh`
+- Vulkan build: `./build.sh --vulkan` or `./build.sh -v`
+- Debug build: `./build.sh --debug` or `./build.sh -d`
+- Clean build: `./build.sh --clean` or `./build.sh -c`
+- Build and run: `./build.sh --run` or `./build.sh -r`
+- Combined options: `./build.sh --vulkan --debug --clean --run` 
+- See all options: `./build.sh --help`
 
 ## Build Commands (Windows)
 - Build environment: Visual Studio with C++ workload or MinGW

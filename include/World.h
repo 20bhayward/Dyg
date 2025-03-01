@@ -5,6 +5,7 @@
 #include <memory>
 #include <random>
 #include <cstdint>
+#include <iostream>
 
 namespace PixelPhys {
 
@@ -89,6 +90,9 @@ public:
     MaterialType get(int x, int y) const;
     void set(int x, int y, MaterialType material);
     
+    // Get material type for rendering with shader-based effects
+    MaterialType getMaterialAt(int x, int y) const { return get(x, y); }
+    
     // Player-related functions
     void updatePlayer(float dt);
     void updatePlayerAnimation(float dt);
@@ -128,8 +132,20 @@ public:
     void generate(unsigned int seed);
     
     // Get the raw pixel data for rendering
-    uint8_t* getPixelData() { return m_pixelData.data(); }
-    const uint8_t* getPixelData() const { return m_pixelData.data(); }
+    uint8_t* getPixelData() { 
+        if (m_pixelData.empty()) {
+            std::cout << "WARNING: World::getPixelData - pixel data array is empty!" << std::endl;
+            return nullptr;
+        }
+        return m_pixelData.data();
+    }
+    const uint8_t* getPixelData() const { 
+        if (m_pixelData.empty()) {
+            std::cout << "WARNING: World::getPixelData const - pixel data array is empty!" << std::endl;
+            return nullptr;
+        }
+        return m_pixelData.data(); 
+    }
     
 private:
     // World dimensions in pixels
