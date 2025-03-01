@@ -2,6 +2,9 @@
 #include "RenderBackend.h"
 #include "VulkanBackend.h"
 #include <iostream>
+#include <random>
+#include <cstdlib>
+#include <ctime>
 
 namespace PixelPhys {
 
@@ -67,15 +70,66 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
     endX = std::min(worldWidth, endX);
     endY = std::min(worldHeight, endY);
 
+    // Create a new hash seed every render to ensure consistency
+    std::mt19937 posRng(12345);
+
     // Render each visible pixel
     for (int y = startY; y < endY; ++y) {  // Normal iteration (world coordinates have 0 at top)
         for (int x = startX; x < endX; ++x) {
             MaterialType material = world.get(x, y);
             if (material == MaterialType::Empty) continue;
 
-            // Get material color
-            float r, g, b;
-            getMaterialColor(material, r, g, b);
+            // Get material color with position-based variations
+            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+            
+            // Create deterministic position-based hash for consistent variations
+            int hash = (x * 13 + y * 37) ^ 0x8F3A71C5;  // Simple hash function
+            int rVar = (hash % 31) - 15;   // -15 to 15 variation (more moderate)
+            int gVar = ((hash >> 8) % 31) - 15;
+            int bVar = ((hash >> 16) % 31) - 15;
+            
+            // Material-specific modifications
+            // Apply moderate variations to certain materials
+            switch (material) {
+                case MaterialType::Stone:
+                    // Make stone more gray with moderate variation
+                    rVar = gVar = bVar = (hash % 41) - 20;
+                    break;
+                case MaterialType::Grass:
+                    // Grass has moderate green variations
+                    gVar = (hash % 31) - 15;  // More green variation
+                    break;
+                case MaterialType::TopSoil:
+                case MaterialType::Dirt:
+                    // Soil has brown variation
+                    rVar = (hash % 25) - 12;
+                    gVar = ((hash >> 4) % 21) - 10;
+                    bVar = ((hash >> 8) % 17) - 8;
+                    break;
+                case MaterialType::Gravel:
+                    // Gravel has distinct texture
+                    rVar = gVar = bVar = (hash % 37) - 18;
+                    break;
+                case MaterialType::DenseRock:
+                    // Dense rock has blue-gray variations
+                    rVar = (hash % 25) - 12;
+                    gVar = (hash % 25) - 12;
+                    bVar = (hash % 33) - 16; // Slight blue tint variation
+                    break;
+                default:
+                    // Default variation is already set
+                    break;
+            }
+            
+            // Apply color variation with proper clamping
+            int rInt = std::max(0, std::min(255, int(props.r) + rVar));
+            int gInt = std::max(0, std::min(255, int(props.g) + gVar));
+            int bInt = std::max(0, std::min(255, int(props.b) + bVar));
+            
+            // Convert to float for Vulkan
+            float r = rInt / 255.0f;
+            float g = gInt / 255.0f;
+            float b = bInt / 255.0f;
 
             // Calculate screen position with zoom level applied
             float screenX = (x - startX) * pixelSize;
@@ -97,11 +151,30 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
 }
 
 void Renderer::getMaterialColor(MaterialType material, float& r, float& g, float& b) {
-    // Get material color directly from the MATERIAL_PROPERTIES table
+    // Get the raw pixel data directly from the world for the given material
+    // We need to generate random variations for each pixel based on position
+    
+    // Get base color with some variation
     const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
-    r = props.r / 255.0f;
-    g = props.g / 255.0f;
-    b = props.b / 255.0f;
+    
+    // Create variation based on random 
+    static std::mt19937 rng(12345); // Fixed seed for consistent colors
+    std::uniform_int_distribution<int> varDist(-50, 50);
+    
+    // Apply strong variation to each color component
+    int rVar = varDist(rng);
+    int gVar = varDist(rng);
+    int bVar = varDist(rng);
+    
+    // Calculate final color with variation
+    int rInt = std::max(0, std::min(255, int(props.r) + rVar));
+    int gInt = std::max(0, std::min(255, int(props.g) + gVar));
+    int bInt = std::max(0, std::min(255, int(props.b) + bVar));
+    
+    // Convert to float in range [0, 1]
+    r = rInt / 255.0f;
+    g = gInt / 255.0f;
+    b = bInt / 255.0f;
 }
 
 void Renderer::cleanup() {

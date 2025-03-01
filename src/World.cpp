@@ -285,32 +285,32 @@ void Chunk::updatePixelData() {
                 int posHash2 = ((x * 23) + (y * 17)) % 64;
                 int posHash3 = ((x * 5) + (y * 31)) % 16;
                 
-                // Different variation for each color channel - INCREASED VARIATION
-                int rVariation = (posHash1 % 35) - 17;  // Much stronger variation
-                int gVariation = (posHash2 % 31) - 15;  // Much stronger variation
-                int bVariation = (posHash3 % 27) - 13;  // Much stronger variation
+                // Different variation for each color channel - EXTREMELY STRONG VARIATION (5x normal)
+                int rVariation = ((posHash1 % 35) - 17) * 5;  // 5x stronger variation
+                int gVariation = ((posHash2 % 31) - 15) * 5;  // 5x stronger variation
+                int bVariation = ((posHash3 % 27) - 13) * 5;  // 5x stronger variation
                 
                 // Apply material-specific variation patterns
                 // Various materials have their own unique texture patterns
                 switch (material) {
                     case MaterialType::Stone:
                         // Stone has gray variations with strong texture
-                        rVariation = gVariation = bVariation = (posHash1 % 45) - 22;
+                        rVariation = gVariation = bVariation = ((posHash1 % 45) - 22) * 5;
                         // Add dark speckles
                         if (posHash2 % 5 == 0) {
-                            rVariation -= 25;
-                            gVariation -= 25;
-                            bVariation -= 25;
+                            rVariation -= 50;
+                            gVariation -= 50;
+                            bVariation -= 50;
                         }
                         break;
                     case MaterialType::Grass:
                         // Grass has strong green variations with patches
-                        gVariation = (posHash1 % 50) - 15; // Strong green variation
-                        rVariation = (posHash2 % 25) - 15; // Variation for yellowish tints
+                        gVariation = ((posHash1 % 50) - 15) * 5; // 5x stronger green variation
+                        rVariation = ((posHash2 % 25) - 15) * 5; // 5x stronger yellowish tints
                         // Add occasional darker patches
                         if (posHash1 % 3 == 0) {
-                            gVariation -= 20;
-                            rVariation -= 10;
+                            gVariation -= 60;
+                            rVariation -= 40;
                         }
                         break;
                     case MaterialType::Sand:
@@ -455,6 +455,155 @@ void Chunk::updatePixelData() {
                         rVariation = (posHash2 % 8) - 4;
                         bVariation = (posHash3 % 8) - 4;
                         break;
+                        
+                    // Ore material texture variations
+                    case MaterialType::IronOre:
+                        // Iron ore has gray-blue tints with metallic specks
+                        rVariation = gVariation = (posHash1 % 25) - 12;
+                        bVariation = (posHash1 % 30) - 12;
+                        // Add metallic highlights
+                        if (posHash2 % 4 == 0) {
+                            rVariation += 25;
+                            gVariation += 25;
+                            bVariation += 30;
+                        }
+                        break;
+                        
+                    case MaterialType::CopperOre:
+                        // Copper has orange-brown coloration with patchy texture
+                        rVariation = (posHash1 % 40) - 10;  // Strong orange-red variation
+                        gVariation = (posHash2 % 25) - 15;  // Less green variation
+                        bVariation = (posHash3 % 15) - 10;  // Minimal blue
+                        // Add verdigris tint patches
+                        if (posHash2 % 6 == 0) {
+                            rVariation -= 10;
+                            gVariation += 15;
+                            bVariation += 5;
+                        }
+                        break;
+                        
+                    case MaterialType::GoldOre:
+                        // Gold has shiny yellow with highlight sparkles
+                        rVariation = (posHash1 % 30) - 10;  // Strong yellow-red
+                        gVariation = (posHash2 % 30) - 15;  // Yellow-green
+                        bVariation = (posHash3 % 10) - 8;   // Minimal blue
+                        // Add shiny spots
+                        if (posHash2 % 4 == 0) {
+                            rVariation += 30;
+                            gVariation += 20;
+                        }
+                        break;
+                        
+                    case MaterialType::CoalOre:
+                        // Coal has dark with occasional shiny bits
+                        rVariation = gVariation = bVariation = (posHash1 % 12) - 9;  // Generally dark
+                        // Add occasional shiny anthracite highlights
+                        if (posHash2 % 7 == 0) {
+                            rVariation += 20;
+                            gVariation += 20;
+                            bVariation += 20;
+                        }
+                        break;
+                        
+                    case MaterialType::DiamondOre:
+                        // Diamond has blue-white sparkles in dark matrix
+                        rVariation = (posHash1 % 20) - 10;
+                        gVariation = (posHash2 % 25) - 10;
+                        bVariation = (posHash3 % 35) - 10;  // More blue variation
+                        // Add bright sparkles
+                        if (posHash2 % 3 == 0) {
+                            rVariation += 30;
+                            gVariation += 40;
+                            bVariation += 50;
+                        }
+                        break;
+                        
+                    case MaterialType::SilverOre:
+                        // Silver has white-gray with metallic sheen
+                        rVariation = gVariation = bVariation = (posHash1 % 30) - 15;
+                        // Add reflective highlights
+                        if (posHash2 % 5 == 0) {
+                            rVariation += 30;
+                            gVariation += 30;
+                            bVariation += 35;  // Slightly blue tint to highlights
+                        }
+                        break;
+                        
+                    case MaterialType::EmeraldOre:
+                        // Emerald has vivid green with internal facets
+                        rVariation = (posHash1 % 15) - 10;  // Little red
+                        gVariation = (posHash2 % 45) - 15;  // Strong green variation
+                        bVariation = (posHash3 % 20) - 15;  // Some blue variation
+                        // Add crystal facet highlights
+                        if (posHash2 % 6 == 0) {
+                            rVariation += 5;
+                            gVariation += 35;
+                            bVariation += 10;
+                        }
+                        break;
+                        
+                    case MaterialType::SapphireOre:
+                        // Sapphire has deep blue with lighter facets
+                        rVariation = (posHash1 % 15) - 12;  // Minimal red
+                        gVariation = (posHash2 % 20) - 15;  // Some green
+                        bVariation = (posHash3 % 50) - 15;  // Strong blue variation
+                        // Add facet highlights
+                        if (posHash2 % 5 == 0) {
+                            rVariation += 5;
+                            gVariation += 15;
+                            bVariation += 40;
+                        }
+                        break;
+                        
+                    case MaterialType::RubyOre:
+                        // Ruby has deep red with bright facets
+                        rVariation = (posHash1 % 50) - 15;  // Strong red variation
+                        gVariation = (posHash2 % 15) - 12;  // Minimal green
+                        bVariation = (posHash3 % 15) - 12;  // Minimal blue
+                        // Add facet highlights
+                        if (posHash2 % 5 == 0) {
+                            rVariation += 40;
+                            gVariation += 5;
+                            bVariation += 10;
+                        }
+                        break;
+                        
+                    case MaterialType::SulfurOre:
+                        // Sulfur has bright yellow with matrix patterns
+                        rVariation = (posHash1 % 35) - 10;  // Strong red-yellow
+                        gVariation = (posHash2 % 35) - 10;  // Strong green-yellow
+                        bVariation = (posHash3 % 10) - 8;   // Minimal blue
+                        // Add darker matrix
+                        if (posHash2 % 4 == 0) {
+                            rVariation -= 30;
+                            gVariation -= 30;
+                        }
+                        break;
+                        
+                    case MaterialType::QuartzOre:
+                        // Quartz has white-clear crystal in gray matrix
+                        rVariation = gVariation = bVariation = (posHash1 % 25) - 12;
+                        // Add bright white crystal
+                        if (posHash2 % 3 == 0) {
+                            rVariation += 35;
+                            gVariation += 35;
+                            bVariation += 35;
+                        }
+                        break;
+                        
+                    case MaterialType::UraniumOre:
+                        // Uranium has greenish glow spots in dark matrix
+                        rVariation = (posHash1 % 15) - 10;  // Limited red
+                        gVariation = (posHash2 % 40) - 15;  // Strong green variation
+                        bVariation = (posHash3 % 15) - 12;  // Limited blue
+                        // Add glowing spots
+                        if (posHash2 % 4 == 0) {
+                            rVariation += 5;
+                            gVariation += 60;  // Very bright green glow
+                            bVariation += 10;
+                        }
+                        break;
+                        
                     default:
                         // Default variation - still apply some texture for any other materials
                         rVariation = (posHash1 % 12) - 6;
@@ -625,8 +774,7 @@ float perlinNoise2D(float x, float y, unsigned int seed) {
     // Get distances from grid point
     float dx0 = x - static_cast<float>(x0);
     float dy0 = y - static_cast<float>(y0);
-    float dx1 = x - static_cast<float>(x1);
-    float dy1 = y - static_cast<float>(y1);
+    // Note: dx1 and dy1 aren't needed with our gradient function approach
 
     // Calculate gradients at grid points
     float g00 = gradient(x0, y0, x, y);
@@ -665,14 +813,366 @@ float fractalNoise(float x, float y, int octaves, float persistence, float scale
     return total / maxValue;
 }
 
-// Define biome types
-enum class BiomeType {
-    GRASSLAND,
-    DESERT,
-    MOUNTAIN,
-    SNOW,
-    JUNGLE
-};
+// BiomeType is already defined in World.h
+
+// Generate an ore vein at a specific position
+void World::generateOreVein(int startX, int startY, MaterialType oreType, int maxSize, float density, int maxRadius, BiomeType biome) {
+    // Safety checks
+    if (!isValidPosition(startX, startY)) {
+        return;
+    }
+    
+    // Limit parameters for safety
+    maxSize = std::min(maxSize, 75);  // Cap maximum vein size
+    maxRadius = std::min(maxRadius, 5); // Cap maximum radius
+    density = std::min(std::max(density, 0.1f), 0.9f); // Ensure density is between 0.1 and 0.9
+    
+    // Initialize local variables
+    int currentSize = 0;
+    int attempts = 0;
+    const int MAX_ATTEMPTS = std::min(maxSize * 3, 200); // Allow buffer for unsuccessful placements, with hard cap
+    
+    // Parameters to control vein shape
+    float branchChance = 0.15f; // Chance to start a new branch
+    float directionChangeChance = 0.3f; // Chance to change direction each step
+    
+    // Create a noise-based pattern specific to this ore type
+    // This creates a unique "signature" for each ore vein type
+    unsigned int oreTypeSeed = static_cast<unsigned int>(oreType) * 7919; // Use a prime number multiplier
+    auto oreNoiseFunc = [this, oreTypeSeed](int x, int y) -> float {
+        // Use perlin noise scaled by ore type to create a consistent pattern
+        return perlinNoise2D(x * 0.1f, y * 0.1f, oreTypeSeed);
+    };
+
+    // Define the host materials this ore can replace based on biome
+    auto canReplaceBlock = [this, biome](int x, int y) -> bool {
+        MaterialType currentBlock = get(x, y);
+        // Ores only replace stone, dense rock, and potentially sandstone (in desert)
+        if (currentBlock == MaterialType::Stone || currentBlock == MaterialType::DenseRock) {
+            return true;
+        }
+        
+        // Specific biome rules
+        if (biome == BiomeType::DESERT && currentBlock == MaterialType::Sandstone) {
+            return true;
+        }
+        
+        return false;
+    };
+
+    // We'll use a worm-like algorithm similar to cave generation but for ore veins
+    // Start several "tendrils" from the initial position, each moving outward
+    struct OrePoint {
+        int x, y;
+        int length;
+        float angle;
+        bool isActive;
+    };
+    
+    // Start with 1-3 tendrils from origin
+    std::uniform_int_distribution<int> numTendrilsDist(1, 3);
+    int numTendrils = numTendrilsDist(m_rng);
+    std::vector<OrePoint> tendrils;
+    
+    std::uniform_real_distribution<float> angleDist(0, 2 * M_PI);
+    for (int i = 0; i < numTendrils; i++) {
+        tendrils.push_back({startX, startY, 0, angleDist(m_rng), true});
+    }
+    
+    // Uniform distributions for ore placement
+    std::uniform_real_distribution<float> placementDist(0.0f, 1.0f);
+    std::uniform_int_distribution<int> radiusDist(1, maxRadius);
+    
+    // Process all active tendrils
+    while (!tendrils.empty() && currentSize < maxSize && attempts < MAX_ATTEMPTS) {
+        attempts++;
+        
+        // Process each tendril - avoid vector modification during iteration
+        std::vector<size_t> tendrilsToRemove;
+        
+        for (size_t i = 0; i < tendrils.size(); i++) {
+            if (!tendrils[i].isActive) {
+                tendrilsToRemove.push_back(i);
+                continue;
+            }
+            
+            OrePoint& tendril = tendrils[i];
+            
+            // Try to place ore at current position
+            if (canReplaceBlock(tendril.x, tendril.y)) {
+                // For this ore type, should we place ore based on density?
+                if (placementDist(m_rng) < density) {
+                    // Place ore with variable radius based on noise and tendril length
+                    // Tendrils get thinner as they extend
+                    float tendrilProgress = 0.0f;
+                    if (numTendrils > 0) {
+                        tendrilProgress = static_cast<float>(tendril.length) / (maxSize / numTendrils);
+                    }
+                    float radiusFactor = 1.0f - (tendrilProgress * 0.7f); // Taper off to 30% of original size
+                    
+                    // Use ore-specific noise pattern
+                    float noiseValue = oreNoiseFunc(tendril.x, tendril.y);
+                    // Hard cap on radius to avoid any memory issues
+                    int oreRadius = std::min(3, std::max(1, static_cast<int>(radiusDist(m_rng) * radiusFactor * (0.5f + noiseValue * 0.5f))));
+                    
+                    // Apply different placement patterns for different ore types
+                    // This creates unique vein shapes for each ore
+                    switch (oreType) {
+                        case MaterialType::GoldOre:
+                        case MaterialType::DiamondOre:
+                            // Rare ores appear in smaller, more concentrated pockets
+                            placeOreCluster(tendril.x, tendril.y, oreType, oreRadius / 2, 0.8f);
+                            break;
+                        case MaterialType::IronOre:
+                        case MaterialType::CopperOre:
+                        case MaterialType::CoalOre:
+                            // Common ores appear in larger, more spread out veins
+                            placeOreCluster(tendril.x, tendril.y, oreType, oreRadius, 0.6f);
+                            break;
+                        case MaterialType::EmeraldOre:
+                        case MaterialType::SapphireOre:
+                        case MaterialType::RubyOre:
+                            // Gem ores appear in crystalline formations - more angular
+                            placeOreCrystal(tendril.x, tendril.y, oreType, oreRadius);
+                            break;
+                        case MaterialType::SulfurOre:
+                            // Sulfur appears in bubbly, irregular patterns - limit radius for safety
+                            placeOreCluster(tendril.x, tendril.y, oreType, std::min(oreRadius, 3), 0.65f);
+                            break;
+                        case MaterialType::QuartzOre:
+                            // Quartz forms in long, thin veins
+                            placeOreVeinSegment(tendril.x, tendril.y, oreType, oreRadius, tendril.angle);
+                            break;
+                        case MaterialType::UraniumOre:
+                            // Uranium forms in small, isolated deposits
+                            placeOreCluster(tendril.x, tendril.y, oreType, oreRadius / 3, 0.9f);
+                            break;
+                        default:
+                            // Generic pattern for any other ores
+                            placeOreCluster(tendril.x, tendril.y, oreType, oreRadius, 0.7f);
+                            break;
+                    }
+                    
+                    currentSize++;
+                }
+            }
+            
+            // Chance to branch
+            if (placementDist(m_rng) < branchChance && tendrils.size() < 10) { // Limit branches
+                // Create a new branch at an angle from current tendril
+                float branchAngle = tendril.angle + (placementDist(m_rng) * 2 - 1) * M_PI * 0.5f;
+                tendrils.push_back({tendril.x, tendril.y, 0, branchAngle, true});
+            }
+            
+            // Chance to change direction
+            if (placementDist(m_rng) < directionChangeChance) {
+                // Change angle slightly
+                tendril.angle += (placementDist(m_rng) * 2 - 1) * 0.5f;
+            }
+            
+            // Move forward
+            tendril.x += static_cast<int>(cos(tendril.angle) * 1.5f);
+            tendril.y += static_cast<int>(sin(tendril.angle) * 1.5f);
+            tendril.length++;
+            
+            // Check bounds
+            if (tendril.x < 0 || tendril.x >= m_width || 
+                tendril.y < 0 || tendril.y >= m_height || 
+                (numTendrils > 0 && tendril.length > maxSize / numTendrils)) {
+                tendril.isActive = false;
+                tendrilsToRemove.push_back(i);
+            }
+        }
+        
+        // Simplify by using the standard algorithm
+        tendrils.erase(
+            std::remove_if(tendrils.begin(), tendrils.end(),
+                [](const OrePoint& p) { return !p.isActive; }),
+            tendrils.end()
+        );
+    }
+}
+
+// Helper methods for different ore placement patterns
+void World::placeOreCluster(int centerX, int centerY, MaterialType oreType, int radius, float density) {
+    std::uniform_real_distribution<float> placementDist(0.0f, 1.0f);
+    
+    // Limit radius for safety
+    radius = std::min(radius, 8);
+    
+    // Skip if center is out of bounds
+    if (!isValidPosition(centerX, centerY)) {
+        return;
+    }
+    
+    for (int y = centerY - radius; y <= centerY + radius; y++) {
+        for (int x = centerX - radius; x <= centerX + radius; x++) {
+            // Safety check for position validity first
+            if (!isValidPosition(x, y)) {
+                continue;
+            }
+            
+            // Calculate distance from center (elliptical to create more natural shapes)
+            float dx = (x - centerX) / static_cast<float>(radius);
+            float dy = (y - centerY) / static_cast<float>(radius);
+            float distSq = dx * dx + dy * dy;
+            
+            // Create circular/elliptical shapes with noise
+            if (distSq <= 1.0f) {
+                // Add noise to edge
+                float edgeNoise = perlinNoise2D(x * 0.8f, y * 0.8f, static_cast<unsigned int>(oreType));
+                // Scale with distance from center - more likely to place near center
+                float placementChance = density * (1.0f - distSq * 0.7f) * (0.7f + edgeNoise * 0.3f);
+                
+                if (placementDist(m_rng) < placementChance) {
+                    // Double-check valid position (essential for safety)
+                    MaterialType currentBlock = get(x, y);
+                    if (currentBlock == MaterialType::Stone || 
+                        currentBlock == MaterialType::DenseRock || 
+                        currentBlock == MaterialType::Sandstone) {
+                        set(x, y, oreType);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void World::placeOreCrystal(int centerX, int centerY, MaterialType oreType, int size) {
+    // Generate a crystalline pattern - more angular and structured than a typical cluster
+    std::uniform_real_distribution<float> noiseDist(0.0f, 1.0f);
+    std::uniform_int_distribution<int> dirDist(0, 7); // 8 directions
+    
+    // Limit size for safety
+    size = std::min(size, 6);
+    
+    // Skip if center is out of bounds
+    if (!isValidPosition(centerX, centerY)) {
+        return;
+    }
+    
+    // Crystal axes - create a few dominant growth directions
+    const int numAxes = 3 + (m_rng() % 2); // 3-4 crystal axes (reduced from 3-5)
+    std::vector<std::pair<float, float>> axes;
+    
+    for (int i = 0; i < numAxes; i++) {
+        float angle = (m_rng() % 360) * M_PI / 180.0f;
+        axes.push_back({cos(angle), sin(angle)});
+    }
+    
+    for (int y = centerY - size; y <= centerY + size; y++) {
+        for (int x = centerX - size; x <= centerX + size; x++) {
+            // Safety check for position validity first
+            if (!isValidPosition(x, y)) {
+                continue;
+            }
+            
+            MaterialType currentBlock = get(x, y);
+            if (currentBlock != MaterialType::Stone && 
+                currentBlock != MaterialType::DenseRock && 
+                currentBlock != MaterialType::Sandstone) {
+                continue;
+            }
+            
+            // Calculate distance from any axis
+            float minAxisDist = 999.0f;
+            for (const auto& axis : axes) {
+                // Project point onto axis
+                float dx = x - centerX;
+                float dy = y - centerY;
+                float dot = dx * axis.first + dy * axis.second;
+                float projX = centerX + dot * axis.first;
+                float projY = centerY + dot * axis.second;
+                
+                // Distance from point to its projection on the axis
+                float distToAxis = sqrt((x - projX) * (x - projX) + (y - projY) * (y - projY));
+                
+                // Distance along the axis from center
+                float distAlongAxis = sqrt((projX - centerX) * (projX - centerX) + 
+                                          (projY - centerY) * (projY - centerY));
+                
+                // Crystals taper at ends
+                float axisLength = size * (0.7f + noiseDist(m_rng) * 0.3f);
+                if (distAlongAxis < axisLength) {
+                    // Closer to center = thicker crystal
+                    float allowedWidth = (1.0f - distAlongAxis / axisLength) * size * 0.3f;
+                    minAxisDist = std::min(minAxisDist, distToAxis / allowedWidth);
+                }
+            }
+            
+            // If close enough to any axis, place crystal
+            if (minAxisDist < 1.0f) {
+                set(x, y, oreType);
+            }
+        }
+    }
+}
+
+void World::placeOreVeinSegment(int centerX, int centerY, MaterialType oreType, int radius, float angle) {
+    // Place ore in a streak/vein pattern along the specified angle
+    std::uniform_real_distribution<float> noiseDist(0.0f, 1.0f);
+    
+    // Limit radius for safety
+    radius = std::min(radius, 5);
+    
+    // Skip if center is out of bounds
+    if (!isValidPosition(centerX, centerY)) {
+        return;
+    }
+    
+    // Direction vector
+    float dx = cos(angle);
+    float dy = sin(angle);
+    
+    // Create a streak shape, with limited length
+    int length = std::min(radius * 2, 8);
+    
+    for (int i = -length; i <= length; i++) {
+        int x = centerX + static_cast<int>(i * dx);
+        int y = centerY + static_cast<int>(i * dy);
+        
+        // Safety check for position validity
+        if (!isValidPosition(x, y)) {
+            continue;
+        }
+        
+        MaterialType currentBlock = get(x, y);
+        if (currentBlock != MaterialType::Stone && 
+            currentBlock != MaterialType::DenseRock && 
+            currentBlock != MaterialType::Sandstone) {
+            continue;
+        }
+        
+        // Thickness decreases away from center
+        float distFactor = 1.0f - fabs(i) / static_cast<float>(length);
+        int thickness = std::max(1, std::min(3, static_cast<int>(radius * distFactor))); // Limit thickness to 3 for safety
+        
+        // Add perpendicular thickness
+        for (int j = -thickness; j <= thickness; j++) {
+            int px = x + static_cast<int>(j * dy); // Perpendicular using swapped and negated direction
+            int py = y - static_cast<int>(j * dx);
+            
+            if (!isValidPosition(px, py)) continue;
+            
+            // Check perpendicular distance
+            float perpDist = fabs(j) / static_cast<float>(thickness);
+            if (perpDist <= 1.0f && noiseDist(m_rng) < (1.0f - perpDist)) {
+                // Make sure we're replacing appropriate blocks
+                MaterialType block = get(px, py);
+                if (block == MaterialType::Stone || 
+                    block == MaterialType::DenseRock || 
+                    block == MaterialType::Sandstone) {
+                    set(px, py, oreType);
+                }
+            }
+        }
+    }
+}
+
+// Helper to check if position is valid
+bool World::isValidPosition(int x, int y) const {
+    return x >= 0 && x < m_width && y >= 0 && y < m_height;
+}
 
 void World::generate(unsigned int seed) {
     // Seed the RNG
@@ -1075,6 +1575,133 @@ void World::generate(unsigned int seed) {
     }
     
     std::cout << "Enhanced terrain generation complete." << std::endl;
+    
+    // Step 5: Generate ore deposits
+    std::cout << "Generating ore deposits..." << std::endl;
+    
+    // We'll use the biome map from before to place biome-specific ores
+    // But first, set basic rules for ore depth distribution
+    
+    // Define depth levels for easier reference
+    const int SHALLOW_DEPTH = static_cast<int>(WORLD_HEIGHT * 0.3f);  // Upper 30% of world
+    const int MEDIUM_DEPTH = static_cast<int>(WORLD_HEIGHT * 0.5f);   // Middle
+    const int DEEP_DEPTH = static_cast<int>(WORLD_HEIGHT * 0.7f);     // Lower 30%
+    const int DEEPEST_DEPTH = static_cast<int>(WORLD_HEIGHT * 0.9f);  // Bottom 10%
+    
+    // Parameters for each ore type - this controls vein size and frequency
+    struct OreParams {
+        MaterialType type;
+        int minDepth;       // Minimum depth where this ore appears
+        int maxDepth;       // Maximum depth where this ore appears
+        int minSize;        // Minimum size of ore vein
+        int maxSize;        // Maximum size of ore vein
+        float density;      // Density of ore placement (0-1)
+        int maxRadius;      // Maximum radius of ore clusters
+        float probability;  // Probability for vein to appear (0-1)
+        BiomeType primaryBiome; // Primary biome where this appears (if biome-specific)
+        bool isCommon;      // True if appears in all biomes, false if biome-specific
+    };
+    
+    // Define ore generation parameters
+    std::vector<OreParams> oreTypes = {
+        // Common ores found in all biomes
+        {MaterialType::CoalOre, 0, DEEP_DEPTH, 30, 100, 0.7f, 3, 0.8f, BiomeType::GRASSLAND, true},
+        {MaterialType::IronOre, SHALLOW_DEPTH, DEEPEST_DEPTH, 40, 120, 0.6f, 3, 0.7f, BiomeType::GRASSLAND, true},
+        {MaterialType::CopperOre, SHALLOW_DEPTH, DEEP_DEPTH, 35, 100, 0.6f, 3, 0.65f, BiomeType::GRASSLAND, true},
+        {MaterialType::QuartzOre, MEDIUM_DEPTH, DEEPEST_DEPTH, 15, 50, 0.5f, 2, 0.5f, BiomeType::GRASSLAND, true},
+        
+        // Uncommon ores, deeper, found in all biomes
+        {MaterialType::SilverOre, MEDIUM_DEPTH, DEEPEST_DEPTH, 20, 70, 0.6f, 2, 0.4f, BiomeType::GRASSLAND, true},
+        {MaterialType::GoldOre, DEEP_DEPTH, DEEPEST_DEPTH, 10, 50, 0.8f, 2, 0.25f, BiomeType::GRASSLAND, true},
+        
+        // Rare ores, deepest layers
+        {MaterialType::DiamondOre, DEEP_DEPTH, DEEPEST_DEPTH, 5, 30, 0.9f, 2, 0.15f, BiomeType::GRASSLAND, true},
+        {MaterialType::UraniumOre, DEEPEST_DEPTH, WORLD_HEIGHT, 3, 20, 0.9f, 1, 0.1f, BiomeType::GRASSLAND, true},
+        
+        // Biome-specific ores
+        {MaterialType::EmeraldOre, MEDIUM_DEPTH, DEEPEST_DEPTH, 5, 40, 0.7f, 2, 0.3f, BiomeType::JUNGLE, false},
+        {MaterialType::SapphireOre, MEDIUM_DEPTH, DEEPEST_DEPTH, 5, 40, 0.7f, 2, 0.3f, BiomeType::SNOW, false},
+        {MaterialType::RubyOre, DEEP_DEPTH, DEEPEST_DEPTH, 5, 40, 0.7f, 2, 0.3f, BiomeType::MOUNTAIN, false},
+        {MaterialType::SulfurOre, SHALLOW_DEPTH, MEDIUM_DEPTH, 5, 15, 0.6f, 2, 0.3f, BiomeType::DESERT, false} // Reduced parameters for safety
+    };
+    
+    // Uniform distribution for probability checks
+    std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
+    
+    // Place ore veins throughout the world
+    for (const auto& ore : oreTypes) {
+        // Determine how many veins to place - scale down for performance
+        int numVeins = static_cast<int>(sqrt(WORLD_WIDTH * WORLD_HEIGHT) * ore.probability * 0.005f);
+        
+        // Increase the number of veins for common ores, but keep within reasonable limits
+        if (ore.isCommon) {
+            numVeins = static_cast<int>(numVeins * 1.2f);
+        }
+        
+        // Limit the maximum number of veins to avoid performance issues
+        numVeins = std::min(numVeins, 10); // Even more conservative to avoid memory issues
+        
+        std::cout << "Placing " << numVeins << " veins of ore type " << static_cast<int>(ore.type) << std::endl;
+        
+        // Place each vein
+        for (int i = 0; i < numVeins; i++) {
+            // Uniform distributions for placement position
+            std::uniform_int_distribution<int> xDist(0, WORLD_WIDTH - 1);
+            std::uniform_int_distribution<int> yDist(ore.minDepth, ore.maxDepth);
+            std::uniform_int_distribution<int> sizeDist(ore.minSize, ore.maxSize);
+            
+            // Generate position, validate and place
+            int veinX = xDist(m_rng);
+            int veinY = yDist(m_rng);
+            
+            // Determine the biome at this x position
+            BiomeType biome = biomeMap[veinX];
+            
+            // Check if this ore belongs in this biome
+            if (!ore.isCommon && biome != ore.primaryBiome) {
+                // Skip if this is a biome-specific ore and we're in the wrong biome
+                continue;
+            }
+            
+            // For common ores, still add some randomness to avoid placing all ores everywhere
+            if (ore.isCommon && probDist(m_rng) > 0.7f) {
+                continue;
+            }
+            
+            // Make sure we're in a valid position (inside stone or similar)
+            MaterialType blockAtPos = get(veinX, veinY);
+            if (blockAtPos != MaterialType::Stone && 
+                blockAtPos != MaterialType::DenseRock && 
+                (biome != BiomeType::DESERT || blockAtPos != MaterialType::Sandstone)) {
+                // Try again a few times at different depths
+                for (int retry = 0; retry < 3; retry++) {
+                    veinY = yDist(m_rng);
+                    blockAtPos = get(veinX, veinY);
+                    if (blockAtPos == MaterialType::Stone || 
+                        blockAtPos == MaterialType::DenseRock || 
+                        (biome == BiomeType::DESERT && blockAtPos == MaterialType::Sandstone)) {
+                        break;
+                    }
+                }
+                // If still not in valid material, skip this vein
+                if (blockAtPos != MaterialType::Stone && 
+                    blockAtPos != MaterialType::DenseRock && 
+                    (biome != BiomeType::DESERT || blockAtPos != MaterialType::Sandstone)) {
+                    continue;
+                }
+            }
+            
+            // Randomize vein size within min-max range, but with a hard cap
+            int veinSize = std::min(sizeDist(m_rng), 50);
+            
+            // Generate the ore vein at this position with additional safety checks
+            if (isValidPosition(veinX, veinY)) {
+                generateOreVein(veinX, veinY, ore.type, veinSize, ore.density, std::min(ore.maxRadius, 4), biome);
+            }
+        }
+    }
+    
+    std::cout << "Ore generation complete." << std::endl;
     
     // Update pixel data
     updatePixelData();

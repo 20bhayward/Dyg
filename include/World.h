@@ -9,6 +9,15 @@
 
 namespace PixelPhys {
 
+// Define biome types for ore generation and world generation
+enum class BiomeType {
+    GRASSLAND,
+    DESERT,
+    MOUNTAIN,
+    SNOW,
+    JUNGLE
+};
+
 // A chunk is a fixed-size part of the world
 // Using a chunk-based approach allows easier multithreading and memory management
 class Chunk {
@@ -154,6 +163,13 @@ private:
     
     // World generation helper functions
     void generateTerrain();
+    
+    // Ore generation helper functions
+    void generateOreVein(int startX, int startY, MaterialType oreType, int maxSize, float density, int maxRadius, BiomeType biome = BiomeType::GRASSLAND);
+    void placeOreCluster(int centerX, int centerY, MaterialType oreType, int radius, float density);
+    void placeOreCrystal(int centerX, int centerY, MaterialType oreType, int size);
+    void placeOreVeinSegment(int centerX, int centerY, MaterialType oreType, int radius, float angle);
+    bool isValidPosition(int x, int y) const;
 };
 
 } // namespace PixelPhys
