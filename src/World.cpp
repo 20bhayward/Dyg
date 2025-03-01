@@ -812,12 +812,12 @@ void World::generate(unsigned int seed) {
     int octaves = 4;
     float persistence = 0.5f;
     
-    // Biome noise
-    float biomeNoiseScale = 0.0005f;
+    // Biome noise - use moderate frequency for reasonable variation
+    float biomeNoiseScale = 0.001f;
     
-    // Transition width
-    // Making transitions wider for more natural erosion patterns
-    const int transitionWidth = WORLD_WIDTH / 20; // Wider transition zone (5% of world width)
+    // Transition width - use moderate width for cleaner transitions
+    // Using about 10% of world width for transition zones
+    const int transitionWidth = WORLD_WIDTH / 10;
     
     // Clear the world first with empty space
     for (int x = 0; x < WORLD_WIDTH; ++x) {
@@ -829,7 +829,7 @@ void World::generate(unsigned int seed) {
     // Step 1: Generate heightmap using Perlin noise
     std::vector<int> heightMap(WORLD_WIDTH);
     
-    // Define biome regions for height generation
+    // Define biome regions - keep them simple with exact thirds of the world
     const int desertEndX = WORLD_WIDTH / 3;
     const int grasslandEndX = 2 * WORLD_WIDTH / 3;
     
@@ -907,10 +907,17 @@ void World::generate(unsigned int seed) {
             
             // Create a smoother slope up to mountains
             // Use t^2 to make it start slow then rise more rapidly
-            float mountainFactor = t * t;
+            // Use a more complex transition curve for mountains - starts very gradual, then steepens
+            // This creates foothills that slowly build to mountains
+            float mountainFactor = t * t * (3.0f - 2.0f * t); // Cubic easing
             
+            // Further modulate with noise for uneven, natural mountain ranges
+            float mountainNoise = perlinNoise2D(x * 0.01f, 0.0f, seed + 567) * 0.4f + 0.8f;
+            mountainFactor = std::pow(mountainFactor, 0.8f) * mountainNoise;
+            
+            // Apply to all mountain parameters for consistent transition
             currentNoiseScale = grasslandNoiseScale * (1.0f - mountainFactor) + mountainNoiseScale * mountainFactor;
-            heightScale = grasslandHeightScale * (1.0f - mountainFactor) + mountainHeightScale * mountainFactor;
+            heightScale = grasslandHeightScale * (1.0f - mountainFactor) + mountainHeightScale * mountainFactor * 1.2f; // Boost mountain height
             baseHeight = grasslandBaseHeight * (1.0f - mountainFactor) + mountainBaseHeight * mountainFactor;
         }
         else {
@@ -965,7 +972,13 @@ void World::generate(unsigned int seed) {
             float localErosion = erosionFactor[x] * (0.8f + 0.4f * erosionNoise);
             
             // Adjust threshold based on erosion to create patches of mixed biomes
-            float threshold = -0.5f + t + (localErosion - 1.0f) * 0.3f;
+            // Simple transition with minimal noise to create cleaner borders
+            // Use just enough noise to avoid perfectly straight lines
+            float blendingNoise = perlinNoise2D(x * 0.01f, 0.0f, seed + 345) * 0.3f;
+            
+            // Simple threshold with minimal noise factors for cleaner transitions
+            float threshold = -0.2f + t + (localErosion - 1.0f) * 0.2f + blendingNoise;
+            
             baseBiome = (biomeNoise < threshold) ? BiomeType::DESERT : BiomeType::GRASSLAND;
         }
         else if (x < grasslandEndX - transitionWidth) {
@@ -979,7 +992,11 @@ void World::generate(unsigned int seed) {
             
             // Use a gradual threshold that favors foothills first
             float mountainAmount = t * t; // Squared to increase mountain presence toward the end
-            float threshold = -0.5f + mountainAmount;
+            // Use simpler transition for mountains too
+            float mtnNoise = perlinNoise2D(x * 0.015f, 0.0f, seed + 890) * 0.25f;
+            
+            // Simpler threshold with minimal noise sources - creates cleaner mountain border
+            float threshold = -0.2f + mountainAmount * 0.7f + mtnNoise;
             baseBiome = (biomeNoise < threshold) ? BiomeType::GRASSLAND : BiomeType::MOUNTAIN;
         }
         else {
@@ -1056,14 +1073,14 @@ void World::generate(unsigned int seed) {
                 switch (biome) {
                     case BiomeType::DESERT: {
                         // Desert layering: Sand → Sandstone → Stone → Dense Rock
-                        if (depth < 8) {
-                            set(x, y, MaterialType::Sand); // Top sand layer
+                        if (depth < 12) {
+                            set(x, y, MaterialType::Sand); // Top sand layer - thicker
                         } 
-                        else if (depth < 25) {
-                            set(x, y, MaterialType::Sandstone); // Sandstone layer
+                        else if (depth < 45) {
+                            set(x, y, MaterialType::Sandstone); // Sandstone layer - much thicker
                         } 
-                        else if (depth < 60) {
-                            set(x, y, MaterialType::Stone); // Deep stone
+                        else if (depth < 75) {
+                            set(x, y, MaterialType::Stone); // Deep stone - thicker
                         } 
                         else if (y > 0.85 * WORLD_HEIGHT) {
                             set(x, y, MaterialType::Bedrock); // Bottom layer
@@ -1083,11 +1100,11 @@ void World::generate(unsigned int seed) {
                         else if (depth < 5) {
                             set(x, y, MaterialType::TopSoil); // Rich topsoil
                         } 
-                        else if (depth < 20) {
+                        else if (depth < 15) {
                             set(x, y, MaterialType::Dirt); // Dirt layer
                         } 
-                        else if (depth < 50) {
-                            set(x, y, MaterialType::Stone); // Stone layer 
+                        else if (depth < 70) {
+                            set(x, y, MaterialType::Stone); // Stone layer - much thicker
                         }
                         else if (y > 0.85 * WORLD_HEIGHT) {
                             set(x, y, MaterialType::Bedrock); // Bottom layer
@@ -1103,14 +1120,14 @@ void World::generate(unsigned int seed) {
                         if (terrainHeight < WORLD_HEIGHT * 0.3f && depth < 5) {
                             set(x, y, MaterialType::Snow); // Snow cap on highest mountains
                         }
-                        else if (depth < 15) {
-                            set(x, y, MaterialType::Stone); // Upper mountain rock
+                        else if (depth < 20) {
+                            set(x, y, MaterialType::Stone); // Upper mountain rock - thicker
                         }
-                        else if (depth < 25) {
-                            set(x, y, MaterialType::Gravel); // Gravel layer
+                        else if (depth < 30) {
+                            set(x, y, MaterialType::Gravel); // Gravel layer - thicker
                         }
-                        else if (depth < 45) {
-                            set(x, y, MaterialType::Stone); // Middle layer stone
+                        else if (depth < 75) {
+                            set(x, y, MaterialType::Stone); // Middle layer stone - much thicker
                         }
                         else if (y > 0.85 * WORLD_HEIGHT) {
                             set(x, y, MaterialType::Bedrock); // Bottom layer
@@ -1205,6 +1222,214 @@ void World::generate(unsigned int seed) {
     // Step 5: Generate ore deposits
     std::cout << "Generating ore deposits..." << std::endl;
     
+    // Create ore distribution based on biome types
+    struct OrePlacement {
+        MaterialType oreType;
+        float frequency;  // How common the ore is (higher = more common)
+        int minDepth;     // Minimum depth from surface (0 = at surface)
+        int maxDepth;     // Maximum depth (WORLD_HEIGHT = all the way to bottom)
+        int minVeinSize;  // Minimum vein size
+        int maxVeinSize;  // Maximum vein size
+        float density;    // Ore density within veins (0-1)
+        int maxRadius;    // Maximum radius for ore clusters
+        BiomeType preferredBiome; // Biome where this ore is most common (optional)
+    };
+    
+    std::vector<OrePlacement> oreTypes = {
+        // Common ores found in all biomes
+        {MaterialType::CoalOre,     0.7f,  10, WORLD_HEIGHT, 8,  20, 0.7f, 2, BiomeType::GRASSLAND},
+        {MaterialType::IronOre,     0.5f,  15, WORLD_HEIGHT, 5,  15, 0.6f, 2, BiomeType::MOUNTAIN},
+        {MaterialType::CopperOre,   0.5f,  10, WORLD_HEIGHT, 5,  15, 0.6f, 2, BiomeType::JUNGLE},
+        
+        // Mid-tier ores
+        {MaterialType::SilverOre,   0.3f,  30, WORLD_HEIGHT, 4,  12, 0.5f, 2, BiomeType::SNOW},
+        {MaterialType::GoldOre,     0.2f,  40, WORLD_HEIGHT, 3,  10, 0.4f, 2, BiomeType::DESERT},
+        
+        // Rare gems with biome preference
+        {MaterialType::EmeraldOre,  0.15f, 50, WORLD_HEIGHT, 3,  8,  0.3f, 1, BiomeType::JUNGLE},
+        {MaterialType::SapphireOre, 0.15f, 50, WORLD_HEIGHT, 3,  8,  0.3f, 1, BiomeType::SNOW},
+        {MaterialType::RubyOre,     0.15f, 50, WORLD_HEIGHT, 3,  8,  0.3f, 1, BiomeType::MOUNTAIN},
+        
+        // Biome-specific ores
+        {MaterialType::SulfurOre,   0.25f, 30, WORLD_HEIGHT, 4,  12, 0.5f, 2, BiomeType::DESERT},
+        {MaterialType::QuartzOre,   0.4f,  20, WORLD_HEIGHT, 5,  15, 0.6f, 2, BiomeType::MOUNTAIN},
+        
+        // Super rare deposits
+        {MaterialType::DiamondOre,  0.08f, 70, WORLD_HEIGHT, 2,  6,  0.2f, 1, BiomeType::MOUNTAIN},
+        {MaterialType::UraniumOre,  0.06f, 80, WORLD_HEIGHT, 2,  5,  0.2f, 1, BiomeType::DESERT}
+    };
+    
+    // For each ore type, generate multiple veins throughout the world
+    std::cout << "Generating ore veins..." << std::endl;
+    
+    // Increased ore amount for better visibility
+    int totalOreVeins = 3500; // Even more ore veins
+    int smallVeins = 1500;    // Additional small veins to fill in gaps
+    
+    for (int i = 0; i < totalOreVeins; i++) {
+        // Select a random ore type from our list
+        const OrePlacement& ore = oreTypes[m_rng() % oreTypes.size()];
+        
+        // Random position in the world
+        int x = m_rng() % WORLD_WIDTH;
+        int y = m_rng() % WORLD_HEIGHT;
+        
+        // Skip positions too close to the surface
+        int minDepth = 15; // Minimum depth from surface to generate ores
+        
+        // Find surface at this x position
+        int surfaceY = 0;
+        for (int sy = 0; sy < WORLD_HEIGHT; sy++) {
+            MaterialType material = get(x, sy);
+            if (material != MaterialType::Empty) {
+                surfaceY = sy;
+                break;
+            }
+        }
+        
+        // Check depth
+        int depth = y - surfaceY;
+        if (depth < minDepth || y >= WORLD_HEIGHT - 10) {
+            continue; // Too close to surface or bottom
+        }
+        
+        // Determine biome based on surface and use for ore preference
+        BiomeType localBiome = BiomeType::GRASSLAND; // Default
+        MaterialType surfaceMaterial = get(x, surfaceY);
+        
+        if (surfaceMaterial == MaterialType::Sand) {
+            localBiome = BiomeType::DESERT;
+        } else if (surfaceMaterial == MaterialType::Snow) {
+            localBiome = BiomeType::SNOW;
+        } else if (surfaceMaterial == MaterialType::Stone) {
+            localBiome = BiomeType::MOUNTAIN;
+        } else if (surfaceMaterial == MaterialType::Grass) {
+            // Check for jungle vs grassland
+            float jungleNoise = perlinNoise2D(x * 0.01f, y * 0.01f, seed + 888);
+            localBiome = (jungleNoise > 0.4f) ? BiomeType::JUNGLE : BiomeType::GRASSLAND;
+        }
+        
+        // Adjust generation chance based on biome preference
+        float chance = 1.0f;
+        if (localBiome == ore.preferredBiome) {
+            chance = 1.5f; // Higher chance in preferred biome
+        } else {
+            chance = 0.5f; // Lower chance elsewhere
+        }
+        
+        // Apply depth-based chance adjustment
+        if (y > WORLD_HEIGHT * 0.7f) { // Deeper = more rare ores
+            // Deep area - favor rare ores
+            if (ore.oreType == MaterialType::DiamondOre || 
+                ore.oreType == MaterialType::UraniumOre ||
+                ore.oreType == MaterialType::GoldOre) {
+                chance *= 2.0f;
+            }
+        } else if (y < WORLD_HEIGHT * 0.4f) {
+            // Upper area - favor common ores
+            if (ore.oreType == MaterialType::CoalOre || 
+                ore.oreType == MaterialType::IronOre ||
+                ore.oreType == MaterialType::CopperOre) {
+                chance *= 2.0f;
+            }
+        }
+        
+        // Final check if we should generate this vein
+        if (static_cast<float>(m_rng()) / m_rng.max() < chance * ore.frequency * 5.0f) { // Multiplied by 5 for more ore
+            // Check if position is valid for ore placement
+            if (isValidPositionForOre(x, y)) {
+                // Significantly larger vein size for better visibility
+                int veinSize = std::max(15, ore.minVeinSize * 3) + m_rng() % (ore.maxVeinSize * 3 - ore.minVeinSize * 3 + 10);
+                
+                // Generate the ore vein with boosted density and larger radius
+                float adjustedDensity = std::min(1.0f, ore.density * 1.8f); // Higher density
+                int adjustedRadius = ore.maxRadius * 3; // Triple the radius
+                
+                std::cout << "Generating " << static_cast<int>(ore.oreType) << " vein at " << x << "," << y 
+                         << " (size: " << veinSize << ", biome: " << static_cast<int>(localBiome) << ")" << std::endl;
+                
+                generateOreVein(x, y, ore.oreType, veinSize, adjustedDensity, adjustedRadius, localBiome);
+            }
+        }
+    }
+    
+    // Generate additional small ore veins to fill in gaps
+    std::cout << "Generating small ore veins..." << std::endl;
+    
+    for (int i = 0; i < smallVeins; i++) {
+        // Select a random ore type from our list
+        const OrePlacement& ore = oreTypes[m_rng() % oreTypes.size()];
+        
+        // Random position in the world
+        int x = m_rng() % WORLD_WIDTH;
+        int y = m_rng() % WORLD_HEIGHT;
+        
+        // Skip positions too close to the surface
+        int minDepth = 8; // Smaller minimum depth for small veins
+        
+        // Find surface at this x position
+        int surfaceY = 0;
+        for (int sy = 0; sy < WORLD_HEIGHT; sy++) {
+            MaterialType material = get(x, sy);
+            if (material != MaterialType::Empty) {
+                surfaceY = sy;
+                break;
+            }
+        }
+        
+        // Check depth
+        int depth = y - surfaceY;
+        if (depth < minDepth || y >= WORLD_HEIGHT - 10) {
+            continue; // Too close to surface or bottom
+        }
+        
+        // Determine biome based on surface (for future use if needed)
+        // We keep this code even though it's currently unused
+        MaterialType surfaceMaterial = get(x, surfaceY);
+        
+        // Check if position is valid for ore placement
+        if (isValidPositionForOre(x, y)) {
+            // Small vein size (2-8)
+            int veinSize = 2 + (m_rng() % 7);
+            
+            // Density is high for these small veins
+            float adjustedDensity = std::min(1.0f, ore.density * 2.0f);
+            
+            // Small radius (1-3)
+            int radius = 1 + (m_rng() % 3);
+            
+            // Generate the ore vein with completely random starting angle
+            float randomAngle = static_cast<float>(m_rng() % 1000) / 1000.0f * 2.0f * 3.14159f;
+            
+            // Place a small cluster directly
+            placeOreCluster(x, y, ore.oreType, radius, adjustedDensity);
+            
+            // Create short random vein from the cluster
+            for (int step = 0; step < veinSize; step++) {
+                // Randomize direction completely for each step to avoid directional bias
+                randomAngle = static_cast<float>(m_rng() % 1000) / 1000.0f * 2.0f * 3.14159f;
+                
+                int dx = static_cast<int>(std::cos(randomAngle) + 0.5f);
+                int dy = static_cast<int>(std::sin(randomAngle) + 0.5f);
+                
+                // Ensure movement
+                if (dx == 0 && dy == 0) {
+                    dx = m_rng() % 3 - 1;
+                    dy = (dx == 0) ? (m_rng() % 2 ? 1 : -1) : (m_rng() % 3 - 1);
+                }
+                
+                x += dx;
+                y += dy;
+                
+                if (isValidPositionForOre(x, y)) {
+                    placeOreCluster(x, y, ore.oreType, radius, adjustedDensity);
+                }
+            }
+        }
+    }
+    
+    std::cout << "Ore generation complete." << std::endl;
+    
     // Update pixel data
     updatePixelData();
 }
@@ -1232,6 +1457,379 @@ void World::worldToChunkCoords(int worldX, int worldY, int& chunkX, int& chunkY,
     chunkY = worldY / Chunk::HEIGHT;
     localX = worldX % Chunk::WIDTH;
     localY = worldY % Chunk::HEIGHT;
+}
+
+bool World::isValidPosition(int x, int y) const {
+    return (x >= 0 && x < m_width && y >= 0 && y < m_height);
+}
+
+bool World::isValidPositionForOre(int x, int y) const {
+    if (!isValidPosition(x, y)) {
+        return false;
+    }
+    
+    // Check if the material at this position is suitable for ore replacement
+    MaterialType material = get(x, y);
+    
+    // Suitable host rocks for ores
+    return (material == MaterialType::Stone || 
+            material == MaterialType::DenseRock || 
+            material == MaterialType::Sandstone);
+}
+
+void World::generateOreVein(int startX, int startY, MaterialType oreType, int maxSize, float density, int maxRadius, BiomeType biome) {
+    // Drunkard's walk algorithm for ore generation
+    int x = startX;
+    int y = startY;
+    
+    // Skip if starting position is invalid
+    if (!isValidPositionForOre(x, y)) {
+        return;
+    }
+    
+    // Create cluster at starting point
+    placeOreCluster(x, y, oreType, 1 + (m_rng() % maxRadius), density);
+    
+    int steps = 0;
+    int veinsPlaced = 1; // Count starting cluster as first vein
+    
+    // Different ore types have different "personalities" for their vein generation
+    float directionRandomness = 0.3f;   // How random the direction changes are (0-1)
+    float branchChance = 0.15f;         // Chance to create a branch (0-1)
+    float upwardBias = 0.0f;            // Bias toward moving upward (-1 to 1)
+    float horizontalBias = 0.0f;        // Bias toward moving horizontally (-1 to 1)
+    int minStepsBetweenClusters = 2;    // Minimum steps before placing another cluster
+    int maxStepsBetweenClusters = 5;    // Maximum steps before placing another cluster
+    int stepsToNextCluster = minStepsBetweenClusters + m_rng() % (maxStepsBetweenClusters - minStepsBetweenClusters + 1);
+    
+    // Customize vein behavior based on ore type and biome
+    switch (oreType) {
+        case MaterialType::IronOre:
+            // Iron forms large, somewhat random veins with occasional branches
+            directionRandomness = 0.4f;
+            branchChance = 0.2f;
+            break;
+            
+        case MaterialType::CopperOre:
+            // Copper forms meandering, very branchy veins
+            directionRandomness = 0.5f;
+            branchChance = 0.25f;
+            break;
+            
+        case MaterialType::GoldOre:
+            // Gold forms more directed veins that tend to go horizontal
+            directionRandomness = 0.3f;
+            branchChance = 0.15f;
+            horizontalBias = 0.3f;
+            break;
+            
+        case MaterialType::CoalOre:
+            // Coal forms large, winding, horizontal layers
+            directionRandomness = 0.25f;
+            branchChance = 0.3f;
+            horizontalBias = 0.5f;
+            maxStepsBetweenClusters = 3; // More dense
+            break;
+            
+        case MaterialType::DiamondOre:
+            // Diamond forms small, tight clusters with few branches
+            directionRandomness = 0.2f;
+            branchChance = 0.05f;
+            break;
+            
+        case MaterialType::SilverOre:
+            // Silver forms thin veins that tend to go up
+            directionRandomness = 0.35f;
+            branchChance = 0.1f;
+            upwardBias = 0.2f;
+            break;
+            
+        case MaterialType::EmeraldOre:
+            // Emerald in jungle biomes forms in small vertical clusters
+            if (biome == BiomeType::JUNGLE) {
+                directionRandomness = 0.2f;
+                branchChance = 0.05f;
+                upwardBias = 0.4f;
+            }
+            break;
+            
+        case MaterialType::SapphireOre:
+            // Sapphire in snow biomes forms crystalline clusters
+            if (biome == BiomeType::SNOW) {
+                directionRandomness = 0.15f; // Very directed
+                branchChance = 0.1f;
+                minStepsBetweenClusters = 4; // More spread out
+                maxStepsBetweenClusters = 8;
+            }
+            break;
+            
+        case MaterialType::RubyOre:
+            // Ruby in mountains forms in veins that follow mountain contours
+            if (biome == BiomeType::MOUNTAIN) {
+                directionRandomness = 0.3f;
+                horizontalBias = 0.3f;
+            }
+            break;
+            
+        case MaterialType::SulfurOre:
+            // Sulfur in desert forms in horizontal layers with occasional upward pockets
+            if (biome == BiomeType::DESERT) {
+                directionRandomness = 0.3f;
+                horizontalBias = 0.4f;
+                branchChance = 0.25f;
+            }
+            break;
+            
+        case MaterialType::QuartzOre:
+            // Quartz forms crystalline structures in vertical veins
+            directionRandomness = 0.25f;
+            upwardBias = 0.3f;
+            break;
+            
+        case MaterialType::UraniumOre:
+            // Uranium forms small, isolated pockets
+            directionRandomness = 0.5f; // Very random
+            branchChance = 0.05f; // Few branches
+            minStepsBetweenClusters = 5; // Very spread out
+            maxStepsBetweenClusters = 10;
+            break;
+            
+        default:
+            // Generic ore behavior
+            break;
+    }
+    
+    // Initial direction - use uniform distribution across all angles
+    // Random angle in radians (0 to 2π)
+    float angle = static_cast<float>(m_rng() % 1000) / 1000.0f * 2.0f * 3.14159f;
+    
+    // Use the ore type to vary the starting angle
+    angle += static_cast<float>(static_cast<unsigned int>(oreType) * 0.753f);
+    // Keep angle in range [0, 2π)
+    angle = std::fmod(angle, 2.0f * 3.14159f);
+    
+    // Main vein generation loop
+    while (veinsPlaced < maxSize) {
+        // Change direction with more randomness to prevent directional bias
+        // Mix between Perlin noise and pure randomness
+        float noiseVal = perlinNoise2D(x * 0.1f, y * 0.1f, static_cast<unsigned int>(oreType) + 123);
+        float randomVal = static_cast<float>(m_rng() % 1000) / 1000.0f * 2.0f - 1.0f; // -1 to 1
+        
+        // Return to a more controlled, predictable angle change
+    float angleChange = (noiseVal * 2.0f - 1.0f) * directionRandomness * 3.14159f;
+    
+    // Occasionally make a turn
+    if (m_rng() % 10 == 0) {
+        angleChange = (m_rng() % 60) * 3.14159f / 180.0f; // 0-60 degree turn
+        if (m_rng() % 2) angleChange *= -1.0f; // 50% chance of left or right
+    }
+    
+    angle += angleChange;
+        
+        // Apply biases
+        if (horizontalBias > 0) {
+            // Bias toward horizontal movement: push angle toward 0 or π
+            float hBias = std::sin(angle * 2.0f) * horizontalBias;
+            angle -= hBias;
+        }
+        
+        if (upwardBias > 0) {
+            // Bias toward upward movement: push angle toward π/2
+            float targetAngle = 3.14159f * 1.5f; // 3π/2 is upward in screen coordinates
+            float diff = std::fmod(angle - targetAngle + 3.14159f, 2.0f * 3.14159f) - 3.14159f;
+            angle -= diff * upwardBias * 0.1f;
+        }
+        
+        // Move in the current direction
+        int dx = static_cast<int>(std::cos(angle) + 0.5f); // Round to nearest int
+        int dy = static_cast<int>(std::sin(angle) + 0.5f);
+        
+        // Ensure we move at least 1 tile (no zero movement)
+        if (dx == 0 && dy == 0) {
+            dx = m_rng() % 3 - 1; // -1, 0, or 1
+            dy = (dx == 0) ? (m_rng() % 2 ? 1 : -1) : (m_rng() % 3 - 1);
+        }
+        
+        // Move the walker
+        x += dx;
+        y += dy;
+        
+        // Boundary check
+        if (!isValidPosition(x, y)) {
+            break;
+        }
+        
+        // Place ore clusters periodically along the path
+        steps++;
+        if (steps >= stepsToNextCluster) {
+            // Only place if this is a valid position for ore
+            if (isValidPositionForOre(x, y)) {
+                // Place ore cluster with variable radius based on ore type
+                int radius = 1 + (m_rng() % maxRadius);
+                
+                // Use Perlin noise to create varied cluster shapes based on position
+                float clusterNoise = perlinNoise2D(x * 0.2f, y * 0.2f, static_cast<unsigned int>(oreType) + 456);
+                int adjustedRadius = static_cast<int>(radius * (0.8f + clusterNoise * 0.4f));
+                
+                placeOreCluster(x, y, oreType, adjustedRadius, density);
+                veinsPlaced++;
+                
+                // Set next cluster placement
+                stepsToNextCluster = minStepsBetweenClusters + m_rng() % (maxStepsBetweenClusters - minStepsBetweenClusters + 1);
+                steps = 0;
+                
+                // Add a moderate chance of branching
+                // Not too many branches to maintain ore vein feel rather than chaotic networks
+                
+                if (static_cast<float>(m_rng()) / m_rng.max() < branchChance && veinsPlaced < maxSize - 1) {
+                    // Choose a branch angle roughly perpendicular to current direction
+                    // This creates more natural looking veins with orthogonal branches
+                    float branchAngle = angle + (3.14159f / 2.0f);
+                    if (m_rng() % 2) branchAngle += 3.14159f; // 50% chance to go other direction
+                        int branchX = x;
+                        int branchY = y;
+                    
+                    // Move the branch start position slightly away from main vein
+                    branchX += static_cast<int>(std::cos(branchAngle) + 0.5f);
+                    branchY += static_cast<int>(std::sin(branchAngle) + 0.5f);
+                    
+                    // Create smaller branch vein
+                    if (isValidPosition(branchX, branchY)) {
+                        // Make branch veins much larger - closer to main vein size
+                        int branchSize = std::max(5, maxSize / 2); // Larger branch size
+                        int remainingSize = maxSize - veinsPlaced;
+                        branchSize = std::min(branchSize, remainingSize - 1);
+                        
+                        // Create branch vein - use larger branch veins
+                        generateOreVeinBranch(branchX, branchY, oreType, branchSize, density, maxRadius, branchAngle, biome);
+                        veinsPlaced += branchSize;
+                    }
+                }
+                }
+            }
+            
+            // Stop if we've placed all the ore clusters
+            if (veinsPlaced >= maxSize) {
+                break;
+            }
+        }
+    }
+}
+
+void World::generateOreVeinBranch(int startX, int startY, MaterialType oreType, int maxSize, float density, 
+                                 int maxRadius, float startAngle, BiomeType biome) {
+    // Similar to main vein generation but used for branches
+    int x = startX;
+    int y = startY;
+    
+    if (!isValidPositionForOre(x, y)) {
+        return;
+    }
+    
+    // Place initial cluster
+    placeOreCluster(x, y, oreType, 1 + (m_rng() % maxRadius), density);
+    
+    int steps = 0;
+    int veinsPlaced = 1;
+    float angle = startAngle;
+    
+    // Branch veins are now more substantial with more clusters
+    float directionRandomness = 0.3f; // More randomness
+    int minStepsBetweenClusters = 1;  // Place clusters more frequently
+    int maxStepsBetweenClusters = 3;
+    int stepsToNextCluster = minStepsBetweenClusters + m_rng() % (maxStepsBetweenClusters - minStepsBetweenClusters + 1);
+    
+    // Reduced version of main vein generation
+    while (veinsPlaced < maxSize) {
+        // Get noise value for angle change
+        float noiseVal = perlinNoise2D(x * 0.1f, y * 0.1f, static_cast<unsigned int>(oreType) + 789);
+        
+        // Simple angle change based on perlin noise
+        float angleChange = (noiseVal * 2.0f - 1.0f) * 0.3f * 3.14159f;
+        
+        // Occasional turn for variety (20% chance)
+        if (m_rng() % 5 == 0) {
+            // Small turn up to 45 degrees
+            angleChange = (m_rng() % 45) * 3.14159f / 180.0f;
+            if (m_rng() % 2) angleChange *= -1.0f;
+        }
+        
+        angle += angleChange;
+        
+        // Move in the current direction
+        int dx = static_cast<int>(std::cos(angle) + 0.5f);
+        int dy = static_cast<int>(std::sin(angle) + 0.5f);
+        
+        // Ensure we move at least 1 tile
+        if (dx == 0 && dy == 0) {
+            dx = m_rng() % 3 - 1;
+            dy = (dx == 0) ? (m_rng() % 2 ? 1 : -1) : (m_rng() % 3 - 1);
+        }
+        
+        x += dx;
+        y += dy;
+        
+        if (!isValidPosition(x, y)) {
+            break;
+        }
+        
+        steps++;
+        if (steps >= stepsToNextCluster) {
+            if (isValidPositionForOre(x, y)) {
+                // Branch veins now have larger clusters
+                int radius = 2 + (m_rng() % std::max(2, maxRadius));
+                placeOreCluster(x, y, oreType, radius, density);
+                veinsPlaced++;
+                
+                stepsToNextCluster = minStepsBetweenClusters + m_rng() % (maxStepsBetweenClusters - minStepsBetweenClusters + 1);
+                steps = 0;
+            }
+            
+            if (veinsPlaced >= maxSize) {
+                break;
+            }
+        }
+    }
+}
+
+void World::placeOreCluster(int centerX, int centerY, MaterialType oreType, int radius, float density) {
+    // Place a cluster of ore centered at (centerX, centerY)
+    // Use a slightly larger radius check (1.1x) to make clusters a bit more irregular
+    float radiusSquared = radius * radius * 1.1f;
+    
+    for (int dy = -radius; dy <= radius; dy++) {
+        for (int dx = -radius; dx <= radius; dx++) {
+            // Skip if outside the circle radius (with some noise for irregular edges)
+            float distSquared = dx*dx + dy*dy;
+            if (distSquared > radiusSquared) {
+                continue;
+            }
+            
+            int x = centerX + dx;
+            int y = centerY + dy;
+            
+            if (!isValidPosition(x, y)) {
+                continue;
+            }
+            
+            // Only place ore within appropriate materials
+            if (!isValidPositionForOre(x, y)) {
+                continue;
+            }
+            
+            // Use Perlin noise for irregular cluster shapes
+            float noise = perlinNoise2D(x * 0.5f, y * 0.5f, static_cast<unsigned int>(oreType));
+            
+            // Adjust density based on distance from center and noise
+            float distFactor = 1.0f - (std::sqrt(dx*dx + dy*dy) / radius);
+            float placementChance = density * distFactor * (0.7f + noise * 0.5f);
+            
+            // Place ore based on adjusted density
+            if (static_cast<float>(m_rng()) / m_rng.max() < placementChance) {
+                set(x, y, oreType);
+            }
+        }
+    }
 }
 
 void World::updatePixelData() {

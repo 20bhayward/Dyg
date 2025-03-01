@@ -69,7 +69,7 @@ constexpr std::array<MaterialProperties, static_cast<std::size_t>(MaterialType::
     /* Empty */               {false, false, false, false, false, true,     0,   0,   0,   0,   0,   0},
     /* Sand */                {false, false, true,  false, false, false,   225, 215, 125, 10,  10,  15},
     /* Water */               {false, true,  false, false, false, false,   32,  128, 235, 13,  12,  20},
-    /* Stone */               {true,  false, false, false, false, false,   150, 150, 150, 20,  20,  20},
+    /* Stone */               {true,  false, false, false, false, false,   120, 120, 125, 15,  15,  15},
     /* Fire */                {false, false, false, true,  false, true,    255, 127, 32,  30,  40,  30},
     /* Oil */                 {false, true,  false, false, true,  false,   140, 120, 60,  20,  20,  10},
     /* GrassStalks */         {false, false, false, false, true,  true,    70,  200, 55,  10,  20,  10},
@@ -81,7 +81,7 @@ constexpr std::array<MaterialProperties, static_cast<std::size_t>(MaterialType::
     /* Bedrock */             {true,  false, false, false, false, false,   50,  50,  55,  10,  10,  10},
     /* Sandstone */           {true,  false, false, false, false, false,   200, 180, 120, 15,  15,  10},
     /* Gravel */              {false, false, true,  false, false, false,   130, 130, 130, 25,  25,  25},
-    /* TopSoil */             {true,  false, false, false, false, false,   90,  65,  35,  15,  12,  8},
+    /* TopSoil */             {true,  false, false, false, false, false,   80,  60,  40,  12,  10,  8},
     /* DenseRock */           {true,  false, false, false, false, false,   90,  90,  100, 15,  15,  15},
     
     // Ore materials - all are solid blocks with distinctive colors and variations

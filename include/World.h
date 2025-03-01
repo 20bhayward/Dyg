@@ -166,10 +166,10 @@ private:
     
     // Ore generation helper functions
     void generateOreVein(int startX, int startY, MaterialType oreType, int maxSize, float density, int maxRadius, BiomeType biome = BiomeType::GRASSLAND);
+    void generateOreVeinBranch(int startX, int startY, MaterialType oreType, int maxSize, float density, int maxRadius, float startAngle, BiomeType biome = BiomeType::GRASSLAND);
     void placeOreCluster(int centerX, int centerY, MaterialType oreType, int radius, float density);
-    void placeOreCrystal(int centerX, int centerY, MaterialType oreType, int size);
-    void placeOreVeinSegment(int centerX, int centerY, MaterialType oreType, int radius, float angle);
     bool isValidPosition(int x, int y) const;
+    bool isValidPositionForOre(int x, int y) const;
 };
 
 } // namespace PixelPhys
