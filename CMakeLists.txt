@@ -1,252 +1,114 @@
 cmake_minimum_required(VERSION 3.15)
 project(PixelPhys2D VERSION 0.1.0 LANGUAGES CXX)
 
+# Set C++ standard and compiler options
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Add compiler warnings
+# Custom Vulkan SDK path for Windows
+if(WIN32 AND EXISTS "G:/Vulkan")
+    set(VULKAN_SDK "G:/Vulkan" CACHE PATH "Path to Vulkan SDK")
+    set(ENV{VULKAN_SDK} ${VULKAN_SDK})
+    list(APPEND CMAKE_PREFIX_PATH "${VULKAN_SDK}")
+    message(STATUS "Using custom Vulkan SDK: ${VULKAN_SDK}")
+endif()
+
+# Compiler warnings
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -Wpedantic -O3)
 endif()
 
-# Find required packages
+# Find dependencies
 find_package(SDL2 REQUIRED)
-find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
-find_package(Vulkan QUIET)
-find_package(OpenVDB QUIET)
+find_package(Vulkan REQUIRED COMPONENTS glslc)
 
-# Optional packages
-option(USE_VULKAN "Use Vulkan rendering backend instead of OpenGL" OFF)
+# Configuration options
+option(USE_VULKAN "Use Vulkan rendering backend" ON)
+option(SIMPLIFIED_SKY "Use simplified sky rendering" ON)
+option(USE_OPENVDB "Use OpenVDB for volumetric lighting" OFF)
+
+# Vulkan configuration
 if(USE_VULKAN)
     if(Vulkan_FOUND)
-        message(STATUS "Building with Vulkan rendering backend")
+        message(STATUS "Building with Vulkan backend")
         add_definitions(-DUSE_VULKAN)
+        include_directories(${Vulkan_INCLUDE_DIRS})
     else()
-        message(WARNING "Vulkan requested but not found. Falling back to OpenGL.")
+        message(FATAL_ERROR "Vulkan not found but requested")
     endif()
-endif()
-
-option(USE_OPENVDB "Use OpenVDB for volumetric lighting" OFF)
-if(USE_OPENVDB AND OpenVDB_FOUND)
-    message(STATUS "Building with OpenVDB support")
-    add_definitions(-DUSE_OPENVDB)
-endif()
-
-# Sky rendering options
-option(SIMPLIFIED_SKY "Use simplified sky rendering for better performance" ON)
-if(SIMPLIFIED_SKY)
-    message(STATUS "Building with simplified sky rendering for better performance")
-    add_definitions(-DSIMPLIFIED_SKY)
 endif()
 
 # Include directories
 include_directories(
-    ${PROJECT_SOURCE_DIR}/include 
+    ${PROJECT_SOURCE_DIR}/include
+    ${SDL2_INCLUDE_DIRS}
+    ${GLEW_INCLUDE_DIRS}
 )
 
-# SDL2 include directories (support both modern and old-style)
-if(TARGET SDL2::SDL2)
-    get_target_property(SDL2_INCLUDE_DIRS SDL2::SDL2 INTERFACE_INCLUDE_DIRECTORIES)
-endif()
-if(SDL2_INCLUDE_DIRS)
-    include_directories(${SDL2_INCLUDE_DIRS})
-endif()
+# Source files
+set(SOURCES
+    src/main_vulkan.cpp
+    src/World.cpp
+    src/Renderer.cpp
+    src/UI.cpp
+    src/VulkanBackend.cpp
+    src/RenderBackend.cpp
+)
 
-if(GLEW_FOUND)
-    include_directories(${GLEW_INCLUDE_DIRS})
-endif()
-if(USE_VULKAN AND Vulkan_FOUND)
-    include_directories(${Vulkan_INCLUDE_DIRS})
-endif()
-if(USE_OPENVDB AND OpenVDB_FOUND)
-    include_directories(${OpenVDB_INCLUDE_DIRS})
-endif()
+# Create executable
+add_executable(PixelPhys2D ${SOURCES})
 
-# Add executable
-if(USE_VULKAN AND Vulkan_FOUND)
-    add_executable(PixelPhys2D 
-        src/main_vulkan.cpp
-        src/World.cpp
-        src/Renderer.cpp
-        src/UI.cpp
-        src/VulkanBackend.cpp
-        src/RenderBackend.cpp
-    )
-    # Add a Vulkan-only test executable
-    add_executable(vulkan_simple_test 
-        vulkan_test/vulkan_test.cpp
-    )
-    target_link_libraries(vulkan_simple_test 
-        ${Vulkan_LIBRARIES}
-        $<$<TARGET_EXISTS:SDL2::SDL2>:SDL2::SDL2>
-        $<$<NOT:$<TARGET_EXISTS:SDL2::SDL2>>:${SDL2_LIBRARIES}>
-    )
-else()
-    add_executable(PixelPhys2D 
-        src/main.cpp
-        src/World.cpp
-        src/Renderer.cpp
-        src/UI.cpp
-        src/OpenGLBackend.cpp
-        src/RenderBackend.cpp
-    )
-endif()
-
-# Common libraries for all platforms
-target_link_libraries(PixelPhys2D 
-    # Support both modern target-based and old variable-based SDL2
-    $<$<TARGET_EXISTS:SDL2::SDL2>:SDL2::SDL2>
-    $<$<NOT:$<TARGET_EXISTS:SDL2::SDL2>>:${SDL2_LIBRARIES}>
-    ${OPENGL_LIBRARIES} 
+# Link libraries
+target_link_libraries(PixelPhys2D
+    SDL2::SDL2
     ${GLEW_LIBRARIES}
 )
 
-# Vulkan libraries if found and enabled
-if(USE_VULKAN AND Vulkan_FOUND)
+# Vulkan specific linking
+if(USE_VULKAN)
     target_link_libraries(PixelPhys2D ${Vulkan_LIBRARIES})
 endif()
 
-if(USE_OPENVDB AND OpenVDB_FOUND)
-    target_link_libraries(PixelPhys2D ${OpenVDB_LIBRARIES})
-endif()
-
-# Platform-specific settings
+# Windows-specific configuration
 if(WIN32)
-    # Windows-specific settings and libraries
-    target_link_libraries(PixelPhys2D opengl32 glu32)
+    target_link_libraries(PixelPhys2D 
+        glu32
+        SDL2::SDL2main
+    )
     
-    # Define to use the SDL_main entry point
     target_compile_definitions(PixelPhys2D PRIVATE -DSDL_MAIN_HANDLED)
     
-    # Link with SDL2main library explicitly for Windows
-    if(TARGET SDL2::SDL2main)
-        target_link_libraries(PixelPhys2D SDL2::SDL2main)
-    elseif(SDL2MAIN_LIBRARY)
-        target_link_libraries(PixelPhys2D ${SDL2MAIN_LIBRARY})
-    endif()
-    
-    # Set WIN32 subsystem type (GUI app)
-    set_target_properties(PixelPhys2D PROPERTIES
-        WIN32_EXECUTABLE TRUE
+    # DLL copy logic
+    add_custom_command(TARGET PixelPhys2D POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${SDL2_DIR}/../bin/SDL2.dll"
+        $<TARGET_FILE_DIR:PixelPhys2D>
     )
     
-    # Windows does not need pthread - skip that library
-    message(STATUS "Building for Windows - skipping pthread")
-    
-    # Setup for automatic dll copying
-    set(REQUIRED_DLLS "")
-    
-    # Find and copy SDL2.dll
-    if(TARGET SDL2::SDL2)
-        # Modern CMake target - get the DLL location
-        get_target_property(SDL2_LOCATION SDL2::SDL2 LOCATION)
-        if(SDL2_LOCATION)
-            get_filename_component(SDL2_LIB_DIR ${SDL2_LOCATION} DIRECTORY)
-            # Look in standard locations - both regular path and bin directory
-            file(GLOB SDL2_DLL 
-                "${SDL2_LIB_DIR}/SDL2.dll"
-                "${SDL2_LIB_DIR}/../bin/SDL2.dll"
-                "${SDL2_LIB_DIR}/../../bin/SDL2.dll"
-            )
-            if(SDL2_DLL)
-                list(APPEND REQUIRED_DLLS ${SDL2_DLL})
-            else()
-                message(STATUS "SDL2.dll not found automatically. You may need to copy it manually.")
-            endif()
-        endif()
-    elseif(SDL2_LIBRARIES)
-        # Old CMake variables style
-        get_filename_component(SDL2_LIB_DIR ${SDL2_LIBRARIES} DIRECTORY)
-        # Look in standard locations - both regular path and bin directory
-        file(GLOB SDL2_DLL 
-            "${SDL2_LIB_DIR}/SDL2.dll"
-            "${SDL2_LIB_DIR}/../bin/SDL2.dll"
-            "${SDL2_LIB_DIR}/../../bin/SDL2.dll"
-        )
-        if(SDL2_DLL)
-            list(APPEND REQUIRED_DLLS ${SDL2_DLL})
-        else()
-            message(STATUS "SDL2.dll not found automatically. You may need to copy it manually.")
-        endif()
-    endif()
-    
-    # Find and copy GLEW.dll - enhanced search with vcpkg compatibility
-    # Look in standard locations where GLEW DLLs might be
-    file(GLOB GLEW_DLL 
-        "${CMAKE_PREFIX_PATH}/bin/glew32.dll"
-        "${CMAKE_CURRENT_SOURCE_DIR}/lib/glew32.dll"
-        "${CMAKE_CURRENT_SOURCE_DIR}/bin/glew32.dll"
-        "${GLEW_INCLUDE_DIRS}/../bin/glew32.dll"
-        "${GLEW_INCLUDE_DIRS}/../../bin/glew32.dll"
-    )
-    
-    # Special handling for vcpkg path format
-    # Use a custom command that doesn't fail if directory doesn't exist
-    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg/installed/x64-windows/bin/glew32.dll")
-        message(STATUS "Found GLEW DLL in vcpkg path")
-        set(GLEW_DLL "${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg/installed/x64-windows/bin/glew32.dll")
-    endif()
-    
-    if(GLEW_DLL)
-        list(APPEND REQUIRED_DLLS ${GLEW_DLL})
-        message(STATUS "Found GLEW DLL: ${GLEW_DLL}")
-    else()
-        message(STATUS "glew32.dll not found automatically. You may need to copy it manually.")
-    endif()
-    
-    # Copy all required DLLs to build directory
-    foreach(DLL_FILE ${REQUIRED_DLLS})
+    if(USE_VULKAN)
         add_custom_command(TARGET PixelPhys2D POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${DLL_FILE}
-            $<TARGET_FILE_DIR:PixelPhys2D>)
-    endforeach()
-    
-    # For Vulkan builds, also copy vulkan-1.dll if available
-    if(USE_VULKAN AND Vulkan_FOUND AND DEFINED ENV{VULKAN_SDK})
-        file(GLOB VULKAN_DLL "$ENV{VULKAN_SDK}/Bin/vulkan-1.dll")
-        if(VULKAN_DLL)
-            add_custom_command(TARGET PixelPhys2D POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${VULKAN_DLL}
-                $<TARGET_FILE_DIR:PixelPhys2D>)
-            message(STATUS "Found Vulkan DLL: ${VULKAN_DLL}")
-        else()
-            message(STATUS "vulkan-1.dll not found. You may need to copy it manually.")
-        endif()
+            "${VULKAN_SDK}/Bin/vulkan-1.dll"
+            $<TARGET_FILE_DIR:PixelPhys2D>
+        )
     endif()
     
-    # Add directory creation command for artifacts
-    add_custom_command(TARGET PixelPhys2D POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-        ${CMAKE_BINARY_DIR}/../artifacts/PixelPhys2D-windows)
-    
-    # Create a batch file to run the game easily
+    # Create run script
     file(WRITE ${CMAKE_BINARY_DIR}/run_game.bat 
-         "@echo off\r\n"
-         "echo Starting PixelPhys2D...\r\n"
-         "PixelPhys2D.exe\r\n"
-         "if ERRORLEVEL 1 pause\r\n")
-    
-    # Windows build instructions for README.md
-    message(STATUS "Windows build configured. After building, run 'run_game.bat' in the build folder.")
-elseif(UNIX AND NOT APPLE)
-    # Linux-specific settings
-    find_package(Threads REQUIRED)
-    target_link_libraries(PixelPhys2D ${CMAKE_THREAD_LIBS_INIT})
-    message(STATUS "Building for Linux - linking with ${CMAKE_THREAD_LIBS_INIT}")
-elseif(APPLE)
-    # macOS-specific settings
-    find_library(COCOA_LIBRARY Cocoa)
-    find_library(IOKIT_LIBRARY IOKit)
-    find_library(COREVIDEO_LIBRARY CoreVideo)
-    target_link_libraries(PixelPhys2D ${COCOA_LIBRARY} ${IOKIT_LIBRARY} ${COREVIDEO_LIBRARY})
-    
-    # macOS also uses pthreads
-    find_package(Threads REQUIRED)
-    target_link_libraries(PixelPhys2D ${CMAKE_THREAD_LIBS_INIT})
+        "@echo off\n"
+        "PixelPhys2D.exe\n"
+        "if ERRORLEVEL 1 pause\n")
 endif()
 
-add_definitions(-DUSE_GLEW)
+# Linux/macOS configuration
+if(UNIX AND NOT APPLE)
+    find_package(Threads REQUIRED)
+    target_link_libraries(PixelPhys2D ${CMAKE_THREAD_LIBS_INIT})
+elseif(APPLE)
+    find_library(COCOA Cocoa)
+    find_library(IOKIT IOKit)
+    find_library(COREVIDEO CoreVideo)
+    target_link_libraries(PixelPhys2D ${COCOA} ${IOKIT} ${COREVIDEO})
+endif()

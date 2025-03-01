@@ -22,7 +22,6 @@
     #define VULKAN_DEBUG_VERBOSE(msg) std::cout << "DEBUG: " << msg << std::endl
 #endif
 
-#ifdef USE_VULKAN
 namespace PixelPhys {
 
 // Vulkan helper structs
@@ -4190,4 +4189,3 @@ VulkanRenderTarget::~VulkanRenderTarget() {
 }
 
 } // namespace PixelPhys
-#endif // USE_VULKAN

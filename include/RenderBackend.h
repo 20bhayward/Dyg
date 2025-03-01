@@ -15,11 +15,7 @@ class Buffer;
 
 // Enumeration for available rendering backends
 enum class BackendType {
-    OpenGL,
-    Vulkan,
-    DirectX12,
-    Auto,
-    None
+    Vulkan
 };
 
 // Utility class to store graphics options/capabilities

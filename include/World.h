@@ -93,29 +93,6 @@ public:
     // Get material type for rendering with shader-based effects
     MaterialType getMaterialAt(int x, int y) const { return get(x, y); }
     
-    // Player-related functions
-    void updatePlayer(float dt);
-    void updatePlayerAnimation(float dt);
-    void renderPlayer(float scale) const;
-    float getPlayerX() const { return m_playerX; }
-    float getPlayerY() const { return m_playerY; }
-    void movePlayerLeft() { m_playerVelX = -80.0f; m_playerFacingRight = false; m_lastMoveDir = -1.0f; }
-    void movePlayerRight() { m_playerVelX = 80.0f; m_playerFacingRight = true; m_lastMoveDir = 1.0f; }
-    void playerJump() { 
-        // Simple jump that only works when on ground
-        if (m_playerOnGround && !m_jumpRequested) {
-            m_playerVelY = -200.0f;
-            m_playerOnGround = false;
-            m_jumpRequested = true;
-            
-            // Reset the jump request flag after a short delay
-            // This prevents immediate repeat jumps on the next frame
-            m_jumpRequested = false;
-        }
-    }
-    bool isPlayerDigging() const;
-    bool performPlayerDigging(int mouseX, int mouseY, MaterialType& material);
-    
     // Update the entire world's physics
     void update();
     
@@ -162,33 +139,6 @@ private:
     // For rendering: RGBA pixel data for the entire world
     std::vector<uint8_t> m_pixelData;
     
-    // Player position and physics
-    float m_playerX = 0.0f;
-    float m_playerY = 0.0f;
-    float m_playerVelX = 0.0f;
-    float m_playerVelY = 0.0f;
-    bool m_playerOnGround = false;
-    bool m_playerFacingRight = true;
-    
-    // Player body parts for procedural animation
-    struct PlayerLimb {
-        float offsetX, offsetY;
-        float targetOffsetX, targetOffsetY;
-        float angle;
-        float targetAngle;
-    };
-    
-    PlayerLimb m_playerLeftLeg;
-    PlayerLimb m_playerRightLeg;
-    PlayerLimb m_playerLeftArm;
-    PlayerLimb m_playerRightArm;
-    
-    // State tracking
-    float m_playerMoveTime = 0.0f;
-    float m_lastMoveDir = 0.0f;
-    bool m_wasOnGround = false;
-    bool m_jumpRequested = false;
-    
     // Random number generator
     std::mt19937 m_rng;
     
@@ -204,15 +154,6 @@ private:
     
     // World generation helper functions
     void generateTerrain();
-    void generateCaves();
-    void generateWaterPools();
-    void generateMaterialDeposits();
-    void generateTerrariaStyleOreVeins(); // New Terraria-style ore generation
-    void generateSpecialDeposits();       // Special deposits like oil pockets
-    
-    // Terrain generation utilities
-    void createSolidGround(int x, int y, int width, int height);
-    void ensureSolidFloor(int x, int y, int width, int depth);
 };
 
 } // namespace PixelPhys

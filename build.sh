@@ -5,7 +5,7 @@ set -e
 
 # Default values
 BUILD_TYPE="Release"
-USE_VULKAN=false
+USE_VULKAN=true
 CLEAN_BUILD=false
 VERBOSE=false
 BUILD_DIR="build"
@@ -70,7 +70,7 @@ if $USE_VULKAN; then
   echo "Building with Vulkan support..."
   
   # Check for Vulkan SDK
-  if [ -d "/usr/include/vulkan" ] || [ -d "/usr/local/include/vulkan" ]; then
+  if [ -d "/usr/include/vulkan" ] || [ -d "/usr/local/include/vulkan" ] || [ -d "G:/Vulkan/Include" ]; then
     echo "Vulkan headers found"
   else
     echo "WARNING: Vulkan headers not found. You may need to install the Vulkan SDK."
@@ -81,8 +81,6 @@ if $USE_VULKAN; then
   fi
   
   CMAKE_FLAGS="$CMAKE_FLAGS -DUSE_VULKAN=ON"
-else
-  echo "Building with OpenGL support..."
 fi
 
 # Configure with CMake
@@ -108,8 +106,6 @@ if [ $? -eq 0 ]; then
   if $RUN_AFTER_BUILD; then
     if $USE_VULKAN; then
       echo "Running PixelPhys2D with Vulkan backend..."
-    else
-      echo "Running PixelPhys2D with OpenGL backend..."
     fi
     
     ./PixelPhys2D

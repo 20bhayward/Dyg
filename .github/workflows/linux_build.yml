@@ -70,7 +70,6 @@ jobs:
         echo "Dependencies required:" >> artifacts/PixelPhys2D-linux/README.txt
         echo "- libsdl2" >> artifacts/PixelPhys2D-linux/README.txt
         echo "- libglew" >> artifacts/PixelPhys2D-linux/README.txt
-        echo "- OpenGL libraries" >> artifacts/PixelPhys2D-linux/README.txt
         
         # Create TAR.GZ file
         cd artifacts
