@@ -1714,7 +1714,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
             }
         }
     }
-}
+
 
 void World::generateOreVeinBranch(int startX, int startY, MaterialType oreType, int maxSize, float density, 
                                  int maxRadius, float startAngle, BiomeType biome) {
