@@ -9,18 +9,11 @@
 
 // Define a debug macro that can be disabled
 // Set to 0 to disable all DEBUG output, 1 to enable only critical debug, 2 for verbose
-#define VULKAN_DEBUG_LEVEL 1
+#define VULKAN_DEBUG_LEVEL 0
 
-#if VULKAN_DEBUG_LEVEL == 0
-    #define VULKAN_DEBUG(msg)
-    #define VULKAN_DEBUG_VERBOSE(msg)
-#elif VULKAN_DEBUG_LEVEL == 1
-    #define VULKAN_DEBUG(msg) std::cout << "DEBUG: " << msg << std::endl
-    #define VULKAN_DEBUG_VERBOSE(msg)
-#else
-    #define VULKAN_DEBUG(msg) std::cout << "DEBUG: " << msg << std::endl
-    #define VULKAN_DEBUG_VERBOSE(msg) std::cout << "DEBUG: " << msg << std::endl
-#endif
+// Completely disable all debug output
+#define VULKAN_DEBUG(msg)
+#define VULKAN_DEBUG_VERBOSE(msg)
 
 namespace PixelPhys {
 

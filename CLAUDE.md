@@ -1,28 +1,17 @@
 # PixelPhys2D Development Guidelines
 
-## Build Commands (Linux)
-- Standard build: `./build.sh`
-- Vulkan build: `./build.sh --vulkan` or `./build.sh -v`
-- Debug build: `./build.sh --debug` or `./build.sh -d`
-- Clean build: `./build.sh --clean` or `./build.sh -c`
-- Build and run: `./build.sh --run` or `./build.sh -r`
-- Combined options: `./build.sh --vulkan --debug --clean --run` 
-- See all options: `./build.sh --help`
-
-## Build Commands (Windows)
-- Build environment: Visual Studio with C++ workload or MinGW
-- Dependencies: Install SDL2 and GLEW manually or with vcpkg
-- Build: `mkdir build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release && cmake --build . --config Release`
-- Build with Vulkan: `mkdir build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release -DUSE_VULKAN=ON && cmake --build . --config Release`
-- Run: `.\build\Release\PixelPhys2D.exe`
-- Note: On Windows, place SDL2.dll and glew32.dll in the same directory as the executable
+## Build Commands
+- **Preferred build method**: `./build_with_shaders.sh` (compiles shaders and builds with Vulkan)
+- Standard build: `./build.sh -v` (Vulkan only)
+- Debug build: `./build.sh -v -d` (Vulkan debug)
+- Clean build: `./build.sh -v -c` (Vulkan clean)
+- Build and run: `./build.sh -v -r` (Vulkan run)
+- Shader compilation: `./compile_shaders.sh` (converts GLSL to SPIR-V)
+- Windows: `mkdir build && cd build && cmake .. -DCMAKE_BUILD_TYPE=Release -DUSE_VULKAN=ON && cmake --build . --config Release`
 
 ## Dependencies
-- Linux: `sudo apt-get install build-essential cmake libsdl2-dev libgl1-mesa-dev libglu1-mesa-dev libglew-dev`
-- Linux with Vulkan: `sudo apt-get install build-essential cmake libsdl2-dev libvulkan-dev vulkan-tools`
-- Windows: Install SDL2 and GLEW development libraries (download from official websites)
-- Windows with Vulkan: Install Vulkan SDK from LunarG
-- Optional flags: Add `-DUSE_OPENVDB=ON` for volumetric lighting (requires OpenVDB)
+- Linux: `sudo apt-get install build-essential cmake libsdl2-dev libvulkan-dev vulkan-tools`
+- Windows: Install SDL2 and Vulkan SDK from LunarG
 
 ## Vulkan Implementation Strategy
 
@@ -152,9 +141,12 @@ For pre-compiled SPIR-V:
 - Indentation: 4 spaces (no tabs)
 - Include guards: #pragma once (preferred over #ifndef guards)
 - Imports: Group standard library, then third-party, then project includes
-- Error handling: Check return values, use assertions for invariants, avoid exceptions
+- Error handling: Check VkResult for all Vulkan API calls, use assertions for invariants
 - Line length: Maximum 100 characters
 - Memory management: Use smart pointers (std::unique_ptr/std::shared_ptr) over raw pointers
+- Vulkan rendering: Always track render pass state with m_renderPassInProgress flag
+- Buffer updates: Use proper staging buffers for GPU-visible memory
+- Shader management: Use SPIR-V shaders in shaders/spirv/ directory
 
 ## Architecture
 - Split physics simulation into chunks for multithreading

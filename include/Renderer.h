@@ -5,6 +5,7 @@
 #include "RenderResources.h"
 #include <memory>
 #include <string>
+#include <SDL2/SDL.h>
 
 namespace PixelPhys {
 
@@ -15,8 +16,16 @@ public:
     
     bool initialize();
     bool initialize(SDL_Window* window);
-    void render(const World& world);
+    void render(const World& world, int cameraX = 0, int cameraY = 0);
     void cleanup();
+    
+    // Frame management proxies
+    void beginFrame();
+    void endFrame();
+    
+    // Backend access
+    RenderBackend* getBackend() const { return m_backend.get(); }
+    bool setBackendType(BackendType type);
 
 private:
     int m_screenWidth;

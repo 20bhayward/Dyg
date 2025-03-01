@@ -22,7 +22,7 @@ endif()
 # Find dependencies
 find_package(SDL2 REQUIRED)
 find_package(GLEW REQUIRED)
-find_package(Vulkan REQUIRED COMPONENTS glslc)
+find_package(Vulkan REQUIRED)
 
 # Configuration options
 option(USE_VULKAN "Use Vulkan rendering backend" ON)
@@ -52,7 +52,6 @@ set(SOURCES
     src/main_vulkan.cpp
     src/World.cpp
     src/Renderer.cpp
-    src/UI.cpp
     src/VulkanBackend.cpp
     src/RenderBackend.cpp
 )

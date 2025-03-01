@@ -6,13 +6,22 @@
 namespace PixelPhys {
 
 Renderer::Renderer(int screenWidth, int screenHeight, BackendType type)
-    : m_screenWidth(screenWidth), m_screenHeight(screenHeight) {}
+    : m_screenWidth(screenWidth), m_screenHeight(screenHeight) {
+    setBackendType(type);
+}
 
 Renderer::~Renderer() {
     cleanup();
 }
 
 bool Renderer::initialize() {
+    return true;  // Initialization happens in initialize(SDL_Window*)
+}
+
+bool Renderer::initialize(SDL_Window* window) {
+    // Create Vulkan backend
+    m_backend = std::make_unique<VulkanBackend>(m_screenWidth, m_screenHeight);
+    
     if (!m_backend || !m_backend->initialize()) {
         std::cerr << "Failed to initialize rendering backend\n";
         return false;
@@ -20,68 +29,73 @@ bool Renderer::initialize() {
     return true;
 }
 
-void Renderer::render(const World& world) {
+void Renderer::render(const World& world, int cameraX, int cameraY) {
     if (!m_backend) return;
 
-    m_backend->beginFrame();
-    m_backend->setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    // Get Vulkan backend
+    auto* vulkanBackend = static_cast<VulkanBackend*>(m_backend.get());
+    if (!vulkanBackend) return;
+
+    // Begin rendering
+    beginFrame();
+    
+    // Set a dark blue background
+    m_backend->setClearColor(0.05f, 0.05f, 0.1f, 1.0f);
     m_backend->clear();
 
-    // Get visible area based on camera position
+    // Get world dimensions
     int worldWidth = world.getWidth();
     int worldHeight = world.getHeight();
+    
+    // Fixed pixel size for true voxel/pixel simulation
+    const float pixelSize = 2.0f;  // Each world pixel is 2x2 screen pixels for better visibility
+    
+    // Calculate visible area based on screen size and camera position
+    int visibleCellsX = m_screenWidth / pixelSize;
+    int visibleCellsY = m_screenHeight / pixelSize;
+    
+    // Determine view boundaries based on camera position
+    int startX = cameraX;
+    int startY = cameraY;
+    int endX = startX + visibleCellsX;
+    int endY = startY + visibleCellsY;
+    
+    // Clamp to world bounds
+    startX = std::max(0, startX);
+    startY = std::max(0, startY);
+    endX = std::min(worldWidth, endX);
+    endY = std::min(worldHeight, endY);
 
     // Render each visible pixel
-    for (int y = worldHeight; y < worldHeight + m_screenHeight; y++) {
-        for (int x = worldWidth; x < worldHeight + m_screenWidth; x++) {
-            if (x < 0 || x >= worldWidth || y < 0 || y >= worldHeight) continue;
-
-            MaterialType material = world.getMaterialAt(x, y);
+    for (int y = startY; y < endY; ++y) {
+        for (int x = startX; x < endX; ++x) {
+            MaterialType material = world.get(x, y);
             if (material == MaterialType::Empty) continue;
 
             // Get material color
             float r, g, b;
             getMaterialColor(material, r, g, b);
 
-            // Convert world coordinates to screen coordinates
-            float screenX = static_cast<float>(x - worldWidth);
-            float screenY = static_cast<float>(y - worldHeight);
-
-            // Draw pixel
-            m_backend->drawPoint(screenX, screenY, r, g, b);
+            // Draw each world pixel as a fixed-size rectangle on the screen
+            vulkanBackend->drawRectangle(
+                (x - startX) * pixelSize, 
+                (y - startY) * pixelSize,
+                pixelSize, pixelSize,  // Fixed size for each pixel
+                r, g, b
+            );
         }
     }
 
-    m_backend->endFrame();
+    // End rendering
+    endFrame();
 }
 
 void Renderer::getMaterialColor(MaterialType material, float& r, float& g, float& b) {
-    // Simple material color mapping
-    switch (material) {
-        case MaterialType::Sand:
-            r = 0.94f; g = 0.78f; b = 0.29f;
-            break;
-        case MaterialType::Water:
-            r = 0.0f;  g = 0.46f; b = 0.89f;
-            break;
-        case MaterialType::Stone:
-            r = 0.5f;  g = 0.5f;  b = 0.5f;
-            break;
-        case MaterialType::Fire:
-            r = 1.0f;  g = 0.3f;  b = 0.0f;
-            break;
-        case MaterialType::Dirt:
-            r = 0.4f;  g = 0.25f; b = 0.1f;
-            break;
-        case MaterialType::Wood:
-            r = 0.5f;  g = 0.35f; b = 0.15f;
-            break;
-        case MaterialType::Grass:
-            r = 0.2f;  g = 0.7f;  b = 0.2f;
-            break;
-        default:
-            r = 1.0f; g = 1.0f; b = 1.0f;
-    }
+    // Get material color directly from the MATERIAL_PROPERTIES table
+    const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+    r = props.r / 255.0f;
+    g = props.g / 255.0f;
+    b = props.b / 255.0f;
 }
 
 void Renderer::cleanup() {
@@ -92,18 +106,25 @@ void Renderer::cleanup() {
 }
 
 bool Renderer::setBackendType(BackendType type) {
-    m_backend = CreateRenderBackend(type, m_screenWidth, m_screenHeight);
-    return static_cast<bool>(m_backend);
+    if (type == BackendType::Vulkan) {
+        m_backend = std::make_unique<VulkanBackend>(m_screenWidth, m_screenHeight);
+        return static_cast<bool>(m_backend);
+    }
+    
+    std::cerr << "Unsupported backend type\n";
+    return false;
 }
 
-// Factory function implementation
-std::unique_ptr<RenderBackend> CreateRenderBackend(BackendType type, int width, int height) {
-    switch (type) {
-        case BackendType::Vulkan:
-            return std::make_unique<VulkanBackend>(width, height);
-        default:
-            std::cerr << "Unsupported backend type\n";
-            return nullptr;
+// Proxy methods for frame management
+void Renderer::beginFrame() {
+    if (m_backend) {
+        m_backend->beginFrame();
+    }
+}
+
+void Renderer::endFrame() {
+    if (m_backend) {
+        m_backend->endFrame();
     }
 }
 

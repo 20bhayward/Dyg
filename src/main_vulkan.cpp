@@ -16,6 +16,11 @@ const int WORLD_HEIGHT  = 1800;
 const int TARGET_FPS    = 60;
 const int FRAME_DELAY   = 1000 / TARGET_FPS;
 
+// Camera parameters
+int cameraX = 0;         // Camera position X
+int cameraY = 0;         // Camera position Y
+const int CAMERA_SPEED = 15;  // Camera movement speed (pixels per key press)
+
 int main() {
     // Initialize SDL with video support
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -97,6 +102,37 @@ int main() {
                     SDL_GetWindowSize(window, &actualWidth, &actualHeight);
                     std::cout << "Window resized to " << actualWidth << "x" << actualHeight << std::endl;
                 }
+                // Camera movement
+                else if (e.key.keysym.sym == SDLK_LEFT || e.key.keysym.sym == SDLK_a) {
+                    cameraX -= CAMERA_SPEED;
+                    // Clamp camera position to world bounds
+                    cameraX = std::max(0, cameraX);
+                    std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_RIGHT || e.key.keysym.sym == SDLK_d) {
+                    cameraX += CAMERA_SPEED;
+                    // Clamp camera position to world bounds
+                    cameraX = std::min(WORLD_WIDTH - actualWidth, cameraX);
+                    std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) {
+                    cameraY -= CAMERA_SPEED;
+                    // Clamp camera position to world bounds
+                    cameraY = std::max(0, cameraY);
+                    std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) {
+                    cameraY += CAMERA_SPEED;
+                    // Clamp camera position to world bounds
+                    cameraY = std::min(WORLD_HEIGHT - actualHeight, cameraY);
+                    std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
+                }
+                // Reset camera position
+                else if (e.key.keysym.sym == SDLK_HOME) {
+                    cameraX = 0;
+                    cameraY = 0;
+                    std::cout << "Camera reset to origin" << std::endl;
+                }
             }
             else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED) {
                 SDL_GetWindowSize(window, &actualWidth, &actualHeight);
@@ -107,42 +143,8 @@ int main() {
         // Update world simulation
         world.update();
         
-        // Begin rendering a new frame
-        renderer->beginFrame();
-        
-        // Clear the screen with a background color (dark blue-ish)
-        renderer->getBackend()->setClearColor(0.1f, 0.1f, 0.2f, 1.0f);
-        
-        // Access the Vulkan backend for drawing operations
-        auto vulkanBackend = static_cast<PixelPhys::VulkanBackend*>(renderer->getBackend());
-        
-        // Draw the entire world as a grid of cells.
-        // For demonstration, each world cell is drawn as a small rectangle.
-        const float cellSize = 3.0f;  // Size of each cell on screen (in pixels)
-        for (int y = 0; y < WORLD_HEIGHT; ++y) {
-            for (int x = 0; x < WORLD_WIDTH; ++x) {
-                PixelPhys::MaterialType material = world.get(x, y);
-                if (material == PixelPhys::MaterialType::Empty)
-                    continue; // Skip empty cells
-                
-                int index = static_cast<int>(material);
-                // Use MATERIAL_PROPERTIES to determine the color.
-                const auto& props = PixelPhys::MATERIAL_PROPERTIES[index];
-                float r = props.r / 255.0f;
-                float g = props.g / 255.0f;
-                float b = props.b / 255.0f;
-                
-                // Draw the cell at the appropriate screen position
-                vulkanBackend->drawRectangle(
-                    x * cellSize, y * cellSize,
-                    cellSize, cellSize,
-                    r, g, b
-                );
-            }
-        }
-        
-        // End the frame (present it)
-        renderer->endFrame();
+        // Render the world using our renderer with camera position
+        renderer->render(world, cameraX, cameraY);
         
         // FPS calculation (print FPS every second)
         frameCount++;
