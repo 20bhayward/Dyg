@@ -16,7 +16,7 @@ public:
     
     bool initialize();
     bool initialize(SDL_Window* window);
-    void render(const World& world, int cameraX = 0, int cameraY = 0);
+    void render(const World& world, int cameraX = 0, int cameraY = 0, float zoomLevel = 1.0f);
     void cleanup();
     
     // Frame management proxies

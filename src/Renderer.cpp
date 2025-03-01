@@ -29,7 +29,7 @@ bool Renderer::initialize(SDL_Window* window) {
     return true;
 }
 
-void Renderer::render(const World& world, int cameraX, int cameraY) {
+void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLevel) {
     if (!m_backend) return;
 
     // Get Vulkan backend
@@ -47,12 +47,13 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     int worldWidth = world.getWidth();
     int worldHeight = world.getHeight();
     
-    // Fixed pixel size for true voxel/pixel simulation
-    const float pixelSize = 2.0f;  // Each world pixel is 2x2 screen pixels for better visibility
+    // Base pixel size for true voxel/pixel simulation, adjusted by zoom level
+    const float basePixelSize = 2.0f;  // Each world pixel is 2x2 screen pixels for better visibility
+    const float pixelSize = std::floor(basePixelSize * zoomLevel);  // Apply zoom factor with discrete steps to ensure grid alignment
     
-    // Calculate visible area based on screen size and camera position
-    int visibleCellsX = m_screenWidth / pixelSize;
-    int visibleCellsY = m_screenHeight / pixelSize;
+    // Calculate visible area based on screen size, camera position, and zoom level
+    int visibleCellsX = static_cast<int>(m_screenWidth / pixelSize);
+    int visibleCellsY = static_cast<int>(m_screenHeight / pixelSize);
     
     // Determine view boundaries based on camera position
     int startX = cameraX;
@@ -67,7 +68,7 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     endY = std::min(worldHeight, endY);
 
     // Render each visible pixel
-    for (int y = startY; y < endY; ++y) {
+    for (int y = startY; y < endY; ++y) {  // Normal iteration (world coordinates have 0 at top)
         for (int x = startX; x < endX; ++x) {
             MaterialType material = world.get(x, y);
             if (material == MaterialType::Empty) continue;
@@ -76,11 +77,16 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
             float r, g, b;
             getMaterialColor(material, r, g, b);
 
-            // Draw each world pixel as a fixed-size rectangle on the screen
+            // Calculate screen position with zoom level applied
+            float screenX = (x - startX) * pixelSize;
+            float screenY = (y - startY) * pixelSize; // No inversion needed
+
+            // Draw each world pixel as a zoomed rectangle on the screen with a slight gap for grid
+            float gridGap = 1.0f;  // Gap between cells to create grid effect
             vulkanBackend->drawRectangle(
-                (x - startX) * pixelSize, 
-                (y - startY) * pixelSize,
-                pixelSize, pixelSize,  // Fixed size for each pixel
+                screenX, 
+                screenY,
+                pixelSize - gridGap, pixelSize - gridGap,  // Size with gap for grid
                 r, g, b
             );
         }

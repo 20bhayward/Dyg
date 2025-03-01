@@ -16,6 +16,11 @@ enum class MaterialType : uint8_t {
     GrassStalks,     // Tall grass stalks that don't collide with player
     Dirt,            // Soil beneath grass
     FlammableGas,    // Gas that can ignite
+    Grass,           // Top layer grass
+    Lava,            // Hot liquid that causes fire
+    Snow,            // Top layer for snow biome
+    Bedrock,         // Indestructible bottom layer
+    Sandstone,       // Solid material beneath sand
     COUNT            // Keep this last to track count of materials
 };
 
@@ -51,7 +56,12 @@ constexpr std::array<MaterialProperties, static_cast<std::size_t>(MaterialType::
     /* Oil */                 {false, true,  false, false, true,  false,   140, 120, 60,  20,  20,  10},
     /* GrassStalks */         {false, false, false, false, true,  true,    70,  200, 55,  10,  20,  10},
     /* Dirt */                {true,  false, false, false, false, false,   110, 80,  40,  15,  10,  5},
-    /* FlammableGas */        {false, false, false, true,  true,  true,    50,  180, 50,  20,  40,  20}
+    /* FlammableGas */        {false, false, false, true,  true,  true,    50,  180, 50,  20,  40,  20},
+    /* Grass */               {true,  false, false, false, true,  false,   60,  180, 60,  15,  20,  10},
+    /* Lava */                {false, true,  false, false, false, false,   255, 80,  0,   30,  20,  10},
+    /* Snow */                {true,  false, false, false, false, false,   245, 245, 255, 5,   5,   5},
+    /* Bedrock */             {true,  false, false, false, false, false,   50,  50,  55,  10,  10,  10},
+    /* Sandstone */           {true,  false, false, false, false, false,   200, 180, 120, 15,  15,  10}
 }};
 
 } // namespace PixelPhys
