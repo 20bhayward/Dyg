@@ -140,6 +140,48 @@ void Chunk::set(int x, int y, MaterialType material) {
                     bVariation -= 10;
                 }
                 break;
+            case MaterialType::Gravel:
+                // Gravel has strong texture with varied gray tones
+                rVariation = gVariation = bVariation = (posHash1 % 35) - 17;
+                // Add mixed size pebble effect
+                if (posHash2 % 7 == 0) {
+                    rVariation -= 25;
+                    gVariation -= 25;
+                    bVariation -= 25;
+                } else if (posHash2 % 11 == 0) {
+                    rVariation += 15;
+                    gVariation += 15;
+                    bVariation += 15;
+                }
+                break;
+            case MaterialType::TopSoil:
+                // Topsoil has rich brown variations with organic texture
+                rVariation = (posHash1 % 25) - 10;
+                gVariation = (posHash2 % 20) - 10;
+                bVariation = (posHash3 % 12) - 6;
+                // Add darker organic matter patches
+                if (posHash2 % 4 == 0) {
+                    rVariation -= 15;
+                    gVariation -= 12;
+                    bVariation -= 5;
+                }
+                break;
+            case MaterialType::DenseRock:
+                // Dense rock has dark blue-gray coloration with crystalline texture
+                rVariation = (posHash1 % 18) - 9;
+                gVariation = (posHash1 % 18) - 9;
+                bVariation = (posHash1 % 22) - 9; // Slight blue tint
+                // Add occasional mineral veins or crystalline structures
+                if (posHash2 % 9 == 0) {
+                    rVariation += 10;
+                    gVariation += 12;
+                    bVariation += 15; // Blueish highlights
+                } else if (posHash2 % 16 == 0) {
+                    rVariation -= 15;
+                    gVariation -= 15;
+                    bVariation -= 10; // Dark patches
+                }
+                break;
             case MaterialType::Water:
                 // Water has blue variations with some subtle waves
                 bVariation = (posHash1 % 18) - 9;
@@ -237,6 +279,200 @@ void Chunk::updatePixelData() {
             } else {
                 const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
                 
+                // Create a position-based variation for more natural look
+                // Enhanced variation using multiple hash functions for more texture
+                int posHash1 = ((x * 13) + (y * 7)) % 32;
+                int posHash2 = ((x * 23) + (y * 17)) % 64;
+                int posHash3 = ((x * 5) + (y * 31)) % 16;
+                
+                // Different variation for each color channel - INCREASED VARIATION
+                int rVariation = (posHash1 % 35) - 17;  // Much stronger variation
+                int gVariation = (posHash2 % 31) - 15;  // Much stronger variation
+                int bVariation = (posHash3 % 27) - 13;  // Much stronger variation
+                
+                // Apply material-specific variation patterns
+                // Various materials have their own unique texture patterns
+                switch (material) {
+                    case MaterialType::Stone:
+                        // Stone has gray variations with strong texture
+                        rVariation = gVariation = bVariation = (posHash1 % 45) - 22;
+                        // Add dark speckles
+                        if (posHash2 % 5 == 0) {
+                            rVariation -= 25;
+                            gVariation -= 25;
+                            bVariation -= 25;
+                        }
+                        break;
+                    case MaterialType::Grass:
+                        // Grass has strong green variations with patches
+                        gVariation = (posHash1 % 50) - 15; // Strong green variation
+                        rVariation = (posHash2 % 25) - 15; // Variation for yellowish tints
+                        // Add occasional darker patches
+                        if (posHash1 % 3 == 0) {
+                            gVariation -= 20;
+                            rVariation -= 10;
+                        }
+                        break;
+                    case MaterialType::Sand:
+                        // Sand has strong yellow-brown variations with visible texture
+                        rVariation = (posHash1 % 30) - 10;
+                        gVariation = (posHash1 % 25) - 12;
+                        bVariation = (posHash3 % 15) - 10;
+                        // Add occasional darker grains
+                        if (posHash2 % 4 == 0) {
+                            rVariation -= 15;
+                            gVariation -= 15;
+                        }
+                        break;
+                    case MaterialType::Dirt:
+                        // Dirt has rich brown variations with texture
+                        rVariation = (posHash1 % 40) - 15;
+                        gVariation = (posHash2 % 30) - 15;
+                        bVariation = (posHash3 % 20) - 12;
+                        // Add occasional darker and lighter patches
+                        if (posHash2 % 5 == 0) {
+                            rVariation -= 20;
+                            gVariation -= 20;
+                            bVariation -= 10;
+                        } else if (posHash2 % 7 == 0) {
+                            rVariation += 15;
+                            gVariation += 10;
+                        }
+                        break;
+                    case MaterialType::Snow:
+                        // Snow has very subtle blue-white variations
+                        rVariation = gVariation = bVariation = (posHash1 % 7) - 3;
+                        break;
+                    case MaterialType::Sandstone:
+                        // Sandstone has beige-tan variations
+                        rVariation = (posHash1 % 16) - 8;
+                        gVariation = (posHash2 % 14) - 7;
+                        bVariation = (posHash3 % 8) - 4;
+                        break;
+                    case MaterialType::Bedrock:
+                        // Bedrock has dark gray variations with some texture
+                        rVariation = gVariation = bVariation = (posHash1 % 20) - 8;
+                        // Add some occasional darker spots for texture
+                        if (posHash2 % 8 == 0) {
+                            rVariation -= 10;
+                            gVariation -= 10;
+                            bVariation -= 10;
+                        }
+                        break;
+                    case MaterialType::Gravel:
+                        // Gravel has strong texture with varied gray tones
+                        rVariation = gVariation = bVariation = (posHash1 % 35) - 17;
+                        // Add mixed size pebble effect
+                        if (posHash2 % 7 == 0) {
+                            rVariation -= 25;
+                            gVariation -= 25;
+                            bVariation -= 25;
+                        } else if (posHash2 % 11 == 0) {
+                            rVariation += 15;
+                            gVariation += 15;
+                            bVariation += 15;
+                        }
+                        break;
+                    case MaterialType::TopSoil:
+                        // Topsoil has rich brown variations with organic texture
+                        rVariation = (posHash1 % 25) - 10;
+                        gVariation = (posHash2 % 20) - 10;
+                        bVariation = (posHash3 % 12) - 6;
+                        // Add darker organic matter patches
+                        if (posHash2 % 4 == 0) {
+                            rVariation -= 15;
+                            gVariation -= 12;
+                            bVariation -= 5;
+                        }
+                        break;
+                    case MaterialType::DenseRock:
+                        // Dense rock has dark blue-gray coloration with crystalline texture
+                        rVariation = (posHash1 % 18) - 9;
+                        gVariation = (posHash1 % 18) - 9;
+                        bVariation = (posHash1 % 22) - 9; // Slight blue tint
+                        // Add occasional mineral veins or crystalline structures
+                        if (posHash2 % 9 == 0) {
+                            rVariation += 10;
+                            gVariation += 12;
+                            bVariation += 15; // Blueish highlights
+                        } else if (posHash2 % 16 == 0) {
+                            rVariation -= 15;
+                            gVariation -= 15;
+                            bVariation -= 10; // Dark patches
+                        }
+                        break;
+                    case MaterialType::Water:
+                        // Water has blue variations with some subtle waves
+                        bVariation = (posHash1 % 18) - 9;
+                        // Slight green tint variations for depth perception
+                        gVariation = (posHash2 % 10) - 5;
+                        // Very minimal red variation
+                        rVariation = (posHash3 % 4) - 2;
+                        break;
+                    case MaterialType::Lava:
+                        // Lava has hot red-orange variations with bright spots
+                        rVariation = (posHash1 % 30) - 5; // More red, less reduction
+                        gVariation = (posHash2 % 25) - 15; // More variation in orange
+                        bVariation = (posHash3 % 6) - 3; // Minor blue variation
+                        // Add occasional bright yellow-white spots
+                        if (posHash2 % 10 == 0) {
+                            rVariation += 20;
+                            gVariation += 15;
+                        }
+                        break;
+                    case MaterialType::GrassStalks:
+                        // Grass stalks have varied green shades
+                        gVariation = (posHash1 % 22) - 8; // Strong green variation
+                        rVariation = (posHash2 % 10) - 5; // Some red variation for yellowish/brownish tints
+                        bVariation = (posHash3 % 8) - 4; // Minor blue variation
+                        break;
+                    case MaterialType::Fire:
+                        // Fire has flickering yellow-orange-red variations
+                        rVariation = (posHash1 % 20) - 5; // Strong red
+                        gVariation = (posHash2 % 30) - 15; // Varied green for yellow/orange
+                        bVariation = (posHash3 % 10) - 8; // Minimal blue
+                        // Random bright spots
+                        if (posHash2 % 5 == 0) {
+                            rVariation += 15;
+                            gVariation += 10;
+                        }
+                        break;
+                    case MaterialType::Oil:
+                        // Oil has dark brown-black variations with slight shine
+                        rVariation = (posHash1 % 12) - 8;
+                        gVariation = (posHash2 % 10) - 7;
+                        bVariation = (posHash3 % 8) - 6;
+                        // Occasional slight shine
+                        if (posHash2 % 12 == 0) {
+                            rVariation += 8;
+                            gVariation += 8;
+                            bVariation += 8;
+                        }
+                        break;
+                    case MaterialType::FlammableGas:
+                        // Flammable gas has subtle greenish variations with transparency
+                        gVariation = (posHash1 % 15) - 5;
+                        rVariation = (posHash2 % 8) - 4;
+                        bVariation = (posHash3 % 8) - 4;
+                        break;
+                    default:
+                        // Default variation - still apply some texture for any other materials
+                        rVariation = (posHash1 % 12) - 6;
+                        gVariation = (posHash2 % 12) - 6;
+                        bVariation = (posHash3 % 12) - 6;
+                        break;
+                }
+                
+                // Apply the enhanced variation to the base color
+                int r = props.r + rVariation + props.varR;
+                int g = props.g + gVariation + props.varG;
+                int b = props.b + bVariation + props.varB;
+                
+                // Clamp values to valid range
+                m_pixelData[pixelIdx] = std::max(0, std::min(255, r));
+                m_pixelData[pixelIdx+1] = std::max(0, std::min(255, g));
+                m_pixelData[pixelIdx+2] = std::max(0, std::min(255, b));
+                m_pixelData[pixelIdx+3] = props.transparency;
             }
         }
     }
@@ -453,6 +689,10 @@ void World::generate(unsigned int seed) {
     // Biome noise
     float biomeNoiseScale = 0.0005f;
     
+    // Transition width
+    // Making transitions wider for more natural erosion patterns
+    const int transitionWidth = WORLD_WIDTH / 20; // Wider transition zone (5% of world width)
+    
     // Clear the world first with empty space
     for (int x = 0; x < WORLD_WIDTH; ++x) {
         for (int y = 0; y < WORLD_HEIGHT; ++y) {
@@ -463,25 +703,43 @@ void World::generate(unsigned int seed) {
     // Step 1: Generate heightmap using Perlin noise
     std::vector<int> heightMap(WORLD_WIDTH);
     
-    // Define biome regions for height generation (same as for biomes)
+    // Define biome regions for height generation
     const int desertEndX = WORLD_WIDTH / 3;
     const int grasslandEndX = 2 * WORLD_WIDTH / 3;
-    const int transitionWidth = WORLD_WIDTH / 100; // Narrow transition zone for sharper biome borders
     
     // Different noise parameters for each biome type
-    const float desertNoiseScale = 0.006f;    // Higher frequency, more hills
+    const float desertNoiseScale = 0.006f;    // Higher frequency, more dunes
     const float grasslandNoiseScale = 0.003f; // Lower frequency, gentler hills
     const float mountainNoiseScale = 0.0035f; // Reduced frequency for smoother mountains
     
     // Height scale factors for each biome
-    const float desertHeightScale = 0.35f;    // Moderate hills
+    const float desertHeightScale = 0.3f;     // Moderate dunes
     const float grasslandHeightScale = 0.25f; // Flatter
-    const float mountainHeightScale = 0.7f;   // Taller peaks, but not extreme
+    const float mountainHeightScale = 0.6f;   // Taller peaks, but not extreme
     
     // Base height level for each biome (proportion of world height)
     const float desertBaseHeight = 0.3f;      // Medium base height
     const float grasslandBaseHeight = 0.25f;  // Lower base height
     const float mountainBaseHeight = 0.4f;    // Higher base level
+    
+    // Generate erosion factor for desert transition (smaller values = more erosion)
+    std::vector<float> erosionFactor(WORLD_WIDTH, 1.0f);
+    for (int x = desertEndX - transitionWidth; x < desertEndX + transitionWidth; ++x) {
+        if (x >= 0 && x < WORLD_WIDTH) {
+            float t = (float)(x - (desertEndX - transitionWidth)) / (2.0f * transitionWidth);
+            
+            // Apply smooth easing function (cubic) 
+            t = t * t * (3.0f - 2.0f * t);
+            
+            // Erosion is strongest in the middle of the transition zone
+            float erosion = 0.6f + 0.4f * std::abs(t - 0.5f) * 2.0f;
+            erosionFactor[x] = erosion;
+            
+            // Add some noise to the erosion factor for natural variation
+            float erosionNoise = perlinNoise2D(x * 0.1f, 0.0f, seed + 523);
+            erosionFactor[x] *= (0.9f + 0.2f * erosionNoise);
+        }
+    }
     
     for (int x = 0; x < WORLD_WIDTH; ++x) {
         // Determine which biome region this x belongs to
@@ -501,9 +759,12 @@ void World::generate(unsigned int seed) {
             // This is a smooth S-curve transition: t = t^2 * (3 - 2*t)
             t = t * t * (3.0f - 2.0f * t);
             
-            currentNoiseScale = desertNoiseScale * (2.0f - t) + grasslandNoiseScale * t;
-            heightScale = desertHeightScale * (2.0f - t) + grasslandHeightScale * t;
+            currentNoiseScale = desertNoiseScale * (1.0f - t) + grasslandNoiseScale * t;
+            heightScale = desertHeightScale * (1.0f - t) + grasslandHeightScale * t;
             baseHeight = desertBaseHeight * (1.0f - t) + grasslandBaseHeight * t;
+            
+            // Apply erosion to height - this creates a more natural transition with eroded features
+            heightScale *= erosionFactor[x];
         }
         else if (x < grasslandEndX - transitionWidth) {
             // Pure grassland region
@@ -516,12 +777,15 @@ void World::generate(unsigned int seed) {
             float t = (float)(x - (grasslandEndX - transitionWidth)) / (2.0f * transitionWidth);
             
             // Apply smooth easing function (cubic) to make transition more natural
-            // This is a smooth S-curve transition: t = t^2 * (3 - 2*t)
             t = t * t * (3.0f - 2.0f * t);
             
-            currentNoiseScale = grasslandNoiseScale * (1.0f - t) + mountainNoiseScale * t;
-            heightScale = grasslandHeightScale * (1.0f - t) + mountainHeightScale * t;
-            baseHeight = grasslandBaseHeight * (1.0f - t) + mountainBaseHeight * t;
+            // Create a smoother slope up to mountains
+            // Use t^2 to make it start slow then rise more rapidly
+            float mountainFactor = t * t;
+            
+            currentNoiseScale = grasslandNoiseScale * (1.0f - mountainFactor) + mountainNoiseScale * mountainFactor;
+            heightScale = grasslandHeightScale * (1.0f - mountainFactor) + mountainHeightScale * mountainFactor;
+            baseHeight = grasslandBaseHeight * (1.0f - mountainFactor) + mountainBaseHeight * mountainFactor;
         }
         else {
             // Pure mountain region
@@ -533,11 +797,16 @@ void World::generate(unsigned int seed) {
         // Generate fractal noise with biome-specific parameters
         // Use more octaves for mountains to get smoother large shapes with finer details
         int biomeOctaves = octaves;
-        if (currentNoiseScale == mountainNoiseScale) {
+        if (x >= grasslandEndX - transitionWidth) {
             biomeOctaves = 6; // More octaves for mountains
         }
         
-        float height = fractalNoise(static_cast<float>(x), 0.0f, biomeOctaves, persistence, currentNoiseScale, seed);
+        // Second noise component for secondary features
+        float mainHeight = fractalNoise(static_cast<float>(x), 0.0f, biomeOctaves, persistence, currentNoiseScale, seed);
+        float detailHeight = fractalNoise(static_cast<float>(x), 10.0f, biomeOctaves + 2, persistence, currentNoiseScale * 2.0f, seed + 777);
+        
+        // Combine main terrain with detailed features
+        float height = mainHeight * 0.8f + detailHeight * 0.2f;
         
         // Apply biome-specific scaling
         height = (height * 0.5f + 0.5f) * (WORLD_HEIGHT * heightScale);
@@ -561,14 +830,16 @@ void World::generate(unsigned int seed) {
             baseBiome = BiomeType::DESERT;
         } 
         else if (x < desertEndX + transitionWidth) {
-            // Desert-to-grassland transition zone
-            // Calculate smooth transition factor
+            // Desert-to-grassland transition zone with erosion patterns
             float t = (float)(x - (desertEndX - transitionWidth)) / (2.0f * transitionWidth);
             t = t * t * (3.0f - 2.0f * t); // Smooth cubic easing
             
-            // Use blend of noise and position to determine the biome
-            // As we get closer to grassland region, the probability of grassland increases
-            float threshold = -0.5f + t; // Threshold shifts from -0.5 to 0.5 across transition
+            // Use varied noise threshold for more natural, eroded transition
+            float erosionNoise = perlinNoise2D(x * 0.05f, 0.0f, seed + 456);
+            float localErosion = erosionFactor[x] * (0.8f + 0.4f * erosionNoise);
+            
+            // Adjust threshold based on erosion to create patches of mixed biomes
+            float threshold = -0.5f + t + (localErosion - 1.0f) * 0.3f;
             baseBiome = (biomeNoise < threshold) ? BiomeType::DESERT : BiomeType::GRASSLAND;
         }
         else if (x < grasslandEndX - transitionWidth) {
@@ -577,13 +848,12 @@ void World::generate(unsigned int seed) {
         }
         else if (x < grasslandEndX + transitionWidth) {
             // Grassland-to-mountain transition zone
-            // Calculate smooth transition factor
             float t = (float)(x - (grasslandEndX - transitionWidth)) / (2.0f * transitionWidth);
             t = t * t * (3.0f - 2.0f * t); // Smooth cubic easing
             
-            // Use blend of noise and position to determine the biome
-            // As we get closer to mountain region, the probability of mountains increases
-            float threshold = -0.5f + t; // Threshold shifts from -0.5 to 0.5 across transition
+            // Use a gradual threshold that favors foothills first
+            float mountainAmount = t * t; // Squared to increase mountain presence toward the end
+            float threshold = -0.5f + mountainAmount;
             baseBiome = (biomeNoise < threshold) ? BiomeType::GRASSLAND : BiomeType::MOUNTAIN;
         }
         else {
@@ -608,20 +878,20 @@ void World::generate(unsigned int seed) {
         }
     }
     
-    // Step 3: Fill terrain with blocks based on height and biome
+    // Step 3: Fill terrain with blocks based on height and biome - with proper layering
     for (int x = 0; x < WORLD_WIDTH; ++x) {
         int terrainHeight = heightMap[x];
         BiomeType biome = biomeMap[x];
         
         // Invert the terrain height to make 0 the bottom of the world and WORLD_HEIGHT the top
-        // This ensures the ground is at the bottom and the sky is at the top
         terrainHeight = WORLD_HEIGHT - terrainHeight;
         
         for (int y = 0; y < WORLD_HEIGHT; ++y) {
             if (y < terrainHeight) {
                 // Below ground is empty (air)
                 continue; // Already filled with Empty
-            } else if (y == terrainHeight) {
+            } 
+            else if (y == terrainHeight) {
                 // Surface block at the ground level
                 switch (biome) {
                     case BiomeType::DESERT:
@@ -631,42 +901,180 @@ void World::generate(unsigned int seed) {
                         set(x, y, MaterialType::Snow);
                         break;
                     case BiomeType::MOUNTAIN:
-                        set(x, y, MaterialType::Stone);
+                        // Mountain tops are either stone or snow depending on height
+                        if (terrainHeight < WORLD_HEIGHT * 0.3f) { // Higher parts get snow
+                            set(x, y, MaterialType::Snow);
+                        } else {
+                            set(x, y, MaterialType::Stone);
+                        }
                         break;
                     case BiomeType::JUNGLE:
                     case BiomeType::GRASSLAND:
-                        set(x, y, MaterialType::Grass);
+                        // Add grass stalks occasionally on top of grass
+                        if (m_rng() % 10 == 0) {
+                            set(x, y, MaterialType::GrassStalks);
+                            // Add the grass block below
+                            if (y + 1 < WORLD_HEIGHT) {
+                                set(x, y + 1, MaterialType::Grass);
+                            }
+                        } else {
+                            set(x, y, MaterialType::Grass);
+                        }
                         break;
                 }
-            } else {
-                // Above the surface (underground)
+            } 
+            else {
+                // Underground layers - each biome has distinct layering
                 int depth = y - terrainHeight; // How deep we are from the surface
                 
-                if (depth < 40) {
-                    // Just below surface
-                    if (biome == BiomeType::DESERT) {
-                        set(x, y, MaterialType::Sand);
-                    } else if (biome == BiomeType::SNOW) {
-                        set(x, y, MaterialType::Snow);
-                    } else {
-                        set(x, y, MaterialType::Dirt);
+                switch (biome) {
+                    case BiomeType::DESERT: {
+                        // Desert layering: Sand → Sandstone → Stone → Dense Rock
+                        if (depth < 8) {
+                            set(x, y, MaterialType::Sand); // Top sand layer
+                        } 
+                        else if (depth < 25) {
+                            set(x, y, MaterialType::Sandstone); // Sandstone layer
+                        } 
+                        else if (depth < 60) {
+                            set(x, y, MaterialType::Stone); // Deep stone
+                        } 
+                        else if (y > 0.85 * WORLD_HEIGHT) {
+                            set(x, y, MaterialType::Bedrock); // Bottom layer
+                        } 
+                        else {
+                            set(x, y, MaterialType::DenseRock); // Deepest layer
+                        }
+                        break;
                     }
-                } else if (y > 0.9 * WORLD_HEIGHT) {
-                    // Top 10% of world (was bottom, now top due to inversion)
-                    set(x, y, MaterialType::Bedrock);
-                } else {
-                    // Default underground material
-                    if (biome == BiomeType::DESERT) {
-                        set(x, y, MaterialType::Sandstone);
-                    } else {
-                        set(x, y, MaterialType::Stone);
+                    
+                    case BiomeType::GRASSLAND:
+                    case BiomeType::JUNGLE: {
+                        // Grassland layering: Grass → Topsoil → Dirt → Stone → Dense Rock
+                        if (depth == 1) {
+                            set(x, y, MaterialType::Grass); // Top grass layer
+                        } 
+                        else if (depth < 5) {
+                            set(x, y, MaterialType::TopSoil); // Rich topsoil
+                        } 
+                        else if (depth < 20) {
+                            set(x, y, MaterialType::Dirt); // Dirt layer
+                        } 
+                        else if (depth < 50) {
+                            set(x, y, MaterialType::Stone); // Stone layer 
+                        }
+                        else if (y > 0.85 * WORLD_HEIGHT) {
+                            set(x, y, MaterialType::Bedrock); // Bottom layer
+                        }
+                        else {
+                            set(x, y, MaterialType::DenseRock); // Deepest layer
+                        }
+                        break;
+                    }
+                    
+                    case BiomeType::MOUNTAIN: {
+                        // Mountain layering: Snow (top) → Stone → Gravel → Dense Rock
+                        if (terrainHeight < WORLD_HEIGHT * 0.3f && depth < 5) {
+                            set(x, y, MaterialType::Snow); // Snow cap on highest mountains
+                        }
+                        else if (depth < 15) {
+                            set(x, y, MaterialType::Stone); // Upper mountain rock
+                        }
+                        else if (depth < 25) {
+                            set(x, y, MaterialType::Gravel); // Gravel layer
+                        }
+                        else if (depth < 45) {
+                            set(x, y, MaterialType::Stone); // Middle layer stone
+                        }
+                        else if (y > 0.85 * WORLD_HEIGHT) {
+                            set(x, y, MaterialType::Bedrock); // Bottom layer
+                        }
+                        else {
+                            set(x, y, MaterialType::DenseRock); // Mountain base
+                        }
+                        break;
+                    }
+                    
+                    case BiomeType::SNOW: {
+                        // Snow biome: Snow → Stone → Gravel → Dense Rock
+                        if (depth < 8) {
+                            set(x, y, MaterialType::Snow); // Snow layer
+                        }
+                        else if (depth < 20) {
+                            set(x, y, MaterialType::Stone); // Stone layer
+                        }
+                        else if (depth < 30) {
+                            set(x, y, MaterialType::Gravel); // Gravel transition
+                        }
+                        else if (y > 0.85 * WORLD_HEIGHT) {
+                            set(x, y, MaterialType::Bedrock); // Bottom layer 
+                        }
+                        else {
+                            set(x, y, MaterialType::DenseRock); // Deep rock
+                        }
+                        break;
                     }
                 }
             }
         }
     }
     
-    std::cout << "Basic terrain generation complete." << std::endl;
+    // Step 4: Add biome transition features for more natural borders
+    
+    // Desert-Grassland transition - add erosion features
+    for (int x = desertEndX - transitionWidth; x < desertEndX + transitionWidth; ++x) {
+        if (x >= 0 && x < WORLD_WIDTH) {
+            // Add scattered sand patches and exposed rock in the transition
+            for (int y = 0; y < WORLD_HEIGHT; ++y) {
+                if (get(x, y) == MaterialType::Grass || get(x, y) == MaterialType::TopSoil) {
+                    // Use noise to create patches of sand over grass (erosion patterns)
+                    float sandNoise = perlinNoise2D(x * 0.1f, y * 0.1f, seed + 345);
+                    if (sandNoise > 0.4f && erosionFactor[x] < 0.85f) {
+                        set(x, y, MaterialType::Sand);
+                    }
+                }
+                else if (get(x, y) == MaterialType::Dirt) {
+                    // Occasionally expose sandstone where dirt would be
+                    float stoneNoise = perlinNoise2D(x * 0.08f, y * 0.08f, seed + 678);
+                    if (stoneNoise > 0.6f && erosionFactor[x] < 0.8f) {
+                        set(x, y, MaterialType::Sandstone);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Grassland-Mountain transition - add foothills and exposed rock features
+    for (int x = grasslandEndX - transitionWidth; x < grasslandEndX + transitionWidth; ++x) {
+        if (x >= 0 && x < WORLD_WIDTH) {
+            // Calculate a transition factor for gradual change
+            float t = (float)(x - (grasslandEndX - transitionWidth)) / (2.0f * transitionWidth);
+            t = t * t; // Squared to make it more mountain-like toward the end
+            
+            for (int y = 0; y < WORLD_HEIGHT; ++y) {
+                if (get(x, y) == MaterialType::Grass) {
+                    // Occasionally replace grass with stone for rocky outcrops
+                    float rockNoise = perlinNoise2D(x * 0.05f, y * 0.05f, seed + 123);
+                    if (rockNoise > 0.8f - t * 0.3f) { // More rocks as we get closer to mountains
+                        set(x, y, MaterialType::Stone);
+                    }
+                }
+                else if (get(x, y) == MaterialType::TopSoil || get(x, y) == MaterialType::Dirt) {
+                    // Replace some dirt with gravel/stone (rocky soil) for a more mountain-like transition
+                    float soilNoise = perlinNoise2D(x * 0.07f, y * 0.07f, seed + 234);
+                    if (soilNoise > 0.7f - t * 0.4f) {
+                        if (soilNoise > 0.85f) {
+                            set(x, y, MaterialType::Stone); // Occasional stone outcrops
+                        } else {
+                            set(x, y, MaterialType::Gravel); // Gravelly soil transition
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    std::cout << "Enhanced terrain generation complete." << std::endl;
     
     // Update pixel data
     updatePixelData();

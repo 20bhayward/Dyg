@@ -21,6 +21,9 @@ enum class MaterialType : uint8_t {
     Snow,            // Top layer for snow biome
     Bedrock,         // Indestructible bottom layer
     Sandstone,       // Solid material beneath sand
+    Gravel,          // Loose rock material, between stone and dirt
+    TopSoil,         // Rich soil layer between grass and dirt
+    DenseRock,       // Hard rock layer found deep underground or in mountains
     COUNT            // Keep this last to track count of materials
 };
 
@@ -61,7 +64,10 @@ constexpr std::array<MaterialProperties, static_cast<std::size_t>(MaterialType::
     /* Lava */                {false, true,  false, false, false, false,   255, 80,  0,   30,  20,  10},
     /* Snow */                {true,  false, false, false, false, false,   245, 245, 255, 5,   5,   5},
     /* Bedrock */             {true,  false, false, false, false, false,   50,  50,  55,  10,  10,  10},
-    /* Sandstone */           {true,  false, false, false, false, false,   200, 180, 120, 15,  15,  10}
+    /* Sandstone */           {true,  false, false, false, false, false,   200, 180, 120, 15,  15,  10},
+    /* Gravel */              {false, false, true,  false, false, false,   130, 130, 130, 25,  25,  25},
+    /* TopSoil */             {true,  false, false, false, false, false,   90,  65,  35,  15,  12,  8},
+    /* DenseRock */           {true,  false, false, false, false, false,   90,  90,  100, 15,  15,  15}
 }};
 
 } // namespace PixelPhys

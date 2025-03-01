@@ -15,21 +15,15 @@ if(WIN32 AND EXISTS "C:/VulkanSDK/1.4.304.1/")
 endif()
 
 # Check for glslc
-find_program(GLSLC_EXECUTABLE glslc
-    PATHS "${VULKAN_SDK}/Bin"
-    NO_DEFAULT_PATH
-)
+find_program(GLSLC_EXECUTABLE glslc)
 if(NOT GLSLC_EXECUTABLE)
-    message(FATAL_ERROR "glslc not found. Please install Vulkan SDK with glslc.")
+    message(STATUS "glslc not found, shaders will need to be compiled manually")
 endif()
 
 # Check for glslangValidator
-find_program(GLSLANG_VALIDATOR_EXECUTABLE glslangValidator
-    PATHS "${VULKAN_SDK}/Bin"
-    NO_DEFAULT_PATH
-)
+find_program(GLSLANG_VALIDATOR_EXECUTABLE glslangValidator)
 if(NOT GLSLANG_VALIDATOR_EXECUTABLE)
-    message(WARNING "glslangValidator not found. Using glslc instead.")
+    message(STATUS "glslangValidator not found. Shaders will need to be compiled manually.")
 endif()
 
 # Compiler warnings
@@ -40,7 +34,7 @@ endif()
 # Find dependencies
 find_package(SDL2 REQUIRED)
 find_package(GLEW REQUIRED)
-find_package(Vulkan REQUIRED COMPONENTS glslc)
+find_package(Vulkan REQUIRED)
 
 # Configuration options
 option(USE_VULKAN "Use Vulkan rendering backend" ON)
