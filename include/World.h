@@ -6,6 +6,7 @@
 #include <random>
 #include <cstdint>
 #include <iostream>
+#include <map>
 
 namespace PixelPhys {
 
@@ -163,6 +164,32 @@ private:
     
     // World generation helper functions
     void generateTerrain();
+    
+    // Cave generation functions
+    void generateCavesDrunkenWalk(unsigned int seed);
+    void generateCavesCellularAutomata(unsigned int seed);
+    void generateCavesGraph(unsigned int seed);
+    
+    // Cave graph generation structs and methods
+    struct CaveNode {
+        enum class Type {
+            ENTRANCE,
+            TUNNEL,
+            CHAMBER,
+            JUNCTION
+        };
+        
+        Type type;
+        int x, y;
+        float radius;
+        std::vector<size_t> connections;
+        std::map<std::string, float> properties;
+    };
+    
+    void simulateGraphPhysics(std::vector<CaveNode>& nodes, int iterations);
+    void implementGraphCaves(const std::vector<CaveNode>& nodes);
+    void carveGraphTunnel(const CaveNode& start, const CaveNode& end, float widthVariation);
+    void carveGraphChamber(const CaveNode& node);
     
     // Ore generation helper functions
     void generateOreVein(int startX, int startY, MaterialType oreType, int maxSize, float density, int maxRadius, BiomeType biome = BiomeType::GRASSLAND);
