@@ -5,7 +5,9 @@
             "includePath": [
                 "${workspaceFolder}/include",
                 "${workspaceFolder}/include/**",
-                "G:/Vulkan/Include",
+                "C:/VulkanSDK/1.4.304.1/Bin",
+                "C:/VulkanSDK/1.4.304.1/**",
+                "C:/VulkanSDK/1.4.304.1/Include",
                 "E:/Downloads/glew-2.1.0/include",
                 "${workspaceFolder}/**"
             ],

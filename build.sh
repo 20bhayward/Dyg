@@ -70,7 +70,7 @@ if $USE_VULKAN; then
   echo "Building with Vulkan support..."
   
   # Check for Vulkan SDK
-  if [ -d "/usr/include/vulkan" ] || [ -d "/usr/local/include/vulkan" ] || [ -d "G:/Vulkan/Include" ]; then
+  if [ -d "/usr/include/vulkan" ] || [ -d "/usr/local/include/vulkan" ] || [ -d "C:/VulkanSDK/1.4.304.1/Include" ]; then
     echo "Vulkan headers found"
   else
     echo "WARNING: Vulkan headers not found. You may need to install the Vulkan SDK."

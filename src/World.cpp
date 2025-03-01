@@ -68,10 +68,11 @@ void Chunk::set(int x, int y, MaterialType material) {
         
         // Different variation for each color channel - INCREASED VARIATION
         int rVariation = (posHash1 % 35) - 17;  // Much stronger variation
-        int gVariation = (posHash2 % 31) - 15;  // Much stronger variation  
+        int gVariation = (posHash2 % 31) - 15;  // Much stronger variation
         int bVariation = (posHash3 % 27) - 13;  // Much stronger variation
         
-        // Apply material-specific variation based on material type
+        // Apply material-specific variation patterns
+        // Various materials have their own unique texture patterns
         switch (material) {
             case MaterialType::Stone:
                 // Stone has gray variations with strong texture
@@ -94,7 +95,7 @@ void Chunk::set(int x, int y, MaterialType material) {
                 }
                 break;
             case MaterialType::Sand:
-                // Sand has strong yellow-brown variations
+                // Sand has strong yellow-brown variations with visible texture
                 rVariation = (posHash1 % 30) - 10;
                 gVariation = (posHash1 % 25) - 12;
                 bVariation = (posHash3 % 15) - 10;
@@ -105,30 +106,112 @@ void Chunk::set(int x, int y, MaterialType material) {
                 }
                 break;
             case MaterialType::Dirt:
-                // Dirt has rich brown variations
+                // Dirt has rich brown variations with texture
                 rVariation = (posHash1 % 40) - 15;
                 gVariation = (posHash2 % 30) - 15;
                 bVariation = (posHash3 % 20) - 12;
-                // Add variation
+                // Add occasional darker and lighter patches
                 if (posHash2 % 5 == 0) {
                     rVariation -= 20;
                     gVariation -= 20;
+                    bVariation -= 10;
+                } else if (posHash2 % 7 == 0) {
+                    rVariation += 15;
+                    gVariation += 10;
                 }
                 break;
+            case MaterialType::Snow:
+                // Snow has very subtle blue-white variations
+                rVariation = gVariation = bVariation = (posHash1 % 7) - 3;
+                break;
+            case MaterialType::Sandstone:
+                // Sandstone has beige-tan variations
+                rVariation = (posHash1 % 16) - 8;
+                gVariation = (posHash2 % 14) - 7;
+                bVariation = (posHash3 % 8) - 4;
+                break;
+            case MaterialType::Bedrock:
+                // Bedrock has dark gray variations with some texture
+                rVariation = gVariation = bVariation = (posHash1 % 20) - 8;
+                // Add some occasional darker spots for texture
+                if (posHash2 % 8 == 0) {
+                    rVariation -= 10;
+                    gVariation -= 10;
+                    bVariation -= 10;
+                }
+                break;
+            case MaterialType::Water:
+                // Water has blue variations with some subtle waves
+                bVariation = (posHash1 % 18) - 9;
+                // Slight green tint variations for depth perception
+                gVariation = (posHash2 % 10) - 5;
+                // Very minimal red variation
+                rVariation = (posHash3 % 4) - 2;
+                break;
+            case MaterialType::Lava:
+                // Lava has hot red-orange variations with bright spots
+                rVariation = (posHash1 % 30) - 5; // More red, less reduction
+                gVariation = (posHash2 % 25) - 15; // More variation in orange
+                bVariation = (posHash3 % 6) - 3; // Minor blue variation
+                // Add occasional bright yellow-white spots
+                if (posHash2 % 10 == 0) {
+                    rVariation += 20;
+                    gVariation += 15;
+                }
+                break;
+            case MaterialType::GrassStalks:
+                // Grass stalks have varied green shades
+                gVariation = (posHash1 % 22) - 8; // Strong green variation
+                rVariation = (posHash2 % 10) - 5; // Some red variation for yellowish/brownish tints
+                bVariation = (posHash3 % 8) - 4; // Minor blue variation
+                break;
+            case MaterialType::Fire:
+                // Fire has flickering yellow-orange-red variations
+                rVariation = (posHash1 % 20) - 5; // Strong red
+                gVariation = (posHash2 % 30) - 15; // Varied green for yellow/orange
+                bVariation = (posHash3 % 10) - 8; // Minimal blue
+                // Random bright spots
+                if (posHash2 % 5 == 0) {
+                    rVariation += 15;
+                    gVariation += 10;
+                }
+                break;
+            case MaterialType::Oil:
+                // Oil has dark brown-black variations with slight shine
+                rVariation = (posHash1 % 12) - 8;
+                gVariation = (posHash2 % 10) - 7;
+                bVariation = (posHash3 % 8) - 6;
+                // Occasional slight shine
+                if (posHash2 % 12 == 0) {
+                    rVariation += 8;
+                    gVariation += 8;
+                    bVariation += 8;
+                }
+                break;
+            case MaterialType::FlammableGas:
+                // Flammable gas has subtle greenish variations with transparency
+                gVariation = (posHash1 % 15) - 5;
+                rVariation = (posHash2 % 8) - 4;
+                bVariation = (posHash3 % 8) - 4;
+                break;
             default:
-                // Default variation
+                // Default variation - still apply some texture for any other materials
+                rVariation = (posHash1 % 12) - 6;
+                gVariation = (posHash2 % 12) - 6;
+                bVariation = (posHash3 % 12) - 6;
                 break;
         }
         
         // Apply the enhanced variation to the base color
-        int r = std::max(0, std::min(255, static_cast<int>(props.r) + rVariation + props.varR));
-        int g = std::max(0, std::min(255, static_cast<int>(props.g) + gVariation + props.varG));
-        int b = std::max(0, std::min(255, static_cast<int>(props.b) + bVariation + props.varB));
+        int r = props.r + rVariation + props.varR;
+        int g = props.g + gVariation + props.varG;
+        int b = props.b + bVariation + props.varB;
         
-        m_pixelData[pixelIdx] = r;     // R
-        m_pixelData[pixelIdx+1] = g;   // G
-        m_pixelData[pixelIdx+2] = b;   // B
-        m_pixelData[pixelIdx+3] = props.transparency;  // A (using default 255 for fully opaque)
+        // Clamp values to valid range
+        m_pixelData[pixelIdx] = std::max(0, std::min(255, r));
+        m_pixelData[pixelIdx+1] = std::max(0, std::min(255, g));
+        m_pixelData[pixelIdx+2] = std::max(0, std::min(255, b));
+        m_pixelData[pixelIdx+3] = props.transparency;
     }
 }
 
@@ -154,158 +237,6 @@ void Chunk::updatePixelData() {
             } else {
                 const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
                 
-                // Create a position-based variation for more natural look
-                // Enhanced variation using multiple hash functions for more texture
-                int posHash1 = ((x * 13) + (y * 7)) % 32;
-                int posHash2 = ((x * 23) + (y * 17)) % 64;
-                int posHash3 = ((x * 5) + (y * 31)) % 16;
-                
-                // Different variation for each color channel - INCREASED VARIATION
-                int rVariation = (posHash1 % 35) - 17;  // Much stronger variation
-                int gVariation = (posHash2 % 31) - 15;  // Much stronger variation
-                int bVariation = (posHash3 % 27) - 13;  // Much stronger variation
-                
-                // Apply material-specific variation patterns
-                // Various materials have their own unique texture patterns
-                switch (material) {
-                    case MaterialType::Stone:
-                        // Stone has gray variations with strong texture
-                        rVariation = gVariation = bVariation = (posHash1 % 45) - 22;
-                        // Add dark speckles
-                        if (posHash2 % 5 == 0) {
-                            rVariation -= 25;
-                            gVariation -= 25;
-                            bVariation -= 25;
-                        }
-                        break;
-                    case MaterialType::Grass:
-                        // Grass has strong green variations with patches
-                        gVariation = (posHash1 % 50) - 15; // Strong green variation
-                        rVariation = (posHash2 % 25) - 15; // Variation for yellowish tints
-                        // Add occasional darker patches
-                        if (posHash1 % 3 == 0) {
-                            gVariation -= 20;
-                            rVariation -= 10;
-                        }
-                        break;
-                    case MaterialType::Sand:
-                        // Sand has strong yellow-brown variations with visible texture
-                        rVariation = (posHash1 % 30) - 10;
-                        gVariation = (posHash1 % 25) - 12;
-                        bVariation = (posHash3 % 15) - 10;
-                        // Add occasional darker grains
-                        if (posHash2 % 4 == 0) {
-                            rVariation -= 15;
-                            gVariation -= 15;
-                        }
-                        break;
-                    case MaterialType::Dirt:
-                        // Dirt has rich brown variations with texture
-                        rVariation = (posHash1 % 40) - 15;
-                        gVariation = (posHash2 % 30) - 15;
-                        bVariation = (posHash3 % 20) - 12;
-                        // Add occasional darker and lighter patches
-                        if (posHash2 % 5 == 0) {
-                            rVariation -= 20;
-                            gVariation -= 20;
-                            bVariation -= 10;
-                        } else if (posHash2 % 7 == 0) {
-                            rVariation += 15;
-                            gVariation += 10;
-                        }
-                        break;
-                    case MaterialType::Snow:
-                        // Snow has very subtle blue-white variations
-                        rVariation = gVariation = bVariation = (posHash1 % 7) - 3;
-                        break;
-                    case MaterialType::Sandstone:
-                        // Sandstone has beige-tan variations
-                        rVariation = (posHash1 % 16) - 8;
-                        gVariation = (posHash2 % 14) - 7;
-                        bVariation = (posHash3 % 8) - 4;
-                        break;
-                    case MaterialType::Bedrock:
-                        // Bedrock has dark gray variations with some texture
-                        rVariation = gVariation = bVariation = (posHash1 % 20) - 8;
-                        // Add some occasional darker spots for texture
-                        if (posHash2 % 8 == 0) {
-                            rVariation -= 10;
-                            gVariation -= 10;
-                            bVariation -= 10;
-                        }
-                        break;
-                    case MaterialType::Water:
-                        // Water has blue variations with some subtle waves
-                        bVariation = (posHash1 % 18) - 9;
-                        // Slight green tint variations for depth perception
-                        gVariation = (posHash2 % 10) - 5;
-                        // Very minimal red variation
-                        rVariation = (posHash3 % 4) - 2;
-                        break;
-                    case MaterialType::Lava:
-                        // Lava has hot red-orange variations with bright spots
-                        rVariation = (posHash1 % 30) - 5; // More red, less reduction
-                        gVariation = (posHash2 % 25) - 15; // More variation in orange
-                        bVariation = (posHash3 % 6) - 3; // Minor blue variation
-                        // Add occasional bright yellow-white spots
-                        if (posHash2 % 10 == 0) {
-                            rVariation += 20;
-                            gVariation += 15;
-                        }
-                        break;
-                    case MaterialType::GrassStalks:
-                        // Grass stalks have varied green shades
-                        gVariation = (posHash1 % 22) - 8; // Strong green variation
-                        rVariation = (posHash2 % 10) - 5; // Some red variation for yellowish/brownish tints
-                        bVariation = (posHash3 % 8) - 4; // Minor blue variation
-                        break;
-                    case MaterialType::Fire:
-                        // Fire has flickering yellow-orange-red variations
-                        rVariation = (posHash1 % 20) - 5; // Strong red
-                        gVariation = (posHash2 % 30) - 15; // Varied green for yellow/orange
-                        bVariation = (posHash3 % 10) - 8; // Minimal blue
-                        // Random bright spots
-                        if (posHash2 % 5 == 0) {
-                            rVariation += 15;
-                            gVariation += 10;
-                        }
-                        break;
-                    case MaterialType::Oil:
-                        // Oil has dark brown-black variations with slight shine
-                        rVariation = (posHash1 % 12) - 8;
-                        gVariation = (posHash2 % 10) - 7;
-                        bVariation = (posHash3 % 8) - 6;
-                        // Occasional slight shine
-                        if (posHash2 % 12 == 0) {
-                            rVariation += 8;
-                            gVariation += 8;
-                            bVariation += 8;
-                        }
-                        break;
-                    case MaterialType::FlammableGas:
-                        // Flammable gas has subtle greenish variations with transparency
-                        gVariation = (posHash1 % 15) - 5;
-                        rVariation = (posHash2 % 8) - 4;
-                        bVariation = (posHash3 % 8) - 4;
-                        break;
-                    default:
-                        // Default variation - still apply some texture for any other materials
-                        rVariation = (posHash1 % 12) - 6;
-                        gVariation = (posHash2 % 12) - 6;
-                        bVariation = (posHash3 % 12) - 6;
-                        break;
-                }
-                
-                // Apply the enhanced variation to the base color
-                int r = props.r + rVariation + props.varR;
-                int g = props.g + gVariation + props.varG;
-                int b = props.b + bVariation + props.varB;
-                
-                // Clamp values to valid range
-                m_pixelData[pixelIdx] = std::max(0, std::min(255, r));
-                m_pixelData[pixelIdx+1] = std::max(0, std::min(255, g));
-                m_pixelData[pixelIdx+2] = std::max(0, std::min(255, b));
-                m_pixelData[pixelIdx+3] = props.transparency;
             }
         }
     }
@@ -535,7 +466,7 @@ void World::generate(unsigned int seed) {
     // Define biome regions for height generation (same as for biomes)
     const int desertEndX = WORLD_WIDTH / 3;
     const int grasslandEndX = 2 * WORLD_WIDTH / 3;
-    const int transitionWidth = WORLD_WIDTH / 25; // Narrow transition zone for sharper biome borders
+    const int transitionWidth = WORLD_WIDTH / 100; // Narrow transition zone for sharper biome borders
     
     // Different noise parameters for each biome type
     const float desertNoiseScale = 0.006f;    // Higher frequency, more hills
@@ -570,8 +501,8 @@ void World::generate(unsigned int seed) {
             // This is a smooth S-curve transition: t = t^2 * (3 - 2*t)
             t = t * t * (3.0f - 2.0f * t);
             
-            currentNoiseScale = desertNoiseScale * (1.0f - t) + grasslandNoiseScale * t;
-            heightScale = desertHeightScale * (1.0f - t) + grasslandHeightScale * t;
+            currentNoiseScale = desertNoiseScale * (2.0f - t) + grasslandNoiseScale * t;
+            heightScale = desertHeightScale * (2.0f - t) + grasslandHeightScale * t;
             baseHeight = desertBaseHeight * (1.0f - t) + grasslandBaseHeight * t;
         }
         else if (x < grasslandEndX - transitionWidth) {
@@ -711,7 +642,7 @@ void World::generate(unsigned int seed) {
                 // Above the surface (underground)
                 int depth = y - terrainHeight; // How deep we are from the surface
                 
-                if (depth < 4) {
+                if (depth < 40) {
                     // Just below surface
                     if (biome == BiomeType::DESERT) {
                         set(x, y, MaterialType::Sand);

@@ -7,11 +7,29 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Custom Vulkan SDK path for Windows
-if(WIN32 AND EXISTS "G:/Vulkan")
-    set(VULKAN_SDK "G:/Vulkan" CACHE PATH "Path to Vulkan SDK")
+if(WIN32 AND EXISTS "C:/VulkanSDK/1.4.304.1/")
+    set(VULKAN_SDK "C:/VulkanSDK/1.4.304.1/" CACHE PATH "Path to Vulkan SDK")
+    message(STATUS "Using custom Vulkan SDK path: ${VULKAN_SDK}")
     set(ENV{VULKAN_SDK} ${VULKAN_SDK})
     list(APPEND CMAKE_PREFIX_PATH "${VULKAN_SDK}")
-    message(STATUS "Using custom Vulkan SDK: ${VULKAN_SDK}")
+endif()
+
+# Check for glslc
+find_program(GLSLC_EXECUTABLE glslc
+    PATHS "${VULKAN_SDK}/Bin"
+    NO_DEFAULT_PATH
+)
+if(NOT GLSLC_EXECUTABLE)
+    message(FATAL_ERROR "glslc not found. Please install Vulkan SDK with glslc.")
+endif()
+
+# Check for glslangValidator
+find_program(GLSLANG_VALIDATOR_EXECUTABLE glslangValidator
+    PATHS "${VULKAN_SDK}/Bin"
+    NO_DEFAULT_PATH
+)
+if(NOT GLSLANG_VALIDATOR_EXECUTABLE)
+    message(WARNING "glslangValidator not found. Using glslc instead.")
 endif()
 
 # Compiler warnings
@@ -22,7 +40,7 @@ endif()
 # Find dependencies
 find_package(SDL2 REQUIRED)
 find_package(GLEW REQUIRED)
-find_package(Vulkan REQUIRED)
+find_package(Vulkan REQUIRED COMPONENTS glslc)
 
 # Configuration options
 option(USE_VULKAN "Use Vulkan rendering backend" ON)
@@ -79,20 +97,12 @@ if(WIN32)
     
     target_compile_definitions(PixelPhys2D PRIVATE -DSDL_MAIN_HANDLED)
     
-    # DLL copy logic
+    # Copy the SDL2 DLL into the build folder after building
     add_custom_command(TARGET PixelPhys2D POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${SDL2_DIR}/../bin/SDL2.dll"
         $<TARGET_FILE_DIR:PixelPhys2D>
     )
-    
-    if(USE_VULKAN)
-        add_custom_command(TARGET PixelPhys2D POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${VULKAN_SDK}/Bin/vulkan-1.dll"
-            $<TARGET_FILE_DIR:PixelPhys2D>
-        )
-    endif()
     
     # Create run script
     file(WRITE ${CMAKE_BINARY_DIR}/run_game.bat 
