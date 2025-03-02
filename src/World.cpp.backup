@@ -20,12 +20,11 @@ Chunk::Chunk(int posX, int posY) : m_posX(posX), m_posY(posY), m_isDirty(true),
     
     // Initialize freeFalling status for each cell (none are falling initially)
     m_isFreeFalling.resize(WIDTH * HEIGHT, false);
-}
+
 
 MaterialType Chunk::get(int x, int y) const {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
         return MaterialType::Empty;
-    }
     
     // Position-based material access for pixel-perfect alignment
     int idx = y * WIDTH + x;
@@ -33,15 +32,15 @@ MaterialType Chunk::get(int x, int y) const {
     // Make absolutely sure we're in bounds
     if (idx < 0 || idx >= static_cast<int>(m_grid.size())) {
         return MaterialType::Empty;
-    }
+    
     
     return m_grid[idx];
-}
+
 
 void Chunk::set(int x, int y, MaterialType material) {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
         return;
-    }
+    
     
     // Position-based material access for pixel-perfect alignment
     int idx = y * WIDTH + x;
@@ -49,7 +48,6 @@ void Chunk::set(int x, int y, MaterialType material) {
     // Make absolutely sure we're in bounds
     if (idx < 0 || idx >= static_cast<int>(m_grid.size())) {
         return;
-    }
     
     
     MaterialType oldMaterial = m_grid[idx];

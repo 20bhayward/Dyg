@@ -26,7 +26,6 @@ MaterialType Chunk::get(int x, int y) const {
     if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT) {
         return MaterialType::Empty;
     }
-    
     // Position-based material access for pixel-perfect alignment
     int idx = y * WIDTH + x;
     
@@ -51,7 +50,6 @@ void Chunk::set(int x, int y, MaterialType material) {
         return;
     }
     
-    
     MaterialType oldMaterial = m_grid[idx];
     if (oldMaterial != material) {
         // Always replace the existing material rather than placing on top
@@ -64,7 +62,7 @@ void Chunk::set(int x, int y, MaterialType material) {
         // Ensure we're in bounds for the pixel data too
         if (pixelIdx < 0 || pixelIdx + 3 >= static_cast<int>(m_pixelData.size())) {
             return;
-        
+        }
         
         const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
         
@@ -90,7 +88,7 @@ void Chunk::set(int x, int y, MaterialType material) {
                     rVariation -= 25;
                     gVariation -= 25;
                     bVariation -= 25;
-                
+                }
                 break;
             case MaterialType::Grass:
                 // Grass has strong green variations with patches
@@ -100,7 +98,7 @@ void Chunk::set(int x, int y, MaterialType material) {
                 if (posHash1 % 3 == 0) {
                     gVariation -= 20;
                     rVariation -= 10;
-                
+                }
                 break;
             case MaterialType::Sand:
                 // Sand has strong yellow-brown variations with visible texture
@@ -111,7 +109,7 @@ void Chunk::set(int x, int y, MaterialType material) {
                 if (posHash2 % 4 == 0) {
                     rVariation -= 15;
                     gVariation -= 15;
-                
+                }
                 break;
             case MaterialType::Dirt:
                 // Dirt has rich brown variations with texture
@@ -123,10 +121,10 @@ void Chunk::set(int x, int y, MaterialType material) {
                     rVariation -= 20;
                     gVariation -= 20;
                     bVariation -= 10;
-                 else if (posHash2 % 7 == 0) {
+                } else if (posHash2 % 7 == 0) {
                     rVariation += 15;
                     gVariation += 10;
-                
+                }
                 break;
             case MaterialType::Snow:
                 // Snow has very subtle blue-white variations
@@ -146,7 +144,7 @@ void Chunk::set(int x, int y, MaterialType material) {
                     rVariation -= 10;
                     gVariation -= 10;
                     bVariation -= 10;
-                
+                }
                 break;
             case MaterialType::Gravel:
                 // Gravel has strong texture with varied gray tones
@@ -156,11 +154,11 @@ void Chunk::set(int x, int y, MaterialType material) {
                     rVariation -= 25;
                     gVariation -= 25;
                     bVariation -= 25;
-                 else if (posHash2 % 11 == 0) {
+                } else if (posHash2 % 11 == 0) {
                     rVariation += 15;
                     gVariation += 15;
                     bVariation += 15;
-                
+                }
                 break;
             case MaterialType::TopSoil:
                 // Topsoil has rich brown variations with organic texture
@@ -172,7 +170,7 @@ void Chunk::set(int x, int y, MaterialType material) {
                     rVariation -= 15;
                     gVariation -= 12;
                     bVariation -= 5;
-                
+                }
                 break;
             case MaterialType::DenseRock:
                 // Dense rock has dark blue-gray coloration with crystalline texture
@@ -184,11 +182,11 @@ void Chunk::set(int x, int y, MaterialType material) {
                     rVariation += 10;
                     gVariation += 12;
                     bVariation += 15; // Blueish highlights
-                 else if (posHash2 % 16 == 0) {
+                } else if (posHash2 % 16 == 0) {
                     rVariation -= 15;
                     gVariation -= 15;
                     bVariation -= 10; // Dark patches
-                
+                }
                 break;
             case MaterialType::Water:
                 // Water has blue variations with some subtle waves
@@ -207,7 +205,7 @@ void Chunk::set(int x, int y, MaterialType material) {
                 if (posHash2 % 10 == 0) {
                     rVariation += 20;
                     gVariation += 15;
-                
+                }
                 break;
             case MaterialType::GrassStalks:
                 // Grass stalks have varied green shades
@@ -224,7 +222,7 @@ void Chunk::set(int x, int y, MaterialType material) {
                 if (posHash2 % 5 == 0) {
                     rVariation += 15;
                     gVariation += 10;
-                
+                }
                 break;
             case MaterialType::Oil:
                 // Oil has dark brown-black variations with slight shine
@@ -236,7 +234,7 @@ void Chunk::set(int x, int y, MaterialType material) {
                     rVariation += 8;
                     gVariation += 8;
                     bVariation += 8;
-                
+                }
                 break;
             case MaterialType::FlammableGas:
                 // Flammable gas has subtle greenish variations with transparency
@@ -250,7 +248,7 @@ void Chunk::set(int x, int y, MaterialType material) {
                 gVariation = (posHash2 % 12) - 6;
                 bVariation = (posHash3 % 12) - 6;
                 break;
-        
+        }
         
         // Apply the enhanced variation to the base color
         int r = props.r + rVariation + props.varR;
@@ -262,8 +260,8 @@ void Chunk::set(int x, int y, MaterialType material) {
         m_pixelData[pixelIdx+1] = std::max(0, std::min(255, g));
         m_pixelData[pixelIdx+2] = std::max(0, std::min(255, b));
         m_pixelData[pixelIdx+3] = props.transparency;
-    
-
+    }
+}
 
 void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
     // At the start of each frame, assume this chunk won't need processing next frame
@@ -274,10 +272,10 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
     if (!m_isDirty) {
         m_inactivityCounter++;
         return;
-     else {
+    } else {
         // Reset inactivity counter since we're updating this frame
         m_inactivityCounter = 0;
-    
+    }
     
     // Always update pixel data when a chunk is processed
     updatePixelData();
@@ -301,7 +299,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
             // Skip empty cells
             if (material == MaterialType::Empty) {
                 continue;
-            
+            }
             
             const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
             
@@ -318,7 +316,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                     MaterialType belowMaterial = MaterialType::Empty;
                     if (belowIdx >= 0 && belowIdx < static_cast<int>(m_grid.size())) {
                         belowMaterial = m_grid[belowIdx];
-                    
+                    }
                     
                     // If below is out of chunk, check the chunk below
                     if (y == HEIGHT - 1 && chunkBelow) {
@@ -342,13 +340,13 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             // This prevents the "teleporting" effect by ensuring adjacent chunks are awake
                             if (x <= 2 && chunkLeft) {
                                 chunkLeft->setShouldUpdateNextFrame(true);
-                            
+                            }
                             if (x >= WIDTH - 3 && chunkRight) {
                                 chunkRight->setShouldUpdateNextFrame(true);
-                            
+                            }
                             
                             continue;
-                         
+                        } 
                         // If we can't move down, check diagonally - for powders, ALWAYS check diagonals
                         // This ensures proper settling behavior and fixes "stuck" particles at chunk boundaries
                         else {
@@ -364,20 +362,20 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     chunkBelow->set(x - 1, 0, material);
                                     m_grid[idx] = MaterialType::Empty;
                                     int targetIdx = x - 1;
-                                    
+                                    if (targetIdx >= 0 && targetIdx < static_cast<int>(chunkBelow->m_isFreeFalling.size())) {
                                         chunkBelow->setFreeFalling(targetIdx, true);
-                                    
+                                    }
                                     anyMaterialMoved = true;
                                     chunkBelow->setShouldUpdateNextFrame(true);
                                     
                                     // Always wake up the left chunk when moving diagonally left
                                     if (x <= 3 && chunkLeft) {
                                         chunkLeft->setShouldUpdateNextFrame(true);
-                                    
+                                    }
                                     
                                     moved = true;
-                                
-                            
+                                }
+                            }
                             
                             // Check down-right if didn't move left
                             if (!moved && x < WIDTH - 1) {
@@ -386,20 +384,20 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     chunkBelow->set(x + 1, 0, material);
                                     m_grid[idx] = MaterialType::Empty;
                                     int targetIdx = x + 1;
-                                    
+                                    if (targetIdx >= 0 && targetIdx < static_cast<int>(chunkBelow->m_isFreeFalling.size())) {
                                         chunkBelow->setFreeFalling(targetIdx, true);
-                                    
+                                    }
                                     anyMaterialMoved = true;
                                     chunkBelow->setShouldUpdateNextFrame(true);
                                     
                                     // Always wake up the right chunk when moving diagonally right
                                     if (x >= WIDTH - 4 && chunkRight) {
                                         chunkRight->setShouldUpdateNextFrame(true);
-                                    
+                                    }
                                     
                                     moved = true;
-                                
-                            
+                                }
+                            }
                             
                             // If not already moved and we need to check the right first
                             if (!moved && !checkLeftFirst && x > 0) {
@@ -408,29 +406,29 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     chunkBelow->set(x - 1, 0, material);
                                     m_grid[idx] = MaterialType::Empty;
                                     int targetIdx = x - 1;
-                                    
+                                    if (targetIdx >= 0 && targetIdx < static_cast<int>(chunkBelow->m_isFreeFalling.size())) {
                                         chunkBelow->setFreeFalling(targetIdx, true);
-                                    
+                                    }
                                     anyMaterialMoved = true;
                                     chunkBelow->setShouldUpdateNextFrame(true);
                                     
                                     // Always wake up the left chunk when moving diagonally left
                                     if (x <= 3 && chunkLeft) {
                                         chunkLeft->setShouldUpdateNextFrame(true);
-                                    
+                                    }
                                     
                                     moved = true;
-                                
-                            
+                                }
+                            }
                             
                             if (moved) {
                                 continue;
-                            
-                        
+                            }
+                        }
                         
                         // Always mark the chunk below as needing update next frame
                         chunkBelow->setShouldUpdateNextFrame(true);
-                    
+                    }
                     // Handle within the same chunk
                     else if (belowMaterial == MaterialType::Empty) {
                         // Move powder straight down
@@ -441,7 +439,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                         // Mark the particle as free-falling
                         m_isFreeFalling[belowIdx] = true;
                         continue; // Done moving this particle
-                    
+                    }
                     // If particle can't move down, always check if it can fall diagonally
                     // This is critical for sand-like behavior - always try diagonals whether or not 
                     // it was already falling. This ensures particles eventually settle properly.
@@ -464,13 +462,13 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                 // Handle cross-chunk boundaries if needed
                                 if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
                                     downLeftMaterial = chunkBelow->get(WIDTH - 1, 0);
-                                 else if (x == 0 && chunkLeft) {
+                                } else if (x == 0 && chunkLeft) {
                                     downLeftMaterial = chunkLeft->get(WIDTH - 1, y + 1);
-                                 else if (y == HEIGHT - 1 && chunkBelow) {
+                                } else if (y == HEIGHT - 1 && chunkBelow) {
                                     downLeftMaterial = chunkBelow->get(x - 1, 0);
-                                 else if (downLeftIdx < static_cast<int>(m_grid.size())) {
+                                } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
                                     downLeftMaterial = m_grid[downLeftIdx];
-                                
+                                }
                                 
                                 if (downLeftMaterial == MaterialType::Empty) {
                                     // Handle cross-chunk boundaries
@@ -478,24 +476,24 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkBelow->set(WIDTH - 1, 0, material);
                                         chunkBelow->setFreeFalling(WIDTH * 0 + WIDTH - 1, true);
                                         chunkBelow->setShouldUpdateNextFrame(true);;
-                                     else if (x == 0 && chunkLeft) {
+                                    } else if (x == 0 && chunkLeft) {
                                         chunkLeft->set(WIDTH - 1, y + 1, material);
                                         chunkLeft->m_isFreeFalling[WIDTH * (y + 1) + WIDTH - 1] = true;
                                         chunkLeft->setShouldUpdateNextFrame(true);;
-                                     else if (y == HEIGHT - 1 && chunkBelow) {
+                                    } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x - 1, 0, material);
                                         chunkBelow->setFreeFalling(x - 1, true);
                                         chunkBelow->setShouldUpdateNextFrame(true);;
-                                     else if (downLeftIdx < static_cast<int>(m_grid.size())) {
+                                    } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downLeftIdx] = material;
                                         m_isFreeFalling[downLeftIdx] = true;
-                                    
+                                    }
                                     
                                     m_grid[idx] = MaterialType::Empty;
                                     movedDiagonally = true;
                                     anyMaterialMoved = true;
-                                
-                            
+                                }
+                            }
                             
                             // If couldn't move left, try right
                             if (!movedDiagonally && x < WIDTH - 1) {
@@ -505,13 +503,13 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                 // Handle cross-chunk boundaries if needed
                                 if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
                                     downRightMaterial = chunkBelow->get(0, 0);
-                                 else if (x == WIDTH - 1 && chunkRight) {
+                                } else if (x == WIDTH - 1 && chunkRight) {
                                     downRightMaterial = chunkRight->get(0, y + 1);
-                                 else if (y == HEIGHT - 1 && chunkBelow) {
+                                } else if (y == HEIGHT - 1 && chunkBelow) {
                                     downRightMaterial = chunkBelow->get(x + 1, 0);
-                                 else if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                } else if (downRightIdx < static_cast<int>(m_grid.size())) {
                                     downRightMaterial = m_grid[downRightIdx];
-                                
+                                }
                                 
                                 if (downRightMaterial == MaterialType::Empty) {
                                     // Handle cross-chunk boundaries
@@ -519,25 +517,25 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkBelow->set(0, 0, material);
                                         chunkBelow->setFreeFalling(0, true);
                                         chunkBelow->setShouldUpdateNextFrame(true);;
-                                     else if (x == WIDTH - 1 && chunkRight) {
+                                    } else if (x == WIDTH - 1 && chunkRight) {
                                         chunkRight->set(0, y + 1, material);
                                         chunkRight->m_isFreeFalling[WIDTH * (y + 1)] = true;
                                         chunkRight->setShouldUpdateNextFrame(true);;
-                                     else if (y == HEIGHT - 1 && chunkBelow) {
+                                    } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x + 1, 0, material);
                                         chunkBelow->setFreeFalling(x + 1, true);
                                         chunkBelow->setShouldUpdateNextFrame(true);;
-                                     else if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                    } else if (downRightIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downRightIdx] = material;
                                         m_isFreeFalling[downRightIdx] = true;
-                                    
+                                    }
                                     
                                     m_grid[idx] = MaterialType::Empty;
                                     movedDiagonally = true;
                                     anyMaterialMoved = true;
-                                
-                            
-                         else {
+                                }
+                            }
+                        } else {
                             // Try right-first instead (same code but order is reversed)
                             // Try down-right first
                             if (x < WIDTH - 1) {
@@ -547,13 +545,13 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                 // Handle cross-chunk boundaries
                                 if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
                                     downRightMaterial = chunkBelow->get(0, 0);
-                                 else if (x == WIDTH - 1 && chunkRight) {
+                                } else if (x == WIDTH - 1 && chunkRight) {
                                     downRightMaterial = chunkRight->get(0, y + 1);
-                                 else if (y == HEIGHT - 1 && chunkBelow) {
+                                } else if (y == HEIGHT - 1 && chunkBelow) {
                                     downRightMaterial = chunkBelow->get(x + 1, 0);
-                                 else if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                } else if (downRightIdx < static_cast<int>(m_grid.size())) {
                                     downRightMaterial = m_grid[downRightIdx];
-                                
+                                }
                                 
                                 if (downRightMaterial == MaterialType::Empty) {
                                     // Handle cross-chunk boundaries
@@ -561,24 +559,24 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkBelow->set(0, 0, material);
                                         chunkBelow->setFreeFalling(0, true);
                                         chunkBelow->setShouldUpdateNextFrame(true);;
-                                     else if (x == WIDTH - 1 && chunkRight) {
+                                    } else if (x == WIDTH - 1 && chunkRight) {
                                         chunkRight->set(0, y + 1, material);
                                         chunkRight->m_isFreeFalling[WIDTH * (y + 1)] = true;
                                         chunkRight->setShouldUpdateNextFrame(true);;
-                                     else if (y == HEIGHT - 1 && chunkBelow) {
+                                    } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x + 1, 0, material);
                                         chunkBelow->setFreeFalling(x + 1, true);
                                         chunkBelow->setShouldUpdateNextFrame(true);;
-                                     else if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                    } else if (downRightIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downRightIdx] = material;
                                         m_isFreeFalling[downRightIdx] = true;
-                                    
+                                    }
                                     
                                     m_grid[idx] = MaterialType::Empty;
                                     movedDiagonally = true;
                                     anyMaterialMoved = true;
-                                
-                            
+                                }
+                            }
                             
                             // If couldn't move right, try left
                             if (!movedDiagonally && x > 0) {
@@ -588,13 +586,13 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                 // Handle cross-chunk boundaries
                                 if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
                                     downLeftMaterial = chunkBelow->get(WIDTH - 1, 0);
-                                 else if (x == 0 && chunkLeft) {
+                                } else if (x == 0 && chunkLeft) {
                                     downLeftMaterial = chunkLeft->get(WIDTH - 1, y + 1);
-                                 else if (y == HEIGHT - 1 && chunkBelow) {
+                                } else if (y == HEIGHT - 1 && chunkBelow) {
                                     downLeftMaterial = chunkBelow->get(x - 1, 0);
-                                 else if (downLeftIdx < static_cast<int>(m_grid.size())) {
+                                } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
                                     downLeftMaterial = m_grid[downLeftIdx];
-                                
+                                }
                                 
                                 if (downLeftMaterial == MaterialType::Empty) {
                                     // Handle cross-chunk boundaries
@@ -602,32 +600,32 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkBelow->set(WIDTH - 1, 0, material);
                                         chunkBelow->setFreeFalling(WIDTH * 0 + WIDTH - 1, true);
                                         chunkBelow->setShouldUpdateNextFrame(true);;
-                                     else if (x == 0 && chunkLeft) {
+                                    } else if (x == 0 && chunkLeft) {
                                         chunkLeft->set(WIDTH - 1, y + 1, material);
                                         chunkLeft->m_isFreeFalling[WIDTH * (y + 1) + WIDTH - 1] = true;
                                         chunkLeft->setShouldUpdateNextFrame(true);;
-                                     else if (y == HEIGHT - 1 && chunkBelow) {
+                                    } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x - 1, 0, material);
                                         chunkBelow->setFreeFalling(x - 1, true);
                                         chunkBelow->setShouldUpdateNextFrame(true);;
-                                     else if (downLeftIdx < static_cast<int>(m_grid.size())) {
+                                    } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downLeftIdx] = material;
                                         m_isFreeFalling[downLeftIdx] = true;
-                                    
+                                    }
                                     
                                     m_grid[idx] = MaterialType::Empty;
                                     movedDiagonally = true;
                                     anyMaterialMoved = true;
-                                
-                            
-                        
+                                }
+                            }
+                        }
                         
                         // If this material moved, continue to the next cell
                         if (movedDiagonally) {
                             continue;
-                        
-                    
-                
+                        }
+                    }
+                }
                 
                 // If we reached here, the material didn't move this frame
                 // So we update its falling status
@@ -639,17 +637,17 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                     if (static_cast<int>(m_rng() % 100) < (100 - resistance)) {
                         // Set to free falling with a probability inversely proportional to inertial resistance
                         m_isFreeFalling[idx] = true;
-                     else {
+                    } else {
                         // Material stays settled
                         m_isFreeFalling[idx] = false;
-                    
-                 else {
+                    }
+                } else {
                     // Nothing moved, material stays where it is
                     m_isFreeFalling[idx] = false;
-                
-            
-        
-    
+                }
+            }
+        }
+    }
     
     // Now handle liquids - process bottom-to-top for falling, then left-to-right for spreading
     // First pass: vertical movement (falling)
@@ -661,7 +659,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
             // Skip empty cells or cells that have moved
             if (material == MaterialType::Empty || oldGrid[idx] != m_grid[idx]) {
                 continue;
-            
+            }
             
             const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
             
@@ -684,7 +682,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             anyMaterialMoved = true;
                             chunkBelow->setShouldUpdateNextFrame(true);;
                             continue;
-                        
+                        }
                         
                         // Special case for handling liquids at chunk boundary
                         // Try diagonal movement if direct downward movement isn't possible
@@ -704,8 +702,8 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         anyMaterialMoved = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                         moved = true;
-                                    
-                                
+                                    }
+                                }
                                 
                                 // Then try down-right
                                 if (!moved && x < WIDTH - 1) {
@@ -716,9 +714,9 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         anyMaterialMoved = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                         moved = true;
-                                    
-                                
-                             else {
+                                    }
+                                }
+                            } else {
                                 // Try down-right first
                                 if (x < WIDTH - 1) {
                                     MaterialType downRightMaterial = chunkBelow->get(x + 1, 0);
@@ -728,8 +726,8 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         anyMaterialMoved = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                         moved = true;
-                                    
-                                
+                                    }
+                                }
                                 
                                 // Then try down-left
                                 if (!moved && x > 0) {
@@ -740,18 +738,18 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         anyMaterialMoved = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                         moved = true;
-                                    
-                                
-                            
+                                    }
+                                }
+                            }
                             
                             if (moved) {
                                 continue;
-                            
+                            }
                             
                             // Always mark the chunk below for next frame update
                             chunkBelow->setShouldUpdateNextFrame(true);;
-                        
-                     else if (belowIdx < static_cast<int>(m_grid.size())) {
+                        }
+                    } else if (belowIdx < static_cast<int>(m_grid.size())) {
                         // Within same chunk - check if liquid can displace what's below
                         if (canDisplace(material, belowMaterial)) {
                             // Move liquid down, potentially displacing another liquid
@@ -759,7 +757,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             m_grid[idx] = MaterialType::Empty; // For volume conservation
                             anyMaterialMoved = true;
                             continue;
-                        
+                        }
                         
                         // If can't move down, try diagonal
                         if (belowMaterial != MaterialType::Empty) {
@@ -779,9 +777,9 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                             m_grid[idx] = MaterialType::Empty;
                                             anyMaterialMoved = true;
                                             moved = true;
-                                        
-                                    
-                                
+                                        }
+                                    }
+                                }
                                 
                                 // Try down-right if didn't move left
                                 if (!moved && x < WIDTH - 1) {
@@ -793,10 +791,10 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                             m_grid[idx] = MaterialType::Empty;
                                             anyMaterialMoved = true;
                                             moved = true;
-                                        
-                                    
-                                
-                             else {
+                                        }
+                                    }
+                                }
+                            } else {
                                 // Try down-right first
                                 if (x < WIDTH - 1) {
                                     int downRightIdx = (y + 1) * WIDTH + (x + 1);
@@ -807,9 +805,9 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                             m_grid[idx] = MaterialType::Empty;
                                             anyMaterialMoved = true;
                                             moved = true;
-                                        
-                                    
-                                
+                                        }
+                                    }
+                                }
                                 
                                 // Try down-left if didn't move right
                                 if (!moved && x > 0) {
@@ -821,20 +819,20 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                             m_grid[idx] = MaterialType::Empty;
                                             anyMaterialMoved = true;
                                             moved = true;
-                                        
-                                    
-                                
-                            
+                                        }
+                                    }
+                                }
+                            }
                             
                             if (moved) {
                                 continue;
-                            
-                        
-                    
-                
-            
-        
-    
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     // Second pass: horizontal spreading for liquids with improved mechanics
     std::vector<MaterialType> spreadGrid = m_grid; // Copy current state for consistent spreading
@@ -853,12 +851,12 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                 MaterialType material = spreadGrid[idx];
                 if (material == MaterialType::Empty || !(m_grid[idx] == material)) {
                     continue;
-                
+                }
                 
                 const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
                 if (!props.isLiquid) {
                     continue;
-                
+                }
                 
                 // Check if there's a fluid cell directly below
                 bool hasLiquidBelow = false;
@@ -872,12 +870,12 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                     
                     if (y == HEIGHT - 1 && chunkBelow) {
                         belowMaterial = chunkBelow->get(x, 0);
-                    
+                    }
                     
                     // Just check for empty or liquid properties directly
                     hasLiquidBelow = (belowMaterial == material); // Same liquid type below
                     hasEmptyBelow = (belowMaterial == MaterialType::Empty);
-                
+                }
                 
                 // ONLY spread horizontally if:
                 // 1. We can't fall downward (blocked by something that's not empty)
@@ -892,11 +890,11 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                         if (checkIdx >= 0 && checkIdx < static_cast<int>(m_grid.size())) {
                             if (m_grid[checkIdx] == material) {
                                 liquidColumnHeight++;
-                             else {
+                            } else {
                                 break; // Stop at first non-matching material
-                            
-                        
-                    
+                            }
+                        }
+                    }
                     
                     // Set spread direction based on iteration
                     int spreadDirection = leftToRight ? 1 : -1;
@@ -924,22 +922,22 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             isCrossingChunk = true;
                             targetChunk = chunkLeft;
                             targetX = leftChunkX;
-                         else if (nx >= WIDTH && chunkRight) {
+                        } else if (nx >= WIDTH && chunkRight) {
                             // Crossing right chunk boundary
                             int rightChunkX = nx - WIDTH; // Convert to other chunk coordinates
                             sideNeighbor = chunkRight->get(rightChunkX, y);
                             isCrossingChunk = true;
                             targetChunk = chunkRight;
                             targetX = rightChunkX;
-                         else if (nx >= 0 && nx < WIDTH) {
+                        } else if (nx >= 0 && nx < WIDTH) {
                             // Within same chunk
                             sideIdx = y * WIDTH + nx;
                             if (sideIdx < static_cast<int>(m_grid.size())) {
                                 sideNeighbor = m_grid[sideIdx];
-                            
-                         else {
+                            }
+                        } else {
                             break; // Out of bounds with no chunk
-                        
+                        }
                         
                         // If we hit same liquid, check column height
                         if (sideNeighbor == material) {
@@ -952,28 +950,28 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     MaterialType checkMaterial = targetChunk->get(targetX, checkY);
                                     if (checkMaterial == material) {
                                         sideColumnHeight++;
-                                     else {
+                                    } else {
                                         break;
-                                    
-                                
-                             else {
+                                    }
+                                }
+                            } else {
                                 // Count liquid cells in current chunk
                                 for (int checkY = y; checkY >= 0; --checkY) {
                                     int checkIdx = checkY * WIDTH + nx;
                                     if (checkIdx >= 0 && checkIdx < static_cast<int>(m_grid.size())) {
                                         if (m_grid[checkIdx] == material) {
                                             sideColumnHeight++;
-                                         else {
+                                        } else {
                                             break;
-                                        
-                                    
-                                
-                            
+                                        }
+                                    }
+                                }
+                            }
                             
                             // If this column is higher, continue searching outward
                             if (liquidColumnHeight <= sideColumnHeight) {
                                 continue;
-                            
+                            }
                             
                             // If current column is significantly higher, try to level it out
                             if (liquidColumnHeight > sideColumnHeight + 1) {
@@ -984,15 +982,15 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     m_grid[idx] = MaterialType::Empty;
                                     targetChunk->setShouldUpdateNextFrame(true);;
                                     anyMaterialMoved = true;
-                                 else {
+                                } else {
                                     // Move material to lower column within same chunk
                                     m_grid[y * WIDTH + nx] = material;
                                     m_grid[idx] = MaterialType::Empty;
                                     anyMaterialMoved = true;
-                                
+                                }
                                 break;
-                            
-                        
+                            }
+                        }
                         // If found empty space
                         else if (sideNeighbor == MaterialType::Empty) {
                             // Check for cell below this empty space for support
@@ -1002,16 +1000,16 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                 if (y < HEIGHT - 1) {
                                     MaterialType belowNeighbor = targetChunk->get(targetX, y + 1);
                                     hasSupport = (belowNeighbor != MaterialType::Empty);
-                                
-                             else {
+                                }
+                            } else {
                                 if (y < HEIGHT - 1 && nx >= 0 && nx < WIDTH) {
                                     int belowNeighborIdx = (y + 1) * WIDTH + nx;
                                     if (belowNeighborIdx < static_cast<int>(m_grid.size())) {
                                         MaterialType belowNeighbor = m_grid[belowNeighborIdx];
                                         hasSupport = (belowNeighbor != MaterialType::Empty);
-                                    
-                                
-                            
+                                    }
+                                }
+                            }
                             
                             // Check each cell along the path to ensure we don't skip over solid blocks
                             bool pathBlocked = false;
@@ -1023,12 +1021,12 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                 if (checkX < 0 && chunkLeft) {
                                     int leftCheckX = WIDTH + checkX;
                                     checkMaterial = chunkLeft->get(leftCheckX, y);
-                                 else if (checkX >= WIDTH && chunkRight) {
+                                } else if (checkX >= WIDTH && chunkRight) {
                                     int rightCheckX = checkX - WIDTH;
                                     checkMaterial = chunkRight->get(rightCheckX, y);
-                                 else if (checkX >= 0 && checkX < WIDTH) {
+                                } else if (checkX >= 0 && checkX < WIDTH) {
                                     checkMaterial = m_grid[y * WIDTH + checkX];
-                                
+                                }
                                 
                                 // If a solid block is in the way, path is blocked
                                 if (checkMaterial != MaterialType::Empty && checkMaterial != material) {
@@ -1036,9 +1034,9 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     if (checkProps.isSolid) {
                                         pathBlocked = true;
                                         break;
-                                    
-                                
-                            
+                                    }
+                                }
+                            }
                             
                             // Only flow horizontally if the path is clear and the destination has support
                             // or if it's very close to the source
@@ -1049,24 +1047,24 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     m_grid[idx] = MaterialType::Empty;
                                     targetChunk->setShouldUpdateNextFrame(true);;
                                     anyMaterialMoved = true;
-                                 else {
+                                } else {
                                     // Move material within same chunk
                                     m_grid[sideIdx] = material;
                                     m_grid[idx] = MaterialType::Empty;
                                     anyMaterialMoved = true;
-                                
+                                }
                                 break;
-                            
-                         
+                            }
+                        } 
                         // If hit different material type, stop searching
                         else if (sideNeighbor != material) {
                             break;
-                        
-                    
-                
-            
-        
-    
+                        }
+                    }
+                }
+            }
+        }
+    }
     
 
     
@@ -1078,7 +1076,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
             
             if (material != MaterialType::Empty && material != m_grid[idx]) {
                 continue; // Skip if already moved
-            
+            }
             
             const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
             
@@ -1095,7 +1093,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             m_grid[aboveIdx] = material;
                             m_grid[idx] = MaterialType::Empty;
                             anyMaterialMoved = true;
-                        
+                        }
                         // Gases can rise through liquids (creating bubbles)
                         else {
                             const auto& aboveProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(aboveMaterial)];
@@ -1104,13 +1102,13 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                 m_grid[aboveIdx] = material;
                                 m_grid[idx] = aboveMaterial;
                                 anyMaterialMoved = true;
-                            
-                        
-                    
-                
-            
-        
-    
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     // Handle material interactions (like fire spreading, water effects, etc.)
     handleMaterialInteractions(oldGrid, anyMaterialMoved);
@@ -1126,19 +1124,19 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
         if (chunkBelow) chunkBelow->setShouldUpdateNextFrame(true);
         if (chunkLeft) chunkLeft->setShouldUpdateNextFrame(true);
         if (chunkRight) chunkRight->setShouldUpdateNextFrame(true);
-    
+    }
     // If nothing moved, we'll naturally sleep next frame since setShouldUpdateNextFrame(false)
     // was called at the start of this method
     
     // Update the pixel data to reflect the changes
     updatePixelData();
-
+}
 
 bool Chunk::canDisplace(MaterialType above, MaterialType below) const {
     // If below is empty, anything can fall into it
     if (below == MaterialType::Empty) {
         return true;
-    
+    }
     
     // Get properties of both materials
     const auto& aboveProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(above)];
@@ -1148,12 +1146,12 @@ bool Chunk::canDisplace(MaterialType above, MaterialType below) const {
     if (aboveProps.isPowder && belowProps.isLiquid) {
         // Dense powders like sand/gravel sink in all liquids
         return true; // Sand/Gravel can fall through water/oil/etc.
-    
+    }
     
     // Liquids can't displace solids
     if (aboveProps.isLiquid && belowProps.isSolid) {
         return false;
-    
+    }
     
     // Liquids can flow through each other based on density
     if (aboveProps.isLiquid && belowProps.isLiquid) {
@@ -1161,32 +1159,32 @@ bool Chunk::canDisplace(MaterialType above, MaterialType below) const {
         if (above == MaterialType::Lava && below == MaterialType::Water) {
             // Lava is denser than water, so it sinks
             return true;
-        
+        }
         else if (above == MaterialType::Water && below == MaterialType::Oil) {
             // Water is denser than oil, so it sinks below oil
             return true;
-        
+        }
         else if (above == MaterialType::Lava && below == MaterialType::Oil) {
             // Lava is denser than oil, so it sinks
             return true;
-        
+        }
         // Same liquid types don't displace each other
         else if (above == below) {
             return false;
-        
-    
+        }
+    }
     
     // Gases can rise through liquids
     if (aboveProps.isGas && belowProps.isLiquid) {
         return false; // Gases don't displace liquids downward
-    
+    }
     if (aboveProps.isLiquid && belowProps.isGas) {
         return true; // Liquids fall through gases
-    
+    }
     
     // Default: no displacement
     return false;
-
+}
 
 void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& /* oldGrid - unused */, bool& anyMaterialMoved) {
     // Process all cells in the grid for material interactions
@@ -1198,7 +1196,7 @@ void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& /* oldGr
             // Skip empty cells
             if (current == MaterialType::Empty) {
                 continue;
-            
+            }
             
             // Only need properties for specific interactions
             // Fire interactions with flammable materials
@@ -1225,16 +1223,16 @@ void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& /* oldGr
                         if (neighborProps.isFlammable && (m_rng() % 20) == 0) {
                             m_grid[neighborIdx] = MaterialType::Fire;
                             anyMaterialMoved = true;
-                        
-                    
-                
+                        }
+                    }
+                }
                 
                 // Fire has chance to burn out
                 if ((m_rng() % 100) < 2) {
                     m_grid[idx] = MaterialType::Empty;
                     anyMaterialMoved = true;
-                
-            
+                }
+            }
             
             // Water and lava interactions
             if (current == MaterialType::Water || current == MaterialType::Lava) {
@@ -1261,14 +1259,14 @@ void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& /* oldGr
                             // 50% chance for obsidian (Stone) where the water was
                             if (current == MaterialType::Water) {
                                 m_grid[idx] = MaterialType::Stone;
-                             else {
+                            } else {
                                 m_grid[neighborIdx] = MaterialType::Stone;
-                            
+                            }
                             anyMaterialMoved = true;
-                        
-                    
-                
-            
+                        }
+                    }
+                }
+            }
             
             // Oil can be ignited by nearby fire
             if (current == MaterialType::Oil) {
@@ -1294,10 +1292,10 @@ void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& /* oldGr
                             m_grid[idx] = MaterialType::Fire;
                             anyMaterialMoved = true;
                             break;
-                        
-                    
-                
-            
+                        }
+                    }
+                }
+            }
             
             // Flammable gas behavior
             if (current == MaterialType::FlammableGas) {
@@ -1340,19 +1338,19 @@ void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& /* oldGr
                                     
                                     if (!targetProps.isSolid || (m_rng() % 3) == 0) {
                                         m_grid[explosionIdx] = MaterialType::Fire;
-                                    
-                                
-                            
+                                    }
+                                }
+                            }
                             
                             anyMaterialMoved = true;
                             break;
-                        
-                    
-                
-            
-        
-    
-
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 void Chunk::updatePixelData() {
     // Update pixel data for all cells in the chunk
@@ -1368,7 +1366,7 @@ void Chunk::updatePixelData() {
                 m_pixelData[pixelIdx+1] = 0;
                 m_pixelData[pixelIdx+2] = 0;
                 m_pixelData[pixelIdx+3] = 0;
-             else {
+            } else {
                 const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
                 
                 // Create a position-based variation for more natural look
@@ -1393,7 +1391,7 @@ void Chunk::updatePixelData() {
                             rVariation -= 50;
                             gVariation -= 50;
                             bVariation -= 50;
-                        
+                        }
                         break;
                     case MaterialType::Grass:
                         // Grass has strong green variations with patches
@@ -1403,7 +1401,7 @@ void Chunk::updatePixelData() {
                         if (posHash1 % 3 == 0) {
                             gVariation -= 60;
                             rVariation -= 40;
-                        
+                        }
                         break;
                     case MaterialType::Sand:
                         // Sand has strong yellow-brown variations with visible texture
@@ -1414,7 +1412,7 @@ void Chunk::updatePixelData() {
                         if (posHash2 % 4 == 0) {
                             rVariation -= 15;
                             gVariation -= 15;
-                        
+                        }
                         break;
                     case MaterialType::Dirt:
                         // Dirt has rich brown variations with texture
@@ -1426,10 +1424,10 @@ void Chunk::updatePixelData() {
                             rVariation -= 20;
                             gVariation -= 20;
                             bVariation -= 10;
-                         else if (posHash2 % 7 == 0) {
+                        } else if (posHash2 % 7 == 0) {
                             rVariation += 15;
                             gVariation += 10;
-                        
+                        }
                         break;
                     case MaterialType::Snow:
                         // Snow has very subtle blue-white variations
@@ -1449,7 +1447,7 @@ void Chunk::updatePixelData() {
                             rVariation -= 10;
                             gVariation -= 10;
                             bVariation -= 10;
-                        
+                        }
                         break;
                     case MaterialType::Gravel:
                         // Gravel has strong texture with varied gray tones
@@ -1459,11 +1457,11 @@ void Chunk::updatePixelData() {
                             rVariation -= 25;
                             gVariation -= 25;
                             bVariation -= 25;
-                         else if (posHash2 % 11 == 0) {
+                        } else if (posHash2 % 11 == 0) {
                             rVariation += 15;
                             gVariation += 15;
                             bVariation += 15;
-                        
+                        }
                         break;
                     case MaterialType::TopSoil:
                         // Topsoil has rich brown variations with organic texture
@@ -1475,7 +1473,7 @@ void Chunk::updatePixelData() {
                             rVariation -= 15;
                             gVariation -= 12;
                             bVariation -= 5;
-                        
+                        }
                         break;
                     case MaterialType::DenseRock:
                         // Dense rock has dark blue-gray coloration with crystalline texture
@@ -1487,11 +1485,11 @@ void Chunk::updatePixelData() {
                             rVariation += 10;
                             gVariation += 12;
                             bVariation += 15; // Blueish highlights
-                         else if (posHash2 % 16 == 0) {
+                        } else if (posHash2 % 16 == 0) {
                             rVariation -= 15;
                             gVariation -= 15;
                             bVariation -= 10; // Dark patches
-                        
+                        }
                         break;
                     case MaterialType::Water:
                         // Water has blue variations with some subtle waves
@@ -1510,7 +1508,7 @@ void Chunk::updatePixelData() {
                         if (posHash2 % 10 == 0) {
                             rVariation += 20;
                             gVariation += 15;
-                        
+                        }
                         break;
                     case MaterialType::GrassStalks:
                         // Grass stalks have varied green shades
@@ -1527,7 +1525,7 @@ void Chunk::updatePixelData() {
                         if (posHash2 % 5 == 0) {
                             rVariation += 15;
                             gVariation += 10;
-                        
+                        }
                         break;
                     case MaterialType::Oil:
                         // Oil has dark brown-black variations with slight shine
@@ -1539,7 +1537,7 @@ void Chunk::updatePixelData() {
                             rVariation += 8;
                             gVariation += 8;
                             bVariation += 8;
-                        
+                        }
                         break;
                     case MaterialType::FlammableGas:
                         // Flammable gas has subtle greenish variations with transparency
@@ -1558,7 +1556,7 @@ void Chunk::updatePixelData() {
                             rVariation += 25;
                             gVariation += 25;
                             bVariation += 30;
-                        
+                        }
                         break;
                         
                     case MaterialType::CopperOre:
@@ -1571,7 +1569,7 @@ void Chunk::updatePixelData() {
                             rVariation -= 10;
                             gVariation += 15;
                             bVariation += 5;
-                        
+                        }
                         break;
                         
                     case MaterialType::GoldOre:
@@ -1583,7 +1581,7 @@ void Chunk::updatePixelData() {
                         if (posHash2 % 4 == 0) {
                             rVariation += 30;
                             gVariation += 20;
-                        
+                        }
                         break;
                         
                     case MaterialType::CoalOre:
@@ -1594,7 +1592,7 @@ void Chunk::updatePixelData() {
                             rVariation += 20;
                             gVariation += 20;
                             bVariation += 20;
-                        
+                        }
                         break;
                         
                     case MaterialType::DiamondOre:
@@ -1607,7 +1605,7 @@ void Chunk::updatePixelData() {
                             rVariation += 30;
                             gVariation += 40;
                             bVariation += 50;
-                        
+                        }
                         break;
                         
                     case MaterialType::SilverOre:
@@ -1618,7 +1616,7 @@ void Chunk::updatePixelData() {
                             rVariation += 30;
                             gVariation += 30;
                             bVariation += 35;  // Slightly blue tint to highlights
-                        
+                        }
                         break;
                         
                     case MaterialType::EmeraldOre:
@@ -1631,7 +1629,7 @@ void Chunk::updatePixelData() {
                             rVariation += 5;
                             gVariation += 35;
                             bVariation += 10;
-                        
+                        }
                         break;
                         
                     case MaterialType::SapphireOre:
@@ -1644,7 +1642,7 @@ void Chunk::updatePixelData() {
                             rVariation += 5;
                             gVariation += 15;
                             bVariation += 40;
-                        
+                        }
                         break;
                         
                     case MaterialType::RubyOre:
@@ -1657,7 +1655,7 @@ void Chunk::updatePixelData() {
                             rVariation += 40;
                             gVariation += 5;
                             bVariation += 10;
-                        
+                        }
                         break;
                         
                     case MaterialType::SulfurOre:
@@ -1669,7 +1667,7 @@ void Chunk::updatePixelData() {
                         if (posHash2 % 4 == 0) {
                             rVariation -= 30;
                             gVariation -= 30;
-                        
+                        }
                         break;
                         
                     case MaterialType::QuartzOre:
@@ -1680,7 +1678,7 @@ void Chunk::updatePixelData() {
                             rVariation += 35;
                             gVariation += 35;
                             bVariation += 35;
-                        
+                        }
                         break;
                         
                     case MaterialType::UraniumOre:
@@ -1693,7 +1691,7 @@ void Chunk::updatePixelData() {
                             rVariation += 5;
                             gVariation += 60;  // Very bright green glow
                             bVariation += 10;
-                        
+                        }
                         break;
                         
                     default:
@@ -1702,7 +1700,7 @@ void Chunk::updatePixelData() {
                         gVariation = (posHash2 % 12) - 6;
                         bVariation = (posHash3 % 12) - 6;
                         break;
-                
+                }
                 
                 // Apply the enhanced variation to the base color
                 int r = props.r + rVariation + props.varR;
@@ -1714,13 +1712,13 @@ void Chunk::updatePixelData() {
                 m_pixelData[pixelIdx+1] = std::max(0, std::min(255, g));
                 m_pixelData[pixelIdx+2] = std::max(0, std::min(255, b));
                 m_pixelData[pixelIdx+3] = props.transparency;
-            
-        
-    
+            }
+        }
+    }
     
     // Mark chunk as clean after updating
     m_isDirty = false;
-
+}
 
 // World implementation
 
@@ -1734,8 +1732,8 @@ World::World(int width, int height) : m_width(width), m_height(height) {
     for (int y = 0; y < m_chunksY; ++y) {
         for (int x = 0; x < m_chunksX; ++x) {
             m_chunks[y * m_chunksX + x] = std::make_unique<Chunk>(x * Chunk::WIDTH, y * Chunk::HEIGHT);
-        
-    
+        }
+    }
     
     // Initialize pixel data for rendering
     m_pixelData.resize(width * height * 4, 0);
@@ -1752,8 +1750,8 @@ World::World(int width, int height) : m_width(width), m_height(height) {
     std::cout << "Chunk grid size: " << m_chunksX << "x" << m_chunksY << std::endl;
     if (m_useMultithreading) {
         std::cout << "Using " << m_numThreads << " threads for simulation" << std::endl;
-    
-
+    }
+}
 
 World::~World() {
     // Signal threads to stop
@@ -1763,15 +1761,15 @@ World::~World() {
     for (auto& thread : m_threads) {
         if (thread.joinable()) {
             thread.join();
-        
-    
-
+        }
+    }
+}
 
 MaterialType World::get(int x, int y) const {
     // Bounds check
     if (x < 0 || x >= m_width || y < 0 || y >= m_height) {
         return MaterialType::Empty;
-    
+    }
     
     // Get the chunk
     int chunkX, chunkY, localX, localY;
@@ -1780,17 +1778,17 @@ MaterialType World::get(int x, int y) const {
     const Chunk* chunk = getChunkAt(chunkX, chunkY);
     if (!chunk) {
         return MaterialType::Empty;
-    
+    }
     
     // Get material at local coordinates
     return chunk->get(localX, localY);
-
+}
 
 void World::set(int x, int y, MaterialType material) {
     // Bounds check
     if (x < 0 || x >= m_width || y < 0 || y >= m_height) {
         return;
-    
+    }
     
     // Get the chunk
     int chunkX, chunkY, localX, localY;
@@ -1799,7 +1797,7 @@ void World::set(int x, int y, MaterialType material) {
     Chunk* chunk = getChunkAt(chunkX, chunkY);
     if (!chunk) {
         return;
-    
+    }
     
     // Set material at local coordinates
     chunk->set(localX, localY, material);
@@ -1818,14 +1816,14 @@ void World::set(int x, int y, MaterialType material) {
     m_pixelData[pixelIdx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + variation));   // G
     m_pixelData[pixelIdx+2] = std::max(0, std::min(255, static_cast<int>(props.b) + variation));   // B
     m_pixelData[pixelIdx+3] = props.transparency;  // A
-
+}
 
 bool Chunk::isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, int y) {
     // Skip bounds check for performance in internal use
     int idx = y * WIDTH + x;
     if (idx < 0 || idx >= static_cast<int>(grid.size())) {
         return false;
-    
+    }
     
     MaterialType material = grid[idx];
     const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
@@ -1833,7 +1831,7 @@ bool Chunk::isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, in
     // If not a liquid, it's not an isolated liquid
     if (!props.isLiquid) {
         return false;
-    
+    }
     
     // Check surrounding cells for other liquids or empty spaces
     for (int dy = -1; dy <= 1; ++dy) {
@@ -1841,7 +1839,7 @@ bool Chunk::isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, in
             // Skip the center cell
             if (dx == 0 && dy == 0) {
                 continue;
-            
+            }
             
             int nx = x + dx;
             int ny = y + dy;
@@ -1849,31 +1847,31 @@ bool Chunk::isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, in
             // Skip out of bounds
             if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) {
                 continue;
-            
+            }
             
             int neighborIdx = ny * WIDTH + nx;
             if (neighborIdx < 0 || neighborIdx >= static_cast<int>(grid.size())) {
                 continue;
-            
+            }
             
             MaterialType neighbor = grid[neighborIdx];
             
             // If neighbor is empty, the liquid can flow there
             if (neighbor == MaterialType::Empty) {
                 return true;
-            
+            }
             
             // If neighbor is another liquid, they can interact
             const auto& neighborProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(neighbor)];
             if (neighborProps.isLiquid) {
                 return true;
-            
-        
-    
+            }
+        }
+    }
     
     // If no empty spaces or other liquids found, it's isolated
     return false;
-
+}
 
 void World::update() {
     // Process chunks in a 4-phase checkerboard pattern to avoid race conditions
@@ -1904,13 +1902,13 @@ void World::update() {
                                 
                                 // Place it below instead
                                 chunk->set(localX, localY + 1, material);
-                            
-                        
-                    
-                
-            
-        
-    
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Process each phase sequentially
     // Phase 1: Odd X, Odd Y coordinates
@@ -1930,10 +1928,10 @@ void World::update() {
                     
                     // Update the chunk with its neighbors
                     chunk->update(chunkBelow, chunkLeft, chunkRight);
-                
-            
-        
-    
+                }
+            }
+        }
+    }
     
     // Phase 2: Even X, Even Y coordinates
     for (int y = 0; y < m_chunksY; y += 2) {  // Even rows
@@ -1952,10 +1950,10 @@ void World::update() {
                     
                     // Update the chunk with its neighbors
                     chunk->update(chunkBelow, chunkLeft, chunkRight);
-                
-            
-        
-    
+                }
+            }
+        }
+    }
     
     // Phase 3: Odd X, Even Y coordinates
     for (int y = 0; y < m_chunksY; y += 2) {  // Even rows
@@ -1974,10 +1972,10 @@ void World::update() {
                     
                     // Update the chunk with its neighbors
                     chunk->update(chunkBelow, chunkLeft, chunkRight);
-                
-            
-        
-    
+                }
+            }
+        }
+    }
     
     // Phase 4: Even X, Odd Y coordinates
     for (int y = 1; y < m_chunksY; y += 2) {  // Odd rows
@@ -1996,10 +1994,10 @@ void World::update() {
                     
                     // Update the chunk with its neighbors
                     chunk->update(chunkBelow, chunkLeft, chunkRight);
-                
-            
-        
-    
+                }
+            }
+        }
+    }
     
     // Always update the world's pixel data at the end
     updatePixelData();
@@ -2025,8 +2023,8 @@ void World::update() {
                     if (m_chunks[i].get() == chunk.get()) {
                         index = static_cast<int>(i);
                         break;
-                    
-                
+                    }
+                }
                 // Only proceed if we found the index
                 if (index >= 0) {
                     int y = index / m_chunksX;
@@ -2043,14 +2041,14 @@ void World::update() {
                                 Chunk* neighbor = getChunkAt(nx, ny);
                                 if (neighbor) {
                                     neighbor->setDirty(true);
-                                
-                            
-                        
-                    
-                
-            
-        
-    
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     // This is the key part of the chunk optimization system as described in the video:
     // 1. At start of frame, the shouldUpdateNextFrame flag becomes this frame's shouldUpdate (isDirty)
@@ -2060,15 +2058,15 @@ void World::update() {
             // Set this frame's update status based on next frame flag from previous frame
             if (chunk->shouldUpdateNextFrame()) {
                 chunk->setDirty(true); // Mark for update this frame
-             else {
+            } else {
                 chunk->setDirty(false); // Explicitly mark as NOT dirty if not scheduled for update
-            
+            }
             
             // ALWAYS reset the next frame flag to false - crucial for the sleep system
             // This way chunks sleep by default unless something wakes them
             chunk->setShouldUpdateNextFrame(false);
-        
-    
+        }
+    }
     
     // Special check for powders and liquids at chunk boundaries to prevent stuck particles
     for (int i = 0; i < (int)m_chunks.size(); ++i) {
@@ -2098,7 +2096,7 @@ void World::update() {
                                 
                                 if (belowMaterial == MaterialType::Empty) {
                                     canMove = true;
-                                 else if (props.isLiquid) {
+                                } else if (props.isLiquid) {
                                     // For liquids, check if they can displace the material below
                                     const auto& belowProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(belowMaterial)];
                                     
@@ -2108,9 +2106,9 @@ void World::update() {
                                             (material == MaterialType::Water && belowMaterial == MaterialType::Oil) ||
                                             (material == MaterialType::Lava && belowMaterial == MaterialType::Oil)) {
                                             canMove = true;
-                                        
-                                    
-                                
+                                        }
+                                    }
+                                }
                                 
                                 if (canMove) {
                                     // Directly move material down, displacing what's below if needed
@@ -2128,13 +2126,13 @@ void World::update() {
                                     if (x > 0 && localX <= 2) {
                                         Chunk* leftChunk = getChunkAt(x-1, y+1); 
                                         if (leftChunk) leftChunk->setShouldUpdateNextFrame(true);
-                                    
+                                    }
                                     if (x < m_chunksX - 1 && localX >= Chunk::WIDTH - 3) {
                                         Chunk* rightChunk = getChunkAt(x+1, y+1);
                                         if (rightChunk) rightChunk->setShouldUpdateNextFrame(true);
+                                    }
                                     
-                                    
-                                 else {
+                                } else {
                                     // Try to move diagonally if directly below is blocked
                                     bool moved = false;
                                     
@@ -2151,19 +2149,19 @@ void World::update() {
                                                 
                                                 // Use proper index calculation for FreeFalling state
                                                 int targetIdx = localX - 1;
-                                                
+                                                if (targetIdx >= 0 && targetIdx < static_cast<int>(chunkBelow->m_isFreeFalling.size())) {
                                                     chunkBelow->setFreeFalling(targetIdx, true);
-                                                
+                                                }
                                                 
                                                 // Wake up left-down chunk corner if we're at the edge
                                                 if (x > 0 && localX <= 2) {
                                                     Chunk* leftChunk = getChunkAt(x-1, y+1);
                                                     if (leftChunk) leftChunk->setShouldUpdateNextFrame(true);
-                                                
+                                                }
                                                 
                                                 moved = true;
-                                            
-                                        
+                                            }
+                                        }
                                         
                                         // Try down-right if didn't move down-left
                                         if (!moved && localX < Chunk::WIDTH - 1) {
@@ -2174,20 +2172,20 @@ void World::update() {
                                                 
                                                 // Use proper index calculation for FreeFalling state
                                                 int targetIdx = localX + 1;
-                                                
+                                                if (targetIdx >= 0 && targetIdx < static_cast<int>(chunkBelow->m_isFreeFalling.size())) {
                                                     chunkBelow->setFreeFalling(targetIdx, true);
-                                                
+                                                }
                                                 
                                                 // Wake up right-down chunk corner if we're at the edge
                                                 if (x < m_chunksX - 1 && localX >= Chunk::WIDTH - 3) {
                                                     Chunk* rightChunk = getChunkAt(x+1, y+1);
                                                     if (rightChunk) rightChunk->setShouldUpdateNextFrame(true);
-                                                
+                                                }
                                                 
                                                 moved = true;
-                                            
-                                        
-                                     else {
+                                            }
+                                        }
+                                    } else {
                                         // Try down-right first
                                         if (localX < Chunk::WIDTH - 1) {
                                             MaterialType downRightMaterial = chunkBelow->get(localX + 1, 0);
@@ -2197,19 +2195,19 @@ void World::update() {
                                                 
                                                 // Use proper index calculation for FreeFalling state
                                                 int targetIdx = localX + 1;
-                                                
+                                                if (targetIdx >= 0 && targetIdx < static_cast<int>(chunkBelow->m_isFreeFalling.size())) {
                                                     chunkBelow->setFreeFalling(targetIdx, true);
-                                                
+                                                }
                                                 
                                                 // Wake up right-down chunk corner if we're at the edge
                                                 if (x < m_chunksX - 1 && localX >= Chunk::WIDTH - 3) {
                                                     Chunk* rightChunk = getChunkAt(x+1, y+1);
                                                     if (rightChunk) rightChunk->setShouldUpdateNextFrame(true);
-                                                
+                                                }
                                                 
                                                 moved = true;
-                                            
-                                        
+                                            }
+                                        }
                                         
                                         // Try down-left if didn't move down-right
                                         if (!moved && localX > 0) {
@@ -2220,20 +2218,20 @@ void World::update() {
                                                 
                                                 // Use proper index calculation for FreeFalling state
                                                 int targetIdx = localX - 1;
-                                                
+                                                if (targetIdx >= 0 && targetIdx < static_cast<int>(chunkBelow->m_isFreeFalling.size())) {
                                                     chunkBelow->setFreeFalling(targetIdx, true);
-                                                
+                                                }
                                                 
                                                 // Wake up left-down chunk corner if we're at the edge
                                                 if (x > 0 && localX <= 2) {
                                                     Chunk* leftChunk = getChunkAt(x-1, y+1);
                                                     if (leftChunk) leftChunk->setShouldUpdateNextFrame(true);
-                                                
+                                                }
                                                 
                                                 moved = true;
-                                            
-                                        
-                                    
+                                            }
+                                        }
+                                    }
                                     
                                     // For liquids at chunk boundaries, also try horizontal spread
                                     // if vertical movement isn't possible
@@ -2250,9 +2248,9 @@ void World::update() {
                                                 if (localX <= 2 && x > 0) {
                                                     Chunk* leftChunk = getChunkAt(x-1, y);
                                                     if (leftChunk) leftChunk->setShouldUpdateNextFrame(true);
-                                                
-                                            
-                                         else if (x > 0) {
+                                                }
+                                            }
+                                        } else if (x > 0) {
                                             // Special case: Try to move into left chunk from edge
                                             Chunk* leftChunk = getChunkAt(x-1, y);
                                             if (leftChunk) {
@@ -2262,9 +2260,9 @@ void World::update() {
                                                     chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
                                                     moved = true;
                                                     leftChunk->setShouldUpdateNextFrame(true);
-                                                
-                                            
-                                        
+                                                }
+                                            }
+                                        }
                                         
                                         // Try to move right
                                         if (!moved && localX < Chunk::WIDTH - 1) {
@@ -2278,9 +2276,9 @@ void World::update() {
                                                 if (localX >= Chunk::WIDTH - 3 && x < m_chunksX - 1) {
                                                     Chunk* rightChunk = getChunkAt(x+1, y);
                                                     if (rightChunk) rightChunk->setShouldUpdateNextFrame(true);
-                                                
-                                            
-                                         else if (x < m_chunksX - 1) {
+                                                }
+                                            }
+                                        } else if (x < m_chunksX - 1) {
                                             // Special case: Try to move into right chunk from edge
                                             Chunk* rightChunk = getChunkAt(x+1, y);
                                             if (rightChunk) {
@@ -2290,20 +2288,20 @@ void World::update() {
                                                     chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
                                                     moved = true;
                                                     rightChunk->setShouldUpdateNextFrame(true);
-                                                
-                                            
-                                        
-                                    
-                                
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                                 
                                 // Always mark both chunks for update next frame
                                 chunk->setShouldUpdateNextFrame(true);
                                 chunkBelow->setShouldUpdateNextFrame(true);
-                            
-                        
-                    
-                
-            
+                            }
+                        }
+                    }
+                }
+            }
             
             // Check for liquids at horizontal chunk boundaries that might get stuck
             // Left edge
@@ -2328,12 +2326,12 @@ void World::update() {
                                     // Mark chunks for next frame update
                                     chunk->setShouldUpdateNextFrame(true);;
                                     chunkLeft->setShouldUpdateNextFrame(true);;
-                                
-                            
-                        
-                    
-                
-            
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             
             // Right edge
             if (x < m_chunksX - 1) {
@@ -2357,14 +2355,14 @@ void World::update() {
                                     // Mark chunks for next frame update
                                     chunk->setShouldUpdateNextFrame(true);;
                                     chunkRight->setShouldUpdateNextFrame(true);;
-                                
-                            
-                        
-                    
-                
-            
-        
-    
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     // Mark neighboring chunks for update next frame to ensure proper physics across chunk boundaries
     for (int i = 0; i < (int)m_chunks.size(); ++i) {
@@ -2385,12 +2383,12 @@ void World::update() {
                         Chunk* neighbor = getChunkAt(nx, ny);
                         if (neighbor) {
                             neighbor->setShouldUpdateNextFrame(true);
-                        
-                    
-                
-            
-        
-    
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     // Process all dirty chunks, alternating between odd and even columns to prevent race conditions
     // We first update all odd-column chunks, then all even-column chunks, as described in the video
@@ -2410,10 +2408,10 @@ void World::update() {
                     
                     // Update the chunk with its neighbors
                     chunk->update(chunkBelow, chunkLeft, chunkRight);
-                
-            
-        
-    
+                }
+            }
+        }
+    }
     
     // Then process even columns (0, 2, 4, etc.)
     for (int y = 0; y < m_chunksY; y++) {
@@ -2429,14 +2427,14 @@ void World::update() {
                     
                     // Update the chunk with its neighbors
                     chunk->update(chunkBelow, chunkLeft, chunkRight);
-                
-            
-        
-    
+                }
+            }
+        }
+    }
     
     // Update the combined pixel data from all chunks
     updatePixelData();
-
+}
 
 void World::update(int startX, int startY, int endX, int endY) {
     // Bounds check
@@ -2477,13 +2475,13 @@ void World::update(int startX, int startY, int endX, int endY) {
                             Chunk* neighbor = getChunkAt(nx, ny);
                             if (neighbor) {
                                 neighbor->setDirty(true);
-                            
-                        
-                    
-                
-            
-        
-    
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     // Update chunks in the specified region with a bit of padding for proper physics at boundaries
     int paddedStartChunkX = std::max(0, startChunkX - 1);
@@ -2500,14 +2498,14 @@ void World::update(int startX, int startY, int endX, int endY) {
                 Chunk* chunkRight  = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
                 
                 chunk->update(chunkBelow, chunkLeft, chunkRight);
-            
-        
-    
+            }
+        }
+    }
     
     // Update pixel data for the entire world
     // This is simpler than trying to update just a subset of the pixel data
     updatePixelData();
-
+}
 
 void World::levelLiquids() {
     // This function performs extra simulation steps to ensure liquids properly settle
@@ -2517,15 +2515,15 @@ void World::levelLiquids() {
     for (int i = 0; i < (int)m_chunks.size(); ++i) {
         if (m_chunks[i]) {
             m_chunks[i]->setDirty(true);
-        
-    
+        }
+    }
     
     // Perform multiple update passes to allow liquids to flow and settle
     const int SETTLE_PASSES = 10;
     for (int pass = 0; pass < SETTLE_PASSES; ++pass) {
         update();
-    
-
+    }
+}
 
 void World::levelLiquids(int startX, int startY, int endX, int endY) {
     // Level liquids in a specific region of the world
@@ -2554,17 +2552,17 @@ void World::levelLiquids(int startX, int startY, int endX, int endY) {
             Chunk* chunk = getChunkAt(x, y);
             if (chunk) {
                 chunk->setDirty(true);
-            
-        
-    
+            }
+        }
+    }
     
     // Perform multiple update passes on the region
     const int SETTLE_PASSES = 10;
     for (int pass = 0; pass < SETTLE_PASSES; ++pass) {
         update(startX - Chunk::WIDTH, startY - Chunk::HEIGHT, 
                endX + Chunk::WIDTH, endY + Chunk::HEIGHT);
-    
-
+    }
+}
 
 // Simple Perlin noise implementation
 float perlinNoise2D(float x, float y, unsigned int seed) {
@@ -2573,7 +2571,7 @@ float perlinNoise2D(float x, float y, unsigned int seed) {
         int h = seed + x * 374761393 + y * 668265263;
         h = (h ^ (h >> 13)) * 1274126177;
         return h ^ (h >> 16);
-    ;
+    };
 
     // Get gradient at grid point
     auto gradient = [&hash](int ix, int iy, float x, float y) -> float {
@@ -2584,7 +2582,7 @@ float perlinNoise2D(float x, float y, unsigned int seed) {
         float gy = std::sin(angle);
         // Dot product of distance and gradient
         return gx * (x - static_cast<float>(ix)) + gy * (y - static_cast<float>(iy));
-    ;
+    };
 
     // Get grid cell coordinates
     int x0 = std::floor(x);
@@ -2606,7 +2604,7 @@ float perlinNoise2D(float x, float y, unsigned int seed) {
     // Cubic interpolation (smootherstep)
     auto interpolate = [](float a, float b, float t) -> float {
         return a + t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f) * (b - a);
-    ;
+    };
 
     // Interpolate along x
     float x0y0x1y0 = interpolate(g00, g10, dx0);
@@ -2614,7 +2612,7 @@ float perlinNoise2D(float x, float y, unsigned int seed) {
 
     // Interpolate along y
     return interpolate(x0y0x1y0, x0y1x1y1, dy0);
-
+}
 
 // Function to get fractal noise (multiple octaves)
 float fractalNoise(float x, float y, int octaves, float persistence, float scale, unsigned int seed) {
@@ -2628,11 +2626,11 @@ float fractalNoise(float x, float y, int octaves, float persistence, float scale
         maxValue += amplitude;
         amplitude *= persistence;
         frequency *= 2.0f;
-    
+    }
 
     // Normalize
     return total / maxValue;
-
+}
 
 // BiomeType is already defined in World.h
 
@@ -2659,8 +2657,8 @@ void World::generate(unsigned int seed) {
     for (int x = 0; x < WORLD_WIDTH; ++x) {
         for (int y = 0; y < WORLD_HEIGHT; ++y) {
             set(x, y, MaterialType::Empty);
-        
-    
+        }
+    }
     
     // Flag to track for step-by-step rendering of cave generation
     bool renderStepByStep = true;
@@ -2704,8 +2702,8 @@ void World::generate(unsigned int seed) {
             // Add some noise to the erosion factor for natural variation
             float erosionNoise = perlinNoise2D(x * 0.1f, 0.0f, seed + 523);
             erosionFactor[x] *= (0.9f + 0.2f * erosionNoise);
-        
-    
+        }
+    }
     
     // Generate base biome noise for both biome selection and height transitions
     // Need to declare this before we use it in the following section
@@ -2716,7 +2714,7 @@ void World::generate(unsigned int seed) {
         // Add secondary noise at different frequency for more variation
         float secondaryNoise = perlinNoise2D(x * biomeNoiseScale * 2.0f, 0.0f, seed + 456) * 0.3f;
         primaryBiomeNoise[x] += secondaryNoise;
-    
+    }
     
     // Generate a height transition field using the same noise that will control biomes
     std::vector<float> heightTransitionFactor(WORLD_WIDTH, 0.0f);
@@ -2731,7 +2729,7 @@ void World::generate(unsigned int seed) {
         heightTransitionFactor[x] = positionInfluence * 0.7f + biomeMappingValue * 0.3f;
         // Ensure value is in [0,1] range
         heightTransitionFactor[x] = std::max(0.0f, std::min(1.0f, heightTransitionFactor[x]));
-    
+    }
     
     for (int x = 0; x < WORLD_WIDTH; ++x) {
         // Determine biome terrain parameters based on the transition factor
@@ -2754,14 +2752,14 @@ void World::generate(unsigned int seed) {
             if (t > 0.1f && t < 0.9f) {
                 float erosionAmount = (1.0f - std::abs(t - 0.5f) * 2.0f) * 0.7f; // Strongest in middle
                 heightScale *= (1.0f - erosionAmount * 0.3f);
-            
-        
+            }
+        }
         else if (transitionValue < 0.7f) {
             // Grassland region
             currentNoiseScale = grasslandNoiseScale;
             heightScale = grasslandHeightScale;
             baseHeight = grasslandBaseHeight;
-        
+        }
         else {
             // Mountain region and transition from grassland
             float t = (transitionValue - 0.7f) / 0.3f; // 0-1 for mountain transition
@@ -2778,14 +2776,14 @@ void World::generate(unsigned int seed) {
             currentNoiseScale = grasslandNoiseScale * (1.0f - mountainFactor) + mountainNoiseScale * mountainFactor;
             heightScale = grasslandHeightScale * (1.0f - mountainFactor) + mountainHeightScale * mountainFactor * 1.2f; // Boost mountain height
             baseHeight = grasslandBaseHeight * (1.0f - mountainFactor) + mountainBaseHeight * mountainFactor;
-        
+        }
         
         // Generate fractal noise with biome-specific parameters
         // Use more octaves for mountains to get smoother large shapes with finer details
         int biomeOctaves = octaves;
         if (transitionValue > 0.7f) {
             biomeOctaves = 6; // More octaves for mountains
-        
+        }
         
         // Second noise component for secondary features
         float mainHeight = fractalNoise(static_cast<float>(x), 0.0f, biomeOctaves, persistence, currentNoiseScale, seed);
@@ -2799,7 +2797,7 @@ void World::generate(unsigned int seed) {
         
         // Add biome-specific base level
         heightMap[x] = static_cast<int>(height) + static_cast<int>(WORLD_HEIGHT * baseHeight);
-    
+    }
     
     // Step 2: Generate biome map - using more noise-based approach with position influence
     std::vector<BiomeType> biomeMap(WORLD_WIDTH);
@@ -2821,7 +2819,7 @@ void World::generate(unsigned int seed) {
         if (biomeValue < -0.35f) {
             // Desert region
             baseBiome = BiomeType::DESERT;
-        
+        }
         else if (biomeValue < -0.15f) {
             // Desert-grassland transition zone
             float t = (biomeValue + 0.35f) / 0.2f; // Normalize to 0-1
@@ -2835,14 +2833,14 @@ void World::generate(unsigned int seed) {
             if (x >= desertEndX - transitionWidth && x < desertEndX + transitionWidth) {
                 float localErosion = erosionFactor[x];
                 threshold += (localErosion - 1.0f) * 0.2f;
-            
+            }
             
             baseBiome = (t < threshold) ? BiomeType::DESERT : BiomeType::GRASSLAND;
-        
+        }
         else if (biomeValue < 0.15f) {
             // Grassland region
             baseBiome = BiomeType::GRASSLAND;
-        
+        }
         else if (biomeValue < 0.35f) {
             // Grassland-mountain transition zone
             float t = (biomeValue - 0.15f) / 0.2f; // Normalize to 0-1
@@ -2852,28 +2850,28 @@ void World::generate(unsigned int seed) {
             float threshold = 0.5f + mountainNoise;
             
             baseBiome = (t < threshold) ? BiomeType::GRASSLAND : BiomeType::MOUNTAIN;
-        
+        }
         else {
             // Mountain region
             baseBiome = BiomeType::MOUNTAIN;
-        
+        }
         
         // Mountain peaks can appear anywhere if height is very high
         if (heightMap[x] > 0.9f * WORLD_HEIGHT) {
             biomeMap[x] = BiomeType::MOUNTAIN;
-        
+        }
         // Snow caps appear on high locations in mountain biome
         else if (baseBiome == BiomeType::MOUNTAIN && heightMap[x] > 0.75f * WORLD_HEIGHT) {
             biomeMap[x] = BiomeType::SNOW;
-        
+        }
         // Jungle can appear in grassland areas with proper noise value
         else if (baseBiome == BiomeType::GRASSLAND && primaryBiomeNoise[x] > 0.4f) {
             biomeMap[x] = BiomeType::JUNGLE;
-        
+        }
         else {
             biomeMap[x] = baseBiome;
-        
-    
+        }
+    }
     
     // Step 3: Fill terrain with blocks based on height and biome - with proper layering
     for (int x = 0; x < WORLD_WIDTH; ++x) {
@@ -2887,7 +2885,7 @@ void World::generate(unsigned int seed) {
             if (y < terrainHeight) {
                 // Below ground is empty (air)
                 continue; // Already filled with Empty
-             
+            } 
             else if (y == terrainHeight) {
                 // Surface block at the ground level
                 switch (biome) {
@@ -2901,9 +2899,9 @@ void World::generate(unsigned int seed) {
                         // Mountain tops are either stone or snow depending on height
                         if (terrainHeight < WORLD_HEIGHT * 0.3f) { // Higher parts get snow
                             set(x, y, MaterialType::Snow);
-                         else {
+                        } else {
                             set(x, y, MaterialType::Stone);
-                        
+                        }
                         break;
                     case BiomeType::JUNGLE:
                     case BiomeType::GRASSLAND:
@@ -2913,13 +2911,13 @@ void World::generate(unsigned int seed) {
                             // Add the grass block below
                             if (y + 1 < WORLD_HEIGHT) {
                                 set(x, y + 1, MaterialType::Grass);
-                            
-                         else {
+                            }
+                        } else {
                             set(x, y, MaterialType::Grass);
-                        
+                        }
                         break;
-                
-             
+                }
+            } 
             else {
                 // Underground layers - each biome has distinct layering
                 int depth = y - terrainHeight; // How deep we are from the surface
@@ -2929,92 +2927,92 @@ void World::generate(unsigned int seed) {
                         // Desert layering: Sand → Sandstone → Stone → Dense Rock
                         if (depth < 12) {
                             set(x, y, MaterialType::Sand); // Top sand layer - thicker
-                         
+                        } 
                         else if (depth < 45) {
                             set(x, y, MaterialType::Sandstone); // Sandstone layer - much thicker
-                         
+                        } 
                         else if (depth < 75) {
                             set(x, y, MaterialType::Stone); // Deep stone - thicker
-                         
+                        } 
                         else if (y > 0.85 * WORLD_HEIGHT) {
                             set(x, y, MaterialType::Bedrock); // Bottom layer
-                         
+                        } 
                         else {
                             set(x, y, MaterialType::DenseRock); // Deepest layer
-                        
+                        }
                         break;
-                    
+                    }
                     
                     case BiomeType::GRASSLAND:
                     case BiomeType::JUNGLE: {
                         // Grassland layering: Grass → Topsoil → Dirt → Stone → Dense Rock
                         if (depth == 1) {
                             set(x, y, MaterialType::Grass); // Top grass layer
-                         
+                        } 
                         else if (depth < 5) {
                             set(x, y, MaterialType::TopSoil); // Rich topsoil
-                         
+                        } 
                         else if (depth < 15) {
                             set(x, y, MaterialType::Dirt); // Dirt layer
-                         
+                        } 
                         else if (depth < 70) {
                             set(x, y, MaterialType::Stone); // Stone layer - much thicker
-                        
+                        }
                         else if (y > 0.85 * WORLD_HEIGHT) {
                             set(x, y, MaterialType::Bedrock); // Bottom layer
-                        
+                        }
                         else {
                             set(x, y, MaterialType::DenseRock); // Deepest layer
-                        
+                        }
                         break;
-                    
+                    }
                     
                     case BiomeType::MOUNTAIN: {
                         // Mountain layering: Snow (top) → Stone → Gravel → Dense Rock
                         if (terrainHeight < WORLD_HEIGHT * 0.3f && depth < 5) {
                             set(x, y, MaterialType::Snow); // Snow cap on highest mountains
-                        
+                        }
                         else if (depth < 20) {
                             set(x, y, MaterialType::Stone); // Upper mountain rock - thicker
-                        
+                        }
                         else if (depth < 30) {
                             set(x, y, MaterialType::Gravel); // Gravel layer - thicker
-                        
+                        }
                         else if (depth < 75) {
                             set(x, y, MaterialType::Stone); // Middle layer stone - much thicker
-                        
+                        }
                         else if (y > 0.85 * WORLD_HEIGHT) {
                             set(x, y, MaterialType::Bedrock); // Bottom layer
-                        
+                        }
                         else {
                             set(x, y, MaterialType::DenseRock); // Mountain base
-                        
+                        }
                         break;
-                    
+                    }
                     
                     case BiomeType::SNOW: {
                         // Snow biome: Snow → Stone → Gravel → Dense Rock
                         if (depth < 8) {
                             set(x, y, MaterialType::Snow); // Snow layer
-                        
+                        }
                         else if (depth < 20) {
                             set(x, y, MaterialType::Stone); // Stone layer
-                        
+                        }
                         else if (depth < 30) {
                             set(x, y, MaterialType::Gravel); // Gravel transition
-                        
+                        }
                         else if (y > 0.85 * WORLD_HEIGHT) {
                             set(x, y, MaterialType::Bedrock); // Bottom layer 
-                        
+                        }
                         else {
                             set(x, y, MaterialType::DenseRock); // Deep rock
-                        
+                        }
                         break;
-                    
-                
-            
-        
-    
+                    }
+                }
+            }
+        }
+    }
     
     // Step 4: Add biome transition features for more natural borders
     
@@ -3028,18 +3026,18 @@ void World::generate(unsigned int seed) {
                     float sandNoise = perlinNoise2D(x * 0.1f, y * 0.1f, seed + 345);
                     if (sandNoise > 0.4f && erosionFactor[x] < 0.85f) {
                         set(x, y, MaterialType::Sand);
-                    
-                
+                    }
+                }
                 else if (get(x, y) == MaterialType::Dirt) {
                     // Occasionally expose sandstone where dirt would be
                     float stoneNoise = perlinNoise2D(x * 0.08f, y * 0.08f, seed + 678);
                     if (stoneNoise > 0.6f && erosionFactor[x] < 0.8f) {
                         set(x, y, MaterialType::Sandstone);
-                    
-                
-            
-        
-    
+                    }
+                }
+            }
+        }
+    }
     
     // Grassland-Mountain transition - add foothills and exposed rock features
     for (int x = grasslandEndX - transitionWidth; x < grasslandEndX + transitionWidth; ++x) {
@@ -3054,22 +3052,22 @@ void World::generate(unsigned int seed) {
                     float rockNoise = perlinNoise2D(x * 0.05f, y * 0.05f, seed + 123);
                     if (rockNoise > 0.8f - t * 0.3f) { // More rocks as we get closer to mountains
                         set(x, y, MaterialType::Stone);
-                    
-                
+                    }
+                }
                 else if (get(x, y) == MaterialType::TopSoil || get(x, y) == MaterialType::Dirt) {
                     // Replace some dirt with gravel/stone (rocky soil) for a more mountain-like transition
                     float soilNoise = perlinNoise2D(x * 0.07f, y * 0.07f, seed + 234);
                     if (soilNoise > 0.7f - t * 0.4f) {
                         if (soilNoise > 0.85f) {
                             set(x, y, MaterialType::Stone); // Occasional stone outcrops
-                         else {
+                        } else {
                             set(x, y, MaterialType::Gravel); // Gravelly soil transition
-                        
-                    
-                
-            
-        
-    
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     std::cout << "Enhanced terrain generation complete." << std::endl;
     
@@ -3081,7 +3079,7 @@ void World::generate(unsigned int seed) {
         std::cout << "Terrain generated. Build and render to see the result before cave generation." << std::endl;
         std::cout << "Press any key to continue with cave generation..." << std::endl;
         // Here we'd pause in an interactive application
-    
+    }
     
     // ---- Cave Generation ----
     std::cout << "Generating cave system with cellular automata..." << std::endl;
@@ -3136,12 +3134,12 @@ void World::generate(unsigned int seed) {
                 
                 if (distSq < 1.0f) {
                     shapeFactor = 0.3f; // Lower probability inside cave seeds
-                
-            
+                }
+            }
             
             upperCaveGrid[y][x] = (dist(m_rng) < probability * edgeFactor * shapeFactor) ? 1 : 0;
-        
-    
+        }
+    }
     
     // Initialize mid cave grid (moderate CA - medium, connected caves)
     for (int y = 0; y < caveZoneHeight; ++y) {
@@ -3171,12 +3169,12 @@ void World::generate(unsigned int seed) {
                 
                 if (distSq < 1.0f) {
                     shapeFactor = 0.2f; // Lower probability inside cave seeds
-                
-            
+                }
+            }
             
             midCaveGrid[y][x] = (dist(m_rng) < probability * edgeFactor * shapeFactor) ? 1 : 0;
-        
-    
+        }
+    }
     
     // Initialize deep cave grid (strong CA - larger caves with natural feel)
     for (int y = 0; y < caveZoneHeight; ++y) {
@@ -3206,12 +3204,12 @@ void World::generate(unsigned int seed) {
                 
                 if (distSq < 1.0f) {
                     shapeFactor = 0.15f; // Lower probability inside cave seeds
-                
-            
+                }
+            }
             
             deepCaveGrid[y][x] = (dist(m_rng) < probability * edgeFactor * shapeFactor) ? 1 : 0;
-        
-    
+        }
+    }
     
     // Function to count wall neighbors for a cell (including edge handling)
     auto countWallNeighbors = [](const std::vector<std::vector<int>>& grid, int x, int y) {
@@ -3223,13 +3221,13 @@ void World::generate(unsigned int seed) {
             for (int nx = x - 1; nx <= x + 1; ++nx) {
                 if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
                     count++; // Treat out-of-bounds as walls
-                 else if (!(nx == x && ny == y) && grid[ny][nx] == 1) {
+                } else if (!(nx == x && ny == y) && grid[ny][nx] == 1) {
                     count++;
-                
-            
-        
+                }
+            }
+        }
         return count;
-    ;
+    };
     
     std::cout << "Running weak cellular automata for upper caves..." << std::endl;
     
@@ -3244,14 +3242,14 @@ void World::generate(unsigned int seed) {
                 if (upperCaveGrid[y][x] == 1) {
                     // Wall remains if 4 or more neighbors are walls
                     newGrid[y][x] = (neighbors >= 4) ? 1 : 0;
-                 else {
+                } else {
                     // Empty becomes wall if 5 or more neighbors are walls
                     newGrid[y][x] = (neighbors >= 5) ? 1 : 0;
-                
-            
-        
+                }
+            }
+        }
         upperCaveGrid.swap(newGrid);
-    
+    }
     
     std::cout << "Running moderate cellular automata for mid caves..." << std::endl;
     
@@ -3266,14 +3264,14 @@ void World::generate(unsigned int seed) {
                 if (midCaveGrid[y][x] == 1) {
                     // Wall remains if 4 or more neighbors are walls
                     newGrid[y][x] = (neighbors >= 4) ? 1 : 0;
-                 else {
+                } else {
                     // Empty becomes wall if 5 or more neighbors are walls
                     newGrid[y][x] = (neighbors >= 5) ? 1 : 0;
-                
-            
-        
+                }
+            }
+        }
         midCaveGrid.swap(newGrid);
-    
+    }
     
     std::cout << "Running strong cellular automata for deep caves..." << std::endl;
     
@@ -3288,14 +3286,14 @@ void World::generate(unsigned int seed) {
                 if (deepCaveGrid[y][x] == 1) {
                     // Wall remains if 3 or more neighbors are walls (more caverns)
                     newGrid[y][x] = (neighbors >= 3) ? 1 : 0;
-                 else {
+                } else {
                     // Empty becomes wall if 5 or more neighbors are walls (standard)
                     newGrid[y][x] = (neighbors >= 5) ? 1 : 0;
-                
-            
-        
+                }
+            }
+        }
         deepCaveGrid.swap(newGrid);
-    
+    }
     
     // Additional smoothing pass
     std::cout << "Running extra smoothing passes..." << std::endl;
@@ -3310,16 +3308,16 @@ void World::generate(unsigned int seed) {
                 // Remove single wall tiles surrounded by 6+ empty spaces
                 if (grid[y][x] == 1 && neighbors <= 2) {
                     newGrid[y][x] = 0;
-                
+                }
                 
                 // Fill single empty tiles surrounded by 6+ walls
                 if (grid[y][x] == 0 && neighbors >= 6) {
                     newGrid[y][x] = 1;
-                
-            
-        
+                }
+            }
+        }
         grid.swap(newGrid);
-    ;
+    };
     
     // Apply smoothing to all cave grids
     smoothCaveGrid(upperCaveGrid);
@@ -3338,11 +3336,11 @@ void World::generate(unsigned int seed) {
                     MaterialType material = get(x, worldY);
                     if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
                         set(x, worldY, MaterialType::Empty);
-                    
-                
-            
-        
-    
+                    }
+                }
+            }
+        }
+    }
     
     // Mid caves
     for (int y = 0; y < caveZoneHeight; ++y) {
@@ -3353,11 +3351,11 @@ void World::generate(unsigned int seed) {
                     MaterialType material = get(x, worldY);
                     if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
                         set(x, worldY, MaterialType::Empty);
-                    
-                
-            
-        
-    
+                    }
+                }
+            }
+        }
+    }
     
     // Deep caves
     for (int y = 0; y < caveZoneHeight; ++y) {
@@ -3368,11 +3366,11 @@ void World::generate(unsigned int seed) {
                     MaterialType material = get(x, worldY);
                     if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
                         set(x, worldY, MaterialType::Empty);
-                    
-                
-            
-        
-    
+                    }
+                }
+            }
+        }
+    }
     
     // Create more natural connections between cave systems
     std::cout << "Creating cave system connections..." << std::endl;
@@ -3433,7 +3431,7 @@ void World::generate(unsigned int seed) {
             // Bound check
             if (x < 0 || x >= WORLD_WIDTH || y < 0 || y >= WORLD_HEIGHT) {
                 break;
-            
+            }
             
             // Vary the tunnel width - wider in the middle, narrower at ends
             float widthFactor = widthVariation * (1.0f - std::abs(progress - 0.5f) * 1.8f);
@@ -3456,11 +3454,11 @@ void World::generate(unsigned int seed) {
                             MaterialType material = get(px, py);
                             if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
                                 set(px, py, MaterialType::Empty);
-                            
-                        
-                    
-                
-            
+                            }
+                        }
+                    }
+                }
+            }
             
             // Sometimes create a small cave pocket
             if (m_rng() % 15 == 0) {
@@ -3483,14 +3481,14 @@ void World::generate(unsigned int seed) {
                                 MaterialType material = get(wx, wy);
                                 if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
                                     set(wx, wy, MaterialType::Empty);
-                                
-                            
-                        
-                    
-                
-            
-        
-    ;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
     
     // Connect between different cave layers
     for (int i = 0; i < numConnectors; ++i) {
@@ -3507,17 +3505,17 @@ void World::generate(unsigned int seed) {
             startY = upperCaveDepthStart + (m_rng() % caveZoneHeight);
             endX = startX + (m_rng() % 200) - 100; // Slight horizontal offset
             endY = midCaveDepthStart + (m_rng() % caveZoneHeight); 
-         else {
+        } else {
             // Connect mid to deep cave 
             startX = 100 + (m_rng() % (WORLD_WIDTH - 200));
             startY = midCaveDepthStart + (m_rng() % caveZoneHeight);
             endX = startX + (m_rng() % 200) - 100; // Slight horizontal offset
             endY = deepCaveDepthStart + (m_rng() % caveZoneHeight);
-        
+        }
         
         // Create natural-looking connection
         createCaveConnection(startX, startY, endX, endY, i * 100);
-    
+    }
     
     // Create horizontal connections within each layer
     std::cout << "Enhancing cave network connectivity..." << std::endl;
@@ -3542,8 +3540,8 @@ void World::generate(unsigned int seed) {
             
             // Create natural-looking connection
             createCaveConnection(startX, startY, endX, endY, layer * 1000 + c * 100);
-        
-    
+        }
+    }
     
     // Optional: Create a few very rare surface entrances - EXTREMELY RARE
     std::cout << "Creating rare surface entrances..." << std::endl;
@@ -3560,8 +3558,8 @@ void World::generate(unsigned int seed) {
             if (get(entranceX, y) != MaterialType::Empty) {
                 surfaceY = y;
                 break;
-            
-        
+            }
+        }
         
         if (surfaceY > 0) {
             // Target a point in the upper cave system
@@ -3584,7 +3582,7 @@ void World::generate(unsigned int seed) {
                 int currentWidth = width;
                 if (y < surfaceY + 5) {
                     currentWidth = 3; // Wider at entrance
-                
+                }
                 
                 // Carve the shaft at this Y level
                 for (int x = centerX - currentWidth; x <= centerX + currentWidth; ++x) {
@@ -3592,12 +3590,12 @@ void World::generate(unsigned int seed) {
                         MaterialType material = get(x, y);
                         if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
                             set(x, y, MaterialType::Empty);
-                        
-                    
-                
-            
-        
-    
+                        }
+                    }
+                }
+            }
+        }
+    }
     
     std::cout << "Cellular automata cave generation complete!" << std::endl;
 
@@ -3607,7 +3605,7 @@ void World::generate(unsigned int seed) {
         std::cout << "Caves generated. Build and render to see the final cave system." << std::endl;
         std::cout << "Press any key to continue with ore generation..." << std::endl;
         // Here we'd pause in an interactive application
-    
+    }
     
     std::cout << "Generating ore deposits..." << std::endl;
     
@@ -3622,31 +3620,31 @@ void World::generate(unsigned int seed) {
         float density;    // Ore density within veins (0-1)
         int maxRadius;    // Maximum radius for ore clusters
         BiomeType preferredBiome; // Biome where this ore is most common (optional)
-    ;
+    };
     
     std::vector<OrePlacement> oreTypes = {
         // Common ores found in all biomes
-        {MaterialType::CoalOre,     0.7f,  10, WORLD_HEIGHT, 8,  20, 0.7f, 2, BiomeType::GRASSLAND,
-        {MaterialType::IronOre,     0.5f,  15, WORLD_HEIGHT, 5,  15, 0.6f, 2, BiomeType::MOUNTAIN,
-        {MaterialType::CopperOre,   0.5f,  10, WORLD_HEIGHT, 5,  15, 0.6f, 2, BiomeType::JUNGLE,
+        {MaterialType::CoalOre,     0.7f,  10, WORLD_HEIGHT, 8,  20, 0.7f, 2, BiomeType::GRASSLAND},
+        {MaterialType::IronOre,     0.5f,  15, WORLD_HEIGHT, 5,  15, 0.6f, 2, BiomeType::MOUNTAIN},
+        {MaterialType::CopperOre,   0.5f,  10, WORLD_HEIGHT, 5,  15, 0.6f, 2, BiomeType::JUNGLE},
         
         // Mid-tier ores
-        {MaterialType::SilverOre,   0.3f,  30, WORLD_HEIGHT, 4,  12, 0.5f, 2, BiomeType::SNOW,
-        {MaterialType::GoldOre,     0.2f,  40, WORLD_HEIGHT, 3,  10, 0.4f, 2, BiomeType::DESERT,
+        {MaterialType::SilverOre,   0.3f,  30, WORLD_HEIGHT, 4,  12, 0.5f, 2, BiomeType::SNOW},
+        {MaterialType::GoldOre,     0.2f,  40, WORLD_HEIGHT, 3,  10, 0.4f, 2, BiomeType::DESERT},
         
         // Rare gems with biome preference
-        {MaterialType::EmeraldOre,  0.15f, 50, WORLD_HEIGHT, 3,  8,  0.3f, 1, BiomeType::JUNGLE,
-        {MaterialType::SapphireOre, 0.15f, 50, WORLD_HEIGHT, 3,  8,  0.3f, 1, BiomeType::SNOW,
-        {MaterialType::RubyOre,     0.15f, 50, WORLD_HEIGHT, 3,  8,  0.3f, 1, BiomeType::MOUNTAIN,
+        {MaterialType::EmeraldOre,  0.15f, 50, WORLD_HEIGHT, 3,  8,  0.3f, 1, BiomeType::JUNGLE},
+        {MaterialType::SapphireOre, 0.15f, 50, WORLD_HEIGHT, 3,  8,  0.3f, 1, BiomeType::SNOW},
+        {MaterialType::RubyOre,     0.15f, 50, WORLD_HEIGHT, 3,  8,  0.3f, 1, BiomeType::MOUNTAIN},
         
         // Biome-specific ores
-        {MaterialType::SulfurOre,   0.25f, 30, WORLD_HEIGHT, 4,  12, 0.5f, 2, BiomeType::DESERT,
-        {MaterialType::QuartzOre,   0.4f,  20, WORLD_HEIGHT, 5,  15, 0.6f, 2, BiomeType::MOUNTAIN,
+        {MaterialType::SulfurOre,   0.25f, 30, WORLD_HEIGHT, 4,  12, 0.5f, 2, BiomeType::DESERT},
+        {MaterialType::QuartzOre,   0.4f,  20, WORLD_HEIGHT, 5,  15, 0.6f, 2, BiomeType::MOUNTAIN},
         
         // Super rare deposits
-        {MaterialType::DiamondOre,  0.08f, 70, WORLD_HEIGHT, 2,  6,  0.2f, 1, BiomeType::MOUNTAIN,
-        {MaterialType::UraniumOre,  0.06f, 80, WORLD_HEIGHT, 2,  5,  0.2f, 1, BiomeType::DESERT
-    ;
+        {MaterialType::DiamondOre,  0.08f, 70, WORLD_HEIGHT, 2,  6,  0.2f, 1, BiomeType::MOUNTAIN},
+        {MaterialType::UraniumOre,  0.06f, 80, WORLD_HEIGHT, 2,  5,  0.2f, 1, BiomeType::DESERT}
+    };
     
     // For each ore type, generate multiple veins throughout the world
     std::cout << "Generating ore veins..." << std::endl;
@@ -3673,14 +3671,14 @@ void World::generate(unsigned int seed) {
             if (material != MaterialType::Empty) {
                 surfaceY = sy;
                 break;
-            
-        
+            }
+        }
         
         // Check depth
         int depth = y - surfaceY;
         if (depth < minDepth || y >= WORLD_HEIGHT - 10) {
             continue; // Too close to surface or bottom
-        
+        }
         
         // Determine biome based on surface and use for ore preference
         BiomeType localBiome = BiomeType::GRASSLAND; // Default
@@ -3688,23 +3686,23 @@ void World::generate(unsigned int seed) {
         
         if (surfaceMaterial == MaterialType::Sand) {
             localBiome = BiomeType::DESERT;
-         else if (surfaceMaterial == MaterialType::Snow) {
+        } else if (surfaceMaterial == MaterialType::Snow) {
             localBiome = BiomeType::SNOW;
-         else if (surfaceMaterial == MaterialType::Stone) {
+        } else if (surfaceMaterial == MaterialType::Stone) {
             localBiome = BiomeType::MOUNTAIN;
-         else if (surfaceMaterial == MaterialType::Grass) {
+        } else if (surfaceMaterial == MaterialType::Grass) {
             // Check for jungle vs grassland
             float jungleNoise = perlinNoise2D(x * 0.01f, y * 0.01f, seed + 888);
             localBiome = (jungleNoise > 0.4f) ? BiomeType::JUNGLE : BiomeType::GRASSLAND;
-        
+        }
         
         // Adjust generation chance based on biome preference
         float chance = 1.0f;
         if (localBiome == ore.preferredBiome) {
             chance = 1.5f; // Higher chance in preferred biome
-         else {
+        } else {
             chance = 0.5f; // Lower chance elsewhere
-        
+        }
         
         // Apply depth-based chance adjustment
         if (y > WORLD_HEIGHT * 0.7f) { // Deeper = more rare ores
@@ -3713,15 +3711,15 @@ void World::generate(unsigned int seed) {
                 ore.oreType == MaterialType::UraniumOre ||
                 ore.oreType == MaterialType::GoldOre) {
                 chance *= 2.0f;
-            
-         else if (y < WORLD_HEIGHT * 0.4f) {
+            }
+        } else if (y < WORLD_HEIGHT * 0.4f) {
             // Upper area - favor common ores
             if (ore.oreType == MaterialType::CoalOre || 
                 ore.oreType == MaterialType::IronOre ||
                 ore.oreType == MaterialType::CopperOre) {
                 chance *= 2.0f;
-            
-        
+            }
+        }
         
         // Final check if we should generate this vein
         if (static_cast<float>(m_rng()) / m_rng.max() < chance * ore.frequency * 5.0f) { // Multiplied by 5 for more ore
@@ -3738,9 +3736,9 @@ void World::generate(unsigned int seed) {
                          << " (size: " << veinSize << ", biome: " << static_cast<int>(localBiome) << ")" << std::endl;
                 
                 generateOreVein(x, y, ore.oreType, veinSize, adjustedDensity, adjustedRadius, localBiome);
-            
-        
-    
+            }
+        }
+    }
     
     // Generate additional small ore veins to fill in gaps
     std::cout << "Generating small ore veins..." << std::endl;
@@ -3763,14 +3761,14 @@ void World::generate(unsigned int seed) {
             if (material != MaterialType::Empty) {
                 surfaceY = sy;
                 break;
-            
-        
+            }
+        }
         
         // Check depth
         int depth = y - surfaceY;
         if (depth < minDepth || y >= WORLD_HEIGHT - 10) {
             continue; // Too close to surface or bottom
-        
+        }
         
         // Biome determination based on surface material isn't needed for small veins
         // So we comment it out to avoid the unused variable warning
@@ -3805,17 +3803,17 @@ void World::generate(unsigned int seed) {
                 if (dx == 0 && dy == 0) {
                     dx = m_rng() % 3 - 1;
                     dy = (dx == 0) ? (m_rng() % 2 ? 1 : -1) : (m_rng() % 3 - 1);
-                
+                }
                 
                 x += dx;
                 y += dy;
                 
                 if (isValidPositionForOre(x, y)) {
                     placeOreCluster(x, y, ore.oreType, radius, adjustedDensity);
-                
-            
-        
-    
+                }
+            }
+        }
+    }
     
     std::cout << "Ore generation complete." << std::endl;
     
@@ -3823,45 +3821,45 @@ void World::generate(unsigned int seed) {
         // Update pixel data after ore generation
         updatePixelData();
         std::cout << "Ore deposits generated. Build and render to see the final world." << std::endl;
-     else {
+    } else {
         // Update pixel data
         updatePixelData();
-    
-
+    }
+}
 
 Chunk* World::getChunkAt(int x, int y) {
     if (x < 0 || x >= m_chunksX || y < 0 || y >= m_chunksY) {
         return nullptr;
-    
+    }
     
     int idx = y * m_chunksX + x;
     return m_chunks[idx].get();
-
+}
 
 const Chunk* World::getChunkAt(int x, int y) const {
     if (x < 0 || x >= m_chunksX || y < 0 || y >= m_chunksY) {
         return nullptr;
-    
+    }
     
     int idx = y * m_chunksX + x;
     return m_chunks[idx].get();
-
+}
 
 void World::worldToChunkCoords(int worldX, int worldY, int& chunkX, int& chunkY, int& localX, int& localY) const {
     chunkX = worldX / Chunk::WIDTH;
     chunkY = worldY / Chunk::HEIGHT;
     localX = worldX % Chunk::WIDTH;
     localY = worldY % Chunk::HEIGHT;
-
+}
 
 bool World::isValidPosition(int x, int y) const {
     return (x >= 0 && x < m_width && y >= 0 && y < m_height);
-
+}
 
 bool World::isValidPositionForOre(int x, int y) const {
     if (!isValidPosition(x, y)) {
         return false;
-    
+    }
     
     // Check if the material at this position is suitable for ore replacement
     MaterialType material = get(x, y);
@@ -3870,7 +3868,7 @@ bool World::isValidPositionForOre(int x, int y) const {
     return (material == MaterialType::Stone || 
             material == MaterialType::DenseRock || 
             material == MaterialType::Sandstone);
-
+}
 
 void World::generateOreVein(int startX, int startY, MaterialType oreType, int maxSize, float density, int maxRadius, BiomeType biome) {
     // Drunkard's walk algorithm for ore generation
@@ -3880,7 +3878,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
     // Skip if starting position is invalid
     if (!isValidPositionForOre(x, y)) {
         return;
-    
+    }
     
     // Create cluster at starting point
     placeOreCluster(x, y, oreType, 1 + (m_rng() % maxRadius), density);
@@ -3946,7 +3944,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
                 directionRandomness = 0.2f;
                 branchChance = 0.05f;
                 upwardBias = 0.4f;
-            
+            }
             break;
             
         case MaterialType::SapphireOre:
@@ -3956,7 +3954,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
                 branchChance = 0.1f;
                 minStepsBetweenClusters = 4; // More spread out
                 maxStepsBetweenClusters = 8;
-            
+            }
             break;
             
         case MaterialType::RubyOre:
@@ -3964,7 +3962,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
             if (biome == BiomeType::MOUNTAIN) {
                 directionRandomness = 0.3f;
                 horizontalBias = 0.3f;
-            
+            }
             break;
             
         case MaterialType::SulfurOre:
@@ -3973,7 +3971,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
                 directionRandomness = 0.3f;
                 horizontalBias = 0.4f;
                 branchChance = 0.25f;
-            
+            }
             break;
             
         case MaterialType::QuartzOre:
@@ -3993,7 +3991,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
         default:
             // Generic ore behavior
             break;
-    
+    }
     
     // Initial direction - use uniform distribution across all angles
     // Random angle in radians (0 to 2π)
@@ -4017,7 +4015,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
     if (m_rng() % 10 == 0) {
         angleChange = (m_rng() % 60) * 3.14159f / 180.0f; // 0-60 degree turn
         if (m_rng() % 2) angleChange *= -1.0f; // 50% chance of left or right
-    
+    }
     
     angle += angleChange;
         
@@ -4026,14 +4024,14 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
             // Bias toward horizontal movement: push angle toward 0 or π
             float hBias = std::sin(angle * 2.0f) * horizontalBias;
             angle -= hBias;
-        
+        }
         
         if (upwardBias > 0) {
             // Bias toward upward movement: push angle toward π/2
             float targetAngle = 3.14159f * 1.5f; // 3π/2 is upward in screen coordinates
             float diff = std::fmod(angle - targetAngle + 3.14159f, 2.0f * 3.14159f) - 3.14159f;
             angle -= diff * upwardBias * 0.1f;
-        
+        }
         
         // Move in the current direction
         int dx = static_cast<int>(std::cos(angle) + 0.5f); // Round to nearest int
@@ -4043,7 +4041,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
         if (dx == 0 && dy == 0) {
             dx = m_rng() % 3 - 1; // -1, 0, or 1
             dy = (dx == 0) ? (m_rng() % 2 ? 1 : -1) : (m_rng() % 3 - 1);
-        
+        }
         
         // Move the walker
         x += dx;
@@ -4052,7 +4050,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
         // Boundary check
         if (!isValidPosition(x, y)) {
             break;
-        
+        }
         
         // Place ore clusters periodically along the path
         steps++;
@@ -4098,17 +4096,17 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
                         // Create branch vein - use larger branch veins
                         generateOreVeinBranch(branchX, branchY, oreType, branchSize, density, maxRadius, branchAngle, biome);
                         veinsPlaced += branchSize;
-                    
-                
-                
-            
+                    }
+                }
+                }
+            }
             
             // Stop if we've placed all the ore clusters
             if (veinsPlaced >= maxSize) {
                 break;
-            
-        
-    
+            }
+        }
+    }
 
 
 void World::generateOreVeinBranch(int startX, int startY, MaterialType oreType, int maxSize, float density, 
@@ -4119,7 +4117,7 @@ void World::generateOreVeinBranch(int startX, int startY, MaterialType oreType, 
     
     if (!isValidPositionForOre(x, y)) {
         return;
-    
+    }
     
     // Place initial cluster
     placeOreCluster(x, y, oreType, 1 + (m_rng() % maxRadius), density);
@@ -4147,7 +4145,7 @@ void World::generateOreVeinBranch(int startX, int startY, MaterialType oreType, 
             // Small turn up to 45 degrees
             angleChange = (m_rng() % 145) * 3.14159f / 180.0f;
             if (m_rng() % 2) angleChange *= -1.0f;
-        
+        }
         
         angle += angleChange;
         
@@ -4159,14 +4157,14 @@ void World::generateOreVeinBranch(int startX, int startY, MaterialType oreType, 
         if (dx == 0 && dy == 0) {
             dx = m_rng() % 3 - 1;
             dy = (dx == 0) ? (m_rng() % 2 ? 1 : -1) : (m_rng() % 3 - 1);
-        
+        }
         
         x += dx;
         y += dy;
         
         if (!isValidPosition(x, y)) {
             break;
-        
+        }
         
         steps++;
         if (steps >= stepsToNextCluster) {
@@ -4178,14 +4176,14 @@ void World::generateOreVeinBranch(int startX, int startY, MaterialType oreType, 
                 
                 stepsToNextCluster = minStepsBetweenClusters + m_rng() % (maxStepsBetweenClusters - minStepsBetweenClusters + 1);
                 steps = 0;
-            
+            }
             
             if (veinsPlaced >= maxSize) {
                 break;
-            
-        
-    
-
+            }
+        }
+    }
+}
 
 void World::placeOreCluster(int centerX, int centerY, MaterialType oreType, int radius, float density) {
     // Place a cluster of ore centered at (centerX, centerY)
@@ -4198,19 +4196,19 @@ void World::placeOreCluster(int centerX, int centerY, MaterialType oreType, int 
             float distSquared = dx*dx + dy*dy;
             if (distSquared > radiusSquared) {
                 continue;
-            
+            }
             
             int x = centerX + dx;
             int y = centerY + dy;
             
             if (!isValidPosition(x, y)) {
                 continue;
-            
+            }
             
             // Only place ore within appropriate materials
             if (!isValidPositionForOre(x, y)) {
                 continue;
-            
+            }
             
             // Use Perlin noise for irregular cluster shapes
             float noise = perlinNoise2D(x * 0.5f, y * 0.5f, static_cast<unsigned int>(oreType));
@@ -4222,10 +4220,10 @@ void World::placeOreCluster(int centerX, int centerY, MaterialType oreType, int 
             // Place ore based on adjusted density
             if (static_cast<float>(m_rng()) / m_rng.max() < placementChance) {
                 set(x, y, oreType);
-            
-        
-    
-
+            }
+        }
+    }
+}
 
 void World::updatePixelData() {
     // Update combined pixel data from all chunks
@@ -4257,13 +4255,13 @@ void World::updatePixelData() {
                         m_pixelData[worldIdx + 1] = chunkPixelData[chunkIdx + 1];
                         m_pixelData[worldIdx + 2] = chunkPixelData[chunkIdx + 2];
                         m_pixelData[worldIdx + 3] = chunkPixelData[chunkIdx + 3];
-                    
+                    }
 
-                
-            
-        
-    
-
+                }
+            }
+        }
+    }
+}
 
 void World::processOddColumns() {
     // First phase: Process odd X and odd Y coordinates
@@ -4280,11 +4278,11 @@ void World::processOddColumns() {
                     
                     // Update the chunk with its neighbors
                     chunk->update(chunkBelow, chunkLeft, chunkRight);
-                
-            
-        
-    
-
+                }
+            }
+        }
+    }
+}
 
 void World::processEvenColumns() {
     // Phase 3: Process odd X, even Y coordinates
@@ -4301,10 +4299,10 @@ void World::processEvenColumns() {
                     
                     // Update the chunk with its neighbors
                     chunk->update(chunkBelow, chunkLeft, chunkRight);
-                
-            
-        
-    
+                }
+            }
+        }
+    }
     
     // Phase 4: Process even X, odd Y coordinates
     for (int y = 1; y < m_chunksY; y += 2) {  // Odd rows
@@ -4320,11 +4318,11 @@ void World::processEvenColumns() {
                     
                     // Update the chunk with its neighbors
                     chunk->update(chunkBelow, chunkLeft, chunkRight);
-                
-            
-        
-    
-
+                }
+            }
+        }
+    }
+}
 
 void World::updateChunkThreaded(Chunk* chunk, int chunkX, int chunkY) {
     if (!chunk) return;
@@ -4336,6 +4334,6 @@ void World::updateChunkThreaded(Chunk* chunk, int chunkX, int chunkY) {
     
     // Update the chunk with its neighbors
     chunk->update(chunkBelow, chunkLeft, chunkRight);
+}
 
-
- // namespace PixelPhys
+} // namespace PixelPhys
