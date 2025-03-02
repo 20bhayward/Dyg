@@ -68,13 +68,16 @@ private:
     void updatePixelData();
     
     // Handle interactions between different materials (fire spreading, etc.)
-    void handleMaterialInteractions(const std::vector<MaterialType>& oldGrid);
+    void handleMaterialInteractions(const std::vector<MaterialType>& oldGrid, bool& anyMaterialMoved);
     
     // Helper to count water pixels below current position (for depth-based effects)
     int countWaterBelow(int x, int y) const;
     
     // For random number generation in material interactions
     std::mt19937 m_rng{std::random_device{}()};
+    
+    // Helper for determining if a material can fall into another material
+    bool canDisplace(MaterialType above, MaterialType below) const;
     
     // Helpers for liquid dynamics
     bool isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, int y);

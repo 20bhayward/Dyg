@@ -4,6 +4,8 @@
 #include <vulkan/vulkan.h>
 #include <SDL2/SDL_vulkan.h>
 #include <algorithm>
+#include <map>
+#include <string>
 
 #include "../include/Materials.h"
 #include "../include/World.h"
@@ -88,6 +90,32 @@ int main() {
     // Enable system cursor
     SDL_ShowCursor(SDL_ENABLE);
     
+    // Material placement variables
+    bool leftMouseDown = false;
+    int placeBrushSize = 3;  // Size of placement brush
+    PixelPhys::MaterialType currentMaterial = PixelPhys::MaterialType::Sand;  // Default material to place
+    
+    // Material name mapping for UI display
+    std::map<PixelPhys::MaterialType, std::string> materialNames = {
+        {PixelPhys::MaterialType::Empty, "Eraser"},
+        {PixelPhys::MaterialType::Sand, "Sand"},
+        {PixelPhys::MaterialType::Water, "Water"},
+        {PixelPhys::MaterialType::Stone, "Stone"},
+        {PixelPhys::MaterialType::Fire, "Fire"},
+        {PixelPhys::MaterialType::Oil, "Oil"},
+        {PixelPhys::MaterialType::GrassStalks, "Grass Stalks"},
+        {PixelPhys::MaterialType::Dirt, "Dirt"},
+        {PixelPhys::MaterialType::FlammableGas, "Flammable Gas"},
+        {PixelPhys::MaterialType::Grass, "Grass"},
+        {PixelPhys::MaterialType::Lava, "Lava"},
+        {PixelPhys::MaterialType::Snow, "Snow"},
+        {PixelPhys::MaterialType::Bedrock, "Bedrock"},
+        {PixelPhys::MaterialType::Sandstone, "Sandstone"},
+        {PixelPhys::MaterialType::Gravel, "Gravel"},
+        {PixelPhys::MaterialType::TopSoil, "Top Soil"},
+        {PixelPhys::MaterialType::DenseRock, "Dense Rock"}
+    };
+    
     bool quit = false;
     SDL_Event e;
     Uint32 frameStart, frameTime;
@@ -155,6 +183,51 @@ int main() {
                     zoomLevel = 1.0f;
                     std::cout << "Camera reset to default position" << std::endl;
                 }
+                // Brush size controls
+                else if (e.key.keysym.sym == SDLK_EQUALS || e.key.keysym.sym == SDLK_PLUS) {
+                    // Increase brush size
+                    placeBrushSize = std::min(20, placeBrushSize + 1);
+                    std::cout << "Brush size: " << placeBrushSize << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_MINUS) {
+                    // Decrease brush size
+                    placeBrushSize = std::max(1, placeBrushSize - 1);
+                    std::cout << "Brush size: " << placeBrushSize << std::endl;
+                }
+                // Material selection hotkeys
+                else if (e.key.keysym.sym == SDLK_1) {
+                    currentMaterial = PixelPhys::MaterialType::Sand;
+                    std::cout << "Selected Sand" << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_2) {
+                    currentMaterial = PixelPhys::MaterialType::Water;
+                    std::cout << "Selected Water" << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_3) {
+                    currentMaterial = PixelPhys::MaterialType::Stone;
+                    std::cout << "Selected Stone" << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_4) {
+                    currentMaterial = PixelPhys::MaterialType::Gravel;
+                    std::cout << "Selected Gravel" << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_5) {
+                    currentMaterial = PixelPhys::MaterialType::Oil;
+                    std::cout << "Selected Oil" << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_6) {
+                    currentMaterial = PixelPhys::MaterialType::Lava;
+                    std::cout << "Selected Lava" << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_7) {
+                    currentMaterial = PixelPhys::MaterialType::Fire;
+                    std::cout << "Selected Fire" << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_0) {
+                    // Eraser - set to Empty
+                    currentMaterial = PixelPhys::MaterialType::Empty;
+                    std::cout << "Selected Eraser (Empty)" << std::endl;
+                }
             }
             else if (e.type == SDL_MOUSEWHEEL) {
                 // Zoom in/out with mouse wheel
@@ -198,11 +271,36 @@ int main() {
                     prevMouseX = e.button.x;
                     prevMouseY = e.button.y;
                 }
+                else if (e.button.button == SDL_BUTTON_LEFT) {
+                    // Start placing material with left mouse button
+                    leftMouseDown = true;
+                    // Update mouse position immediately
+                    mouseX = e.button.x;
+                    mouseY = e.button.y;
+                }
+                else if (e.button.button == SDL_BUTTON_RIGHT) {
+                    // Cycle through materials with right click
+                    int currentMaterialInt = static_cast<int>(currentMaterial);
+                    currentMaterialInt = (currentMaterialInt + 1) % static_cast<int>(PixelPhys::MaterialType::COUNT);
+                    currentMaterial = static_cast<PixelPhys::MaterialType>(currentMaterialInt);
+                    
+                    // Skip "Empty" material
+                    if (currentMaterial == PixelPhys::MaterialType::Empty) {
+                        currentMaterialInt = (currentMaterialInt + 1) % static_cast<int>(PixelPhys::MaterialType::COUNT);
+                        currentMaterial = static_cast<PixelPhys::MaterialType>(currentMaterialInt);
+                    }
+                    
+                    std::cout << "Current material: " << static_cast<int>(currentMaterial) << std::endl;
+                }
             }
             else if (e.type == SDL_MOUSEBUTTONUP) {
                 if (e.button.button == SDL_BUTTON_MIDDLE) {
                     // Stop panning
                     middleMouseDown = false;
+                }
+                else if (e.button.button == SDL_BUTTON_LEFT) {
+                    // Stop placing material
+                    leftMouseDown = false;
                 }
             }
             else if (e.type == SDL_MOUSEMOTION) {
@@ -244,16 +342,75 @@ int main() {
             }
         }
         
-        // Update world simulation
-        world.update();
+        // Handle material placement with left mouse button
+        if (leftMouseDown) {
+            // Get current mouse position to ensure we have the latest position
+            int latestMouseX, latestMouseY;
+            SDL_GetMouseState(&latestMouseX, &latestMouseY);
+            
+            // Convert screen coordinates to world coordinates
+            // Try a different approach to screen-to-world conversion
+            // The logic used in the Renderer would be:
+            // viewportWidth = screenWidth / pixelScale
+            // viewportHeight = screenHeight / pixelScale
+            // So we need to reverse this logic
+            
+            // Get the actual viewport dimensions in world units
+            float viewportWidth = actualWidth / (basePixelSize * zoomLevel);
+            float viewportHeight = actualHeight / (basePixelSize * zoomLevel);
+            
+            // Calculate percentages across the viewport
+            float percentX = static_cast<float>(latestMouseX) / actualWidth;
+            float percentY = static_cast<float>(latestMouseY) / actualHeight;
+            
+            // Apply percentages to get position in world space
+            int worldX = cameraX + static_cast<int>(percentX * viewportWidth);
+            int worldY = cameraY + static_cast<int>(percentY * viewportHeight);
+            
+            // Place material in a circular brush pattern
+            for (int dy = -placeBrushSize / 2; dy <= placeBrushSize / 2; dy++) {
+                for (int dx = -placeBrushSize / 2; dx <= placeBrushSize / 2; dx++) {
+                    // Check if point is within brush radius for circular brush shape
+                    if (dx*dx + dy*dy <= (placeBrushSize/2)*(placeBrushSize/2)) {
+                        world.set(worldX + dx, worldY + dy, currentMaterial);
+                    }
+                }
+            }
+            
+            // Debug output - only show occasionally to avoid console spam
+            if (frameCount % 10 == 0) {
+                std::cout << "\nMouse at screen: " << latestMouseX << "," << latestMouseY 
+                          << " | World: " << worldX << "," << worldY 
+                          << " | Camera: " << cameraX << "," << cameraY 
+                          << " | Zoom: " << zoomLevel 
+                          << " | ViewportSize: " << viewportWidth << "x" << viewportHeight << std::endl;
+            }
+            
+            // Mark the region as dirty for physics simulation
+            world.update(worldX - placeBrushSize, worldY - placeBrushSize, 
+                         worldX + placeBrushSize, worldY + placeBrushSize);
+        }
+        else {
+            // Update world simulation
+            world.update();
+        }
         
         // Render the world using our renderer with camera position and zoom level
         renderer->render(world, cameraX, cameraY, zoomLevel);
         
+        // Display current material and brush size in status bar
+        std::string materialName = "Unknown";
+        auto it = materialNames.find(currentMaterial);
+        if (it != materialNames.end()) {
+            materialName = it->second;
+        }
+        std::string statusText = "Material: " + materialName + " | Brush Size: " + std::to_string(placeBrushSize);
+        std::cout << "\r" << statusText << std::flush;  // Use carriage return to update in-place
+        
         // FPS calculation (print FPS every second)
         frameCount++;
         if (SDL_GetTicks() - fpsTimer >= 1000) {
-            std::cout << "FPS: " << frameCount << std::endl;
+            std::cout << "\nFPS: " << frameCount << std::endl;
             frameCount = 0;
             fpsTimer = SDL_GetTicks();
         }

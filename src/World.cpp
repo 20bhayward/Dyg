@@ -260,8 +260,776 @@ void Chunk::set(int x, int y, MaterialType material) {
 }
 
 void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
-    // Simplified version - just update pixel data
+    // Create a copy of the grid for processing (to avoid updating cells that were already processed this frame)
+    std::vector<MaterialType> oldGrid = m_grid;
+    
+    // Flag to track if any materials moved during this update
+    bool anyMaterialMoved = false;
+    
+    // First handle powders (falling materials like sand, gravel)
+    // Process bottom-to-top, right-to-left to ensure natural falling behavior
+    for (int y = HEIGHT - 1; y >= 0; --y) {
+        for (int x = WIDTH - 1; x >= 0; --x) {
+            int idx = y * WIDTH + x;
+            MaterialType material = oldGrid[idx];
+            
+            // Check if the material is a powder type
+            if (material != MaterialType::Empty) {
+                const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+                
+                if (props.isPowder) {
+                    // Try to move powder down
+                    if (y < HEIGHT - 1) {
+                        // Check directly below
+                        int belowIdx = (y + 1) * WIDTH + x;
+                        MaterialType belowMaterial = (belowIdx < static_cast<int>(m_grid.size())) ? 
+                                                    m_grid[belowIdx] : MaterialType::Empty;
+                        
+                        // If below is out of chunk, check the chunk below
+                        if (y == HEIGHT - 1 && chunkBelow) {
+                            belowMaterial = chunkBelow->get(x, 0);
+                            // Mark the chunk below as dirty when there's a powder above it
+                            // This ensures the simulation continues across chunk boundaries
+                            // Always move powder across chunk boundary, regardless of what's below
+                            // This is a more aggressive approach to prevent particles from getting stuck
+                            if (props.isPowder) {
+                                if (belowMaterial == MaterialType::Empty) {
+                                    // Move directly to empty space below
+                                    chunkBelow->set(x, 0, material);
+                                    m_grid[idx] = MaterialType::Empty;
+                                    anyMaterialMoved = true;
+                                } else {
+                                    // If we can't move straight down, try to slide diagonally
+                                    // Check down-left first
+                                    if (x > 0) {
+                                        MaterialType downLeftMaterial = chunkBelow->get(x - 1, 0);
+                                        if (downLeftMaterial == MaterialType::Empty) {
+                                            chunkBelow->set(x - 1, 0, material);
+                                            m_grid[idx] = MaterialType::Empty;
+                                            anyMaterialMoved = true;
+                                            chunkBelow->setDirty(true);
+                                            continue;
+                                        }
+                                    }
+                                    
+                                    // Then check down-right
+                                    if (x < WIDTH - 1) {
+                                        MaterialType downRightMaterial = chunkBelow->get(x + 1, 0);
+                                        if (downRightMaterial == MaterialType::Empty) {
+                                            chunkBelow->set(x + 1, 0, material);
+                                            m_grid[idx] = MaterialType::Empty;
+                                            anyMaterialMoved = true;
+                                            chunkBelow->setDirty(true);
+                                            continue;
+                                        }
+                                    }
+                                }
+                                
+                                // Always mark the chunk below as dirty for next frame
+                                chunkBelow->setDirty(true);
+                            }
+                        }
+                        
+                        if (belowMaterial == MaterialType::Empty) {
+                            // Move powder straight down
+                            if (y == HEIGHT - 1 && chunkBelow) {
+                                // Crossing chunk boundary downward
+                                chunkBelow->set(x, 0, material);
+                                m_grid[idx] = MaterialType::Empty;
+                                chunkBelow->setDirty(true);
+                                anyMaterialMoved = true;
+                            } else if (belowIdx < static_cast<int>(m_grid.size())) {
+                                // Within same chunk
+                                m_grid[belowIdx] = material;
+                                m_grid[idx] = MaterialType::Empty;
+                                anyMaterialMoved = true; // Track that material moved
+                            }
+                            continue; // Done moving this particle
+                        }
+                        
+                        // Check if we can slide down-left or down-right
+                        bool movedDiagonally = false;
+                        
+                        // Try to move down-left first if there's empty space
+                        if (x > 0) {
+                            int downLeftIdx = (y + 1) * WIDTH + (x - 1);
+                            MaterialType downLeftMaterial = MaterialType::Empty;
+                            
+                            // Check if we're crossing chunk boundaries
+                            if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
+                                // Bottom-left corner case - both chunks
+                                downLeftMaterial = chunkBelow->get(WIDTH - 1, 0);
+                            } else if (x == 0 && chunkLeft) {
+                                // Left edge case
+                                downLeftMaterial = chunkLeft->get(WIDTH - 1, y + 1);
+                            } else if (y == HEIGHT - 1 && chunkBelow) {
+                                // Bottom edge case
+                                downLeftMaterial = chunkBelow->get(x - 1, 0);
+                            } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
+                                // Within same chunk
+                                downLeftMaterial = m_grid[downLeftIdx];
+                            }
+                            
+                            if (downLeftMaterial == MaterialType::Empty) {
+                                // Move powder down-left
+                                if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
+                                    // Corner case - set in other chunk
+                                    chunkBelow->set(WIDTH - 1, 0, material);
+                                    // Mark the chunk as dirty so it continues simulation
+                                    chunkBelow->setDirty(true);
+                                } else if (x == 0 && chunkLeft) {
+                                    // Left edge case
+                                    chunkLeft->set(WIDTH - 1, y + 1, material);
+                                    // Mark the chunk as dirty so it continues simulation
+                                    chunkLeft->setDirty(true);
+                                } else if (y == HEIGHT - 1 && chunkBelow) {
+                                    // Bottom edge case
+                                    chunkBelow->set(x - 1, 0, material);
+                                    // Mark the chunk as dirty so it continues simulation
+                                    chunkBelow->setDirty(true);
+                                } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
+                                    // Within same chunk
+                                    m_grid[downLeftIdx] = material;
+                                }
+                                
+                                m_grid[idx] = MaterialType::Empty;
+                                movedDiagonally = true;
+                                anyMaterialMoved = true; // Track that material moved
+                            }
+                        }
+                        
+                        // Try to move down-right if we couldn't move down-left
+                        if (!movedDiagonally && x < WIDTH - 1) {
+                            int downRightIdx = (y + 1) * WIDTH + (x + 1);
+                            MaterialType downRightMaterial = MaterialType::Empty;
+                            
+                            // Check if we're crossing chunk boundaries
+                            if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
+                                // Bottom-right corner case - both chunks
+                                downRightMaterial = chunkBelow->get(0, 0);
+                            } else if (x == WIDTH - 1 && chunkRight) {
+                                // Right edge case
+                                downRightMaterial = chunkRight->get(0, y + 1);
+                            } else if (y == HEIGHT - 1 && chunkBelow) {
+                                // Bottom edge case
+                                downRightMaterial = chunkBelow->get(x + 1, 0);
+                            } else if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                // Within same chunk
+                                downRightMaterial = m_grid[downRightIdx];
+                            }
+                            
+                            if (downRightMaterial == MaterialType::Empty) {
+                                // Move powder down-right
+                                if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
+                                    // Corner case - set in other chunk
+                                    chunkBelow->set(0, 0, material);
+                                    // Mark the chunk as dirty so it continues simulation
+                                    chunkBelow->setDirty(true);
+                                } else if (x == WIDTH - 1 && chunkRight) {
+                                    // Right edge case
+                                    chunkRight->set(0, y + 1, material);
+                                    // Mark the chunk as dirty so it continues simulation
+                                    chunkRight->setDirty(true);
+                                } else if (y == HEIGHT - 1 && chunkBelow) {
+                                    // Bottom edge case
+                                    chunkBelow->set(x + 1, 0, material);
+                                    // Mark the chunk as dirty so it continues simulation
+                                    chunkBelow->setDirty(true);
+                                } else if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                    // Within same chunk
+                                    m_grid[downRightIdx] = material;
+                                }
+                                
+                                m_grid[idx] = MaterialType::Empty;
+                                movedDiagonally = true;
+                                anyMaterialMoved = true; // Track that material moved
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Now handle liquids - process bottom-to-top for falling, then left-to-right for spreading
+    // First pass: vertical movement (falling)
+    for (int y = HEIGHT - 1; y >= 0; --y) {
+        for (int x = 0; x < WIDTH; ++x) {
+            int idx = y * WIDTH + x;
+            MaterialType material = oldGrid[idx];
+            
+            // Skip empty cells or cells that have moved
+            if (material == MaterialType::Empty || oldGrid[idx] != m_grid[idx]) {
+                continue;
+            }
+            
+            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+            
+            // Handle liquid falling
+            if (props.isLiquid) {
+                if (y < HEIGHT - 1) {
+                    // Check directly below
+                    int belowIdx = (y + 1) * WIDTH + x;
+                    MaterialType belowMaterial = (belowIdx < static_cast<int>(m_grid.size())) ? 
+                                                m_grid[belowIdx] : MaterialType::Empty;
+                    
+                    // Handle cross-chunk boundary for liquids
+                    if (y == HEIGHT - 1 && chunkBelow) {
+                        belowMaterial = chunkBelow->get(x, 0);
+                        
+                        // Check if liquid can fall through chunk boundary
+                        if (canDisplace(material, belowMaterial)) {
+                            chunkBelow->set(x, 0, material);
+                            m_grid[idx] = MaterialType::Empty; // Always remove source for volume conservation
+                            anyMaterialMoved = true;
+                            chunkBelow->setDirty(true);
+                            continue;
+                        }
+                        
+                        // Special case for handling liquids at chunk boundary
+                        // Try diagonal movement if direct downward movement isn't possible
+                        if (belowMaterial != MaterialType::Empty) {
+                            bool moved = false;
+                            
+                            // Try down-left first
+                            if (x > 0) {
+                                MaterialType downLeftMaterial = chunkBelow->get(x - 1, 0);
+                                if (downLeftMaterial == MaterialType::Empty) {
+                                    chunkBelow->set(x - 1, 0, material);
+                                    m_grid[idx] = MaterialType::Empty;
+                                    anyMaterialMoved = true;
+                                    chunkBelow->setDirty(true);
+                                    moved = true;
+                                    continue;
+                                }
+                            }
+                            
+                            // Then try down-right
+                            if (!moved && x < WIDTH - 1) {
+                                MaterialType downRightMaterial = chunkBelow->get(x + 1, 0);
+                                if (downRightMaterial == MaterialType::Empty) {
+                                    chunkBelow->set(x + 1, 0, material);
+                                    m_grid[idx] = MaterialType::Empty;
+                                    anyMaterialMoved = true;
+                                    chunkBelow->setDirty(true);
+                                    moved = true;
+                                    continue;
+                                }
+                            }
+                            
+                            // Always mark the chunk below as dirty for next frame
+                            chunkBelow->setDirty(true);
+                        }
+                    } else if (belowIdx < static_cast<int>(m_grid.size())) {
+                        // Within same chunk - check if liquid can displace what's below
+                        if (canDisplace(material, belowMaterial)) {
+                            // Move liquid down, potentially displacing another liquid
+                            m_grid[belowIdx] = material;
+                            m_grid[idx] = MaterialType::Empty; // For volume conservation
+                            anyMaterialMoved = true;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Second pass: horizontal spreading for liquids - needs to maintain flat surfaces
+    std::vector<MaterialType> spreadGrid = m_grid; // Copy current state for consistent spreading
+    
+    // Check all water cells from bottom to top
+    for (int y = HEIGHT - 1; y >= 0; --y) {
+        // Process entire row both directions for balanced spreading
+        // Use two iterations with different spread directions
+        for (int iteration = 0; iteration < 2; ++iteration) {
+            // First iteration: left-to-right, second: right-to-left
+            bool leftToRight = (iteration == 0);
+            
+            for (int i = 0; i < WIDTH; ++i) {
+                int x = leftToRight ? i : (WIDTH - 1 - i);
+                int idx = y * WIDTH + x;
+                
+                // Skip cells that aren't liquids or already processed
+                MaterialType material = spreadGrid[idx];
+                if (material == MaterialType::Empty || !(m_grid[idx] == material)) {
+                    continue;
+                }
+                
+                const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+                if (!props.isLiquid) {
+                    continue;
+                }
+                
+                // Check if there's a fluid cell directly below
+                bool hasLiquidBelow = false;
+                bool hasEmptyBelow = false;
+                MaterialType belowMaterial = MaterialType::Empty;
+                
+                if (y < HEIGHT - 1) {
+                    int belowIdx = (y + 1) * WIDTH + x;
+                    belowMaterial = (belowIdx < static_cast<int>(m_grid.size())) ? 
+                                         m_grid[belowIdx] : MaterialType::Empty;
+                    
+                    if (y == HEIGHT - 1 && chunkBelow) {
+                        belowMaterial = chunkBelow->get(x, 0);
+                    }
+                    
+                    const auto& belowProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(belowMaterial)];
+                    hasLiquidBelow = (belowMaterial == material); // Same liquid type below
+                    hasEmptyBelow = (belowMaterial == MaterialType::Empty);
+                }
+                
+                // ONLY spread horizontally if:
+                // 1. We can't fall downward (blocked by something that's not empty)
+                // 2. OR we have same liquid below us (part of a water column)
+                if (!hasEmptyBelow || hasLiquidBelow) {
+                    // Look for water level discrepancies
+                    int liquidColumnHeight = 0;
+                    
+                    // Calculate height of fluid column at current position
+                    // This helps us determine if we should spread to achieve a flat surface
+                    for (int checkY = y; checkY >= 0; --checkY) {
+                        int checkIdx = checkY * WIDTH + x;
+                        if (checkIdx >= 0 && checkIdx < static_cast<int>(m_grid.size())) {
+                            if (m_grid[checkIdx] == material) {
+                                liquidColumnHeight++;
+                            } else {
+                                break; // Stop at first non-matching material
+                            }
+                        }
+                    }
+                    
+                    // Set spread direction based on iteration
+                    int spreadDirection = leftToRight ? 1 : -1;
+                    
+                    // Determine liquid pressure based on type and column height
+                    int baseLiquidPressure = 4; // Default spread distance
+                    
+                    // Different spread rates for different liquids
+                    if (material == MaterialType::Lava) {
+                        baseLiquidPressure = 2; // Lava spreads more slowly
+                    } else if (material == MaterialType::Oil) {
+                        baseLiquidPressure = 5; // Oil spreads faster
+                    }
+                    
+                    // Higher columns create more pressure (more aggressive spreading)
+                    int liquidPressure = std::min(baseLiquidPressure + (liquidColumnHeight / 2), 12);
+                    
+                    // Find neighboring liquid column heights to determine where to flow
+                    // Check adjacent positions to see if we can create a flatter surface
+                    for (int spread = 1; spread <= liquidPressure; ++spread) {
+                        int nx = x + (spreadDirection * spread);
+                        MaterialType sideNeighbor = MaterialType::Empty;
+                        int sideIdx = -1;
+                        bool isCrossingChunk = false;
+                        Chunk* targetChunk = nullptr;
+                        int targetX = -1;
+                        
+                        // Handle cross-chunk boundaries for horizontal spread
+                        if (nx < 0 && chunkLeft) {
+                            // Crossing left chunk boundary
+                            int leftChunkX = WIDTH + nx; // Convert to other chunk coordinates
+                            sideNeighbor = chunkLeft->get(leftChunkX, y);
+                            isCrossingChunk = true;
+                            targetChunk = chunkLeft;
+                            targetX = leftChunkX;
+                        } else if (nx >= WIDTH && chunkRight) {
+                            // Crossing right chunk boundary
+                            int rightChunkX = nx - WIDTH; // Convert to other chunk coordinates
+                            sideNeighbor = chunkRight->get(rightChunkX, y);
+                            isCrossingChunk = true;
+                            targetChunk = chunkRight;
+                            targetX = rightChunkX;
+                        } else if (nx >= 0 && nx < WIDTH) {
+                            // Within same chunk
+                            sideIdx = y * WIDTH + nx;
+                            if (sideIdx < static_cast<int>(m_grid.size())) {
+                                sideNeighbor = m_grid[sideIdx];
+                            }
+                        } else {
+                            break; // Out of bounds with no chunk
+                        }
+                        
+                        // If we hit same liquid, check column height
+                        if (sideNeighbor == material) {
+                            // Calculate height of side column
+                            int sideColumnHeight = 0;
+                            
+                            if (isCrossingChunk) {
+                                // Count liquid cells in the neighboring chunk column
+                                for (int checkY = y; checkY >= 0; --checkY) {
+                                    MaterialType checkMaterial = targetChunk->get(targetX, checkY);
+                                    if (checkMaterial == material) {
+                                        sideColumnHeight++;
+                                    } else {
+                                        break;
+                                    }
+                                }
+                            } else {
+                                // Count liquid cells in current chunk
+                                for (int checkY = y; checkY >= 0; --checkY) {
+                                    int checkIdx = checkY * WIDTH + nx;
+                                    if (checkIdx >= 0 && checkIdx < static_cast<int>(m_grid.size())) {
+                                        if (m_grid[checkIdx] == material) {
+                                            sideColumnHeight++;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // If this column is higher, continue searching outward
+                            if (liquidColumnHeight <= sideColumnHeight) {
+                                continue;
+                            }
+                            
+                            // If current column is significantly higher, try to level it out
+                            if (liquidColumnHeight > sideColumnHeight + 1) {
+                                // Found a lower column - try to equalize heights
+                                if (isCrossingChunk) {
+                                    // Move material to neighbor chunk column
+                                    targetChunk->set(targetX, y - sideColumnHeight, material);
+                                    m_grid[idx] = MaterialType::Empty;
+                                    targetChunk->setDirty(true);
+                                    anyMaterialMoved = true;
+                                } else {
+                                    // Move material to lower column within same chunk
+                                    m_grid[y * WIDTH + nx] = material;
+                                    m_grid[idx] = MaterialType::Empty;
+                                    anyMaterialMoved = true;
+                                }
+                                break;
+                            }
+                        }
+                        // If found empty space
+                        else if (sideNeighbor == MaterialType::Empty) {
+                            // Check for cell below this empty space for support
+                            bool hasSupport = false;
+                            
+                            if (isCrossingChunk) {
+                                if (y < HEIGHT - 1) {
+                                    MaterialType belowNeighbor = targetChunk->get(targetX, y + 1);
+                                    hasSupport = (belowNeighbor != MaterialType::Empty);
+                                }
+                            } else {
+                                if (y < HEIGHT - 1 && nx >= 0 && nx < WIDTH) {
+                                    int belowNeighborIdx = (y + 1) * WIDTH + nx;
+                                    if (belowNeighborIdx < static_cast<int>(m_grid.size())) {
+                                        MaterialType belowNeighbor = m_grid[belowNeighborIdx];
+                                        hasSupport = (belowNeighbor != MaterialType::Empty);
+                                    }
+                                }
+                            }
+                            
+                            // Only flow horizontally to supported cells or if close to source
+                            if (hasSupport || spread <= 1) {
+                                if (isCrossingChunk) {
+                                    // Move material to neighboring chunk
+                                    targetChunk->set(targetX, y, material);
+                                    m_grid[idx] = MaterialType::Empty;
+                                    targetChunk->setDirty(true);
+                                    anyMaterialMoved = true;
+                                } else {
+                                    // Move material within same chunk
+                                    m_grid[sideIdx] = material;
+                                    m_grid[idx] = MaterialType::Empty;
+                                    anyMaterialMoved = true;
+                                }
+                                break;
+                            }
+                        } 
+                        // If hit different material type, stop searching
+                        else if (sideNeighbor != material) {
+                            break;
+                        }
+                    }
+                }
+                }
+            }
+        }
+    }
+    
+    // Handle gas rise (for fire, flammable gas, etc.)
+    for (int y = 0; y < HEIGHT; ++y) {  // Bottom-up for gases (they rise)
+        for (int x = 0; x < WIDTH; ++x) {
+            int idx = y * WIDTH + x;
+            MaterialType material = oldGrid[idx];
+            
+            if (material != MaterialType::Empty && material != m_grid[idx]) {
+                continue; // Skip if already moved
+            }
+            
+            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+            
+            if (props.isGas) {
+                // Try to rise upward
+                if (y > 0) {
+                    int aboveIdx = (y - 1) * WIDTH + x;
+                    
+                    if (aboveIdx >= 0 && aboveIdx < static_cast<int>(m_grid.size())) {
+                        MaterialType aboveMaterial = m_grid[aboveIdx];
+                        
+                        // Gases can rise through empty space
+                        if (aboveMaterial == MaterialType::Empty) {
+                            m_grid[aboveIdx] = material;
+                            m_grid[idx] = MaterialType::Empty;
+                            anyMaterialMoved = true;
+                        }
+                        // Gases can rise through liquids (creating bubbles)
+                        else {
+                            const auto& aboveProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(aboveMaterial)];
+                            if (aboveProps.isLiquid) {
+                                // Swap positions - gas rises through liquid
+                                m_grid[aboveIdx] = material;
+                                m_grid[idx] = aboveMaterial;
+                                anyMaterialMoved = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Handle material interactions (like fire spreading, water effects, etc.)
+    handleMaterialInteractions(oldGrid, anyMaterialMoved);
+    
+    // Mark the chunk as dirty for next frame if materials moved
+    // This allows materials to continue falling even without player interaction
+    if (anyMaterialMoved) {
+        m_isDirty = true;
+        
+        // Mark neighboring chunks as potentially needing updates too
+        if (chunkBelow) chunkBelow->setDirty(true);
+        if (chunkLeft) chunkLeft->setDirty(true);
+        if (chunkRight) chunkRight->setDirty(true);
+    }
+    
+    // Update the pixel data to reflect the changes
     updatePixelData();
+}
+
+bool Chunk::canDisplace(MaterialType above, MaterialType below) const {
+    // If below is empty, anything can fall into it
+    if (below == MaterialType::Empty) {
+        return true;
+    }
+    
+    // Get properties of both materials
+    const auto& aboveProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(above)];
+    const auto& belowProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(below)];
+    
+    // Powders can displace liquids if they're dense enough
+    if (aboveProps.isPowder && belowProps.isLiquid) {
+        // Dense powders like sand/gravel sink in all liquids
+        return true; // Sand/Gravel can fall through water/oil/etc.
+    }
+    
+    // Liquids can't displace solids
+    if (aboveProps.isLiquid && belowProps.isSolid) {
+        return false;
+    }
+    
+    // Liquids can flow through each other based on density
+    if (aboveProps.isLiquid && belowProps.isLiquid) {
+        // Density-based displacement between liquids
+        if (above == MaterialType::Lava && below == MaterialType::Water) {
+            // Lava is denser than water, so it sinks
+            return true;
+        }
+        else if (above == MaterialType::Water && below == MaterialType::Oil) {
+            // Water is denser than oil, so it sinks below oil
+            return true;
+        }
+        else if (above == MaterialType::Lava && below == MaterialType::Oil) {
+            // Lava is denser than oil, so it sinks
+            return true;
+        }
+        // Same liquid types don't displace each other
+        else if (above == below) {
+            return false;
+        }
+    }
+    
+    // Gases can rise through liquids
+    if (aboveProps.isGas && belowProps.isLiquid) {
+        return false; // Gases don't displace liquids downward
+    }
+    if (aboveProps.isLiquid && belowProps.isGas) {
+        return true; // Liquids fall through gases
+    }
+    
+    // Default: no displacement
+    return false;
+}
+
+void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& oldGrid, bool& anyMaterialMoved) {
+    // Process all cells in the grid for material interactions
+    for (int y = 0; y < HEIGHT; ++y) {
+        for (int x = 0; x < WIDTH; ++x) {
+            int idx = y * WIDTH + x;
+            MaterialType current = m_grid[idx];
+            
+            // Skip empty cells
+            if (current == MaterialType::Empty) {
+                continue;
+            }
+            
+            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(current)];
+            
+            // Fire interactions with flammable materials
+            if (current == MaterialType::Fire) {
+                // Check surrounding cells for flammable materials
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        // Skip the fire itself
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        // Skip out of bounds
+                        if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) continue;
+                        
+                        int neighborIdx = ny * WIDTH + nx;
+                        if (neighborIdx < 0 || neighborIdx >= static_cast<int>(m_grid.size())) continue;
+                        
+                        MaterialType neighbor = m_grid[neighborIdx];
+                        const auto& neighborProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(neighbor)];
+                        
+                        // If neighbor is flammable, chance to ignite it
+                        if (neighborProps.isFlammable && (m_rng() % 20) == 0) {
+                            m_grid[neighborIdx] = MaterialType::Fire;
+                            anyMaterialMoved = true;
+                        }
+                    }
+                }
+                
+                // Fire has chance to burn out
+                if ((m_rng() % 100) < 2) {
+                    m_grid[idx] = MaterialType::Empty;
+                    anyMaterialMoved = true;
+                }
+            }
+            
+            // Water and lava interactions
+            if (current == MaterialType::Water || current == MaterialType::Lava) {
+                // Check surrounding cells for water-lava interactions
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        // Skip the current cell
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        // Skip out of bounds
+                        if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) continue;
+                        
+                        int neighborIdx = ny * WIDTH + nx;
+                        if (neighborIdx < 0 || neighborIdx >= static_cast<int>(m_grid.size())) continue;
+                        
+                        MaterialType neighbor = m_grid[neighborIdx];
+                        
+                        // Water + Lava = Stone (water cools lava)
+                        if ((current == MaterialType::Water && neighbor == MaterialType::Lava) ||
+                            (current == MaterialType::Lava && neighbor == MaterialType::Water)) {
+                            // 50% chance for obsidian (Stone) where the water was
+                            if (current == MaterialType::Water) {
+                                m_grid[idx] = MaterialType::Stone;
+                            } else {
+                                m_grid[neighborIdx] = MaterialType::Stone;
+                            }
+                            anyMaterialMoved = true;
+                        }
+                    }
+                }
+            }
+            
+            // Oil can be ignited by nearby fire
+            if (current == MaterialType::Oil) {
+                // Check surrounding cells for fire
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        // Skip the oil itself
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        // Skip out of bounds
+                        if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) continue;
+                        
+                        int neighborIdx = ny * WIDTH + nx;
+                        if (neighborIdx < 0 || neighborIdx >= static_cast<int>(m_grid.size())) continue;
+                        
+                        MaterialType neighbor = m_grid[neighborIdx];
+                        
+                        // If neighbor is fire, oil catches fire
+                        if (neighbor == MaterialType::Fire && (m_rng() % 10) == 0) {
+                            m_grid[idx] = MaterialType::Fire;
+                            anyMaterialMoved = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Flammable gas behavior
+            if (current == MaterialType::FlammableGas) {
+                // Check surrounding cells for fire
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        // Skip the gas itself
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        // Skip out of bounds
+                        if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) continue;
+                        
+                        int neighborIdx = ny * WIDTH + nx;
+                        if (neighborIdx < 0 || neighborIdx >= static_cast<int>(m_grid.size())) continue;
+                        
+                        MaterialType neighbor = m_grid[neighborIdx];
+                        
+                        // If neighbor is fire, gas explodes
+                        if (neighbor == MaterialType::Fire) {
+                            // Set gas and surrounding area to fire
+                            m_grid[idx] = MaterialType::Fire;
+                            
+                            // Create mini explosion
+                            for (int ey = -2; ey <= 2; ++ey) {
+                                for (int ex = -2; ex <= 2; ++ex) {
+                                    int explosionX = x + ex;
+                                    int explosionY = y + ey;
+                                    
+                                    if (explosionX < 0 || explosionX >= WIDTH || explosionY < 0 || explosionY >= HEIGHT) continue;
+                                    
+                                    int explosionIdx = explosionY * WIDTH + explosionX;
+                                    if (explosionIdx < 0 || explosionIdx >= static_cast<int>(m_grid.size())) continue;
+                                    
+                                    // Don't affect solid blocks
+                                    MaterialType targetMaterial = m_grid[explosionIdx];
+                                    const auto& targetProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(targetMaterial)];
+                                    
+                                    if (!targetProps.isSolid || (m_rng() % 3) == 0) {
+                                        m_grid[explosionIdx] = MaterialType::Fire;
+                                    }
+                                }
+                            }
+                            
+                            anyMaterialMoved = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void Chunk::updatePixelData() {
@@ -711,8 +1479,273 @@ void World::set(int x, int y, MaterialType material) {
     m_pixelData[pixelIdx+3] = props.transparency;  // A
 }
 
+bool Chunk::isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, int y) {
+    // Skip bounds check for performance in internal use
+    int idx = y * WIDTH + x;
+    if (idx < 0 || idx >= static_cast<int>(grid.size())) {
+        return false;
+    }
+    
+    MaterialType material = grid[idx];
+    const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+    
+    // If not a liquid, it's not an isolated liquid
+    if (!props.isLiquid) {
+        return false;
+    }
+    
+    // Check surrounding cells for other liquids or empty spaces
+    for (int dy = -1; dy <= 1; ++dy) {
+        for (int dx = -1; dx <= 1; ++dx) {
+            // Skip the center cell
+            if (dx == 0 && dy == 0) {
+                continue;
+            }
+            
+            int nx = x + dx;
+            int ny = y + dy;
+            
+            // Skip out of bounds
+            if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) {
+                continue;
+            }
+            
+            int neighborIdx = ny * WIDTH + nx;
+            if (neighborIdx < 0 || neighborIdx >= static_cast<int>(grid.size())) {
+                continue;
+            }
+            
+            MaterialType neighbor = grid[neighborIdx];
+            
+            // If neighbor is empty, the liquid can flow there
+            if (neighbor == MaterialType::Empty) {
+                return true;
+            }
+            
+            // If neighbor is another liquid, they can interact
+            const auto& neighborProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(neighbor)];
+            if (neighborProps.isLiquid) {
+                return true;
+            }
+        }
+    }
+    
+    // If no empty spaces or other liquids found, it's isolated
+    return false;
+}
+
 void World::update() {
-    // Update all chunks
+    // Handle special edge-case cleanup for powder materials that may have gotten stuck
+    // This periodic cleanup ensures nothing gets left behind
+    static int cleanupCounter = 0;
+    cleanupCounter++;
+    
+    // Every 10 frames, do a full check for stuck powders at chunk boundaries
+    if (cleanupCounter >= 10) {
+        cleanupCounter = 0;
+        // Force all chunks to update at least once
+        for (auto& chunk : m_chunks) {
+            if (chunk) {
+                chunk->setDirty(true);
+            }
+        }
+    }
+    
+    // Special check for powders and liquids at chunk boundaries to prevent stuck particles
+    for (int i = 0; i < (int)m_chunks.size(); ++i) {
+        auto& chunk = m_chunks[i];
+        if (chunk) {
+            int y = i / m_chunksX;
+            int x = i % m_chunksX;
+            
+            // Only check the bottom row if there's a chunk below
+            if (y < m_chunksY - 1) {
+                Chunk* chunkBelow = getChunkAt(x, y + 1);
+                if (chunkBelow) {
+                    // Check every cell in the bottom row of this chunk
+                    for (int localX = 0; localX < Chunk::WIDTH; localX++) {
+                        MaterialType material = chunk->get(localX, Chunk::HEIGHT - 1);
+                        if (material != MaterialType::Empty) {
+                            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+                            
+                            // If it's a powder or liquid, always check for falling
+                            if (props.isPowder || props.isLiquid) {
+                                // Special case: For materials at chunk boundaries, actively try to move them
+                                // across the boundary rather than just marking for a later update
+                                MaterialType belowMaterial = chunkBelow->get(localX, 0);
+                                
+                                // Check if material can displace what's below
+                                bool canMove = false;
+                                
+                                if (belowMaterial == MaterialType::Empty) {
+                                    canMove = true;
+                                } else if (props.isLiquid) {
+                                    // For liquids, check if they can displace the material below
+                                    const auto& belowProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(belowMaterial)];
+                                    
+                                    // Handle density-based displacements between different liquids
+                                    if (belowProps.isLiquid) {
+                                        if ((material == MaterialType::Lava && belowMaterial == MaterialType::Water) ||
+                                            (material == MaterialType::Water && belowMaterial == MaterialType::Oil) ||
+                                            (material == MaterialType::Lava && belowMaterial == MaterialType::Oil)) {
+                                            canMove = true;
+                                        }
+                                    }
+                                }
+                                
+                                if (canMove) {
+                                    // Directly move material down, displacing what's below if needed
+                                    MaterialType originalBelowMaterial = belowMaterial;
+                                    chunkBelow->set(localX, 0, material);
+                                    chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
+                                } else {
+                                    // Try to move diagonally if directly below is blocked
+                                    bool moved = false;
+                                    
+                                    // Try down-left
+                                    if (localX > 0) {
+                                        MaterialType downLeftMaterial = chunkBelow->get(localX - 1, 0);
+                                        if (downLeftMaterial == MaterialType::Empty) {
+                                            chunkBelow->set(localX - 1, 0, material);
+                                            chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
+                                            moved = true;
+                                        }
+                                    }
+                                    
+                                    // Try down-right if didn't move down-left
+                                    if (!moved && localX < Chunk::WIDTH - 1) {
+                                        MaterialType downRightMaterial = chunkBelow->get(localX + 1, 0);
+                                        if (downRightMaterial == MaterialType::Empty) {
+                                            chunkBelow->set(localX + 1, 0, material);
+                                            chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
+                                            moved = true;
+                                        }
+                                    }
+                                    
+                                    // For liquids at chunk boundaries, also try horizontal spread
+                                    // if vertical movement isn't possible
+                                    if (!moved && props.isLiquid) {
+                                        // Try to move left
+                                        if (localX > 0) {
+                                            MaterialType leftMaterial = chunk->get(localX - 1, Chunk::HEIGHT - 1);
+                                            if (leftMaterial == MaterialType::Empty) {
+                                                chunk->set(localX - 1, Chunk::HEIGHT - 1, material);
+                                                chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
+                                                moved = true;
+                                            }
+                                        }
+                                        
+                                        // Try to move right
+                                        if (!moved && localX < Chunk::WIDTH - 1) {
+                                            MaterialType rightMaterial = chunk->get(localX + 1, Chunk::HEIGHT - 1);
+                                            if (rightMaterial == MaterialType::Empty) {
+                                                chunk->set(localX + 1, Chunk::HEIGHT - 1, material);
+                                                chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
+                                                moved = true;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Always mark both chunks as dirty to ensure proper continued physics
+                                chunk->setDirty(true);
+                                chunkBelow->setDirty(true);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Check for liquids at horizontal chunk boundaries that might get stuck
+            // Left edge
+            if (x > 0) {
+                Chunk* chunkLeft = getChunkAt(x - 1, y);
+                if (chunkLeft) {
+                    // Check leftmost column of this chunk and rightmost of left chunk
+                    for (int localY = 0; localY < Chunk::HEIGHT; localY++) {
+                        MaterialType material = chunk->get(0, localY);
+                        if (material != MaterialType::Empty) {
+                            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+                            
+                            // Only process liquids for horizontal edge cases
+                            if (props.isLiquid) {
+                                MaterialType leftMaterial = chunkLeft->get(Chunk::WIDTH - 1, localY);
+                                if (leftMaterial == MaterialType::Empty) {
+                                    // Liquid can flow left across chunk boundary
+                                    // Always move all material to maintain volume
+                                    chunkLeft->set(Chunk::WIDTH - 1, localY, material);
+                                    chunk->set(0, localY, MaterialType::Empty);
+                                    
+                                    // Mark chunks as dirty
+                                    chunk->setDirty(true);
+                                    chunkLeft->setDirty(true);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Right edge
+            if (x < m_chunksX - 1) {
+                Chunk* chunkRight = getChunkAt(x + 1, y);
+                if (chunkRight) {
+                    // Check rightmost column of this chunk and leftmost of right chunk
+                    for (int localY = 0; localY < Chunk::HEIGHT; localY++) {
+                        MaterialType material = chunk->get(Chunk::WIDTH - 1, localY);
+                        if (material != MaterialType::Empty) {
+                            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+                            
+                            // Only process liquids for horizontal edge cases
+                            if (props.isLiquid) {
+                                MaterialType rightMaterial = chunkRight->get(0, localY);
+                                if (rightMaterial == MaterialType::Empty) {
+                                    // Liquid can flow right across chunk boundary
+                                    // Always move all material to maintain volume
+                                    chunkRight->set(0, localY, material);
+                                    chunk->set(Chunk::WIDTH - 1, localY, MaterialType::Empty);
+                                    
+                                    // Mark chunks as dirty
+                                    chunk->setDirty(true);
+                                    chunkRight->setDirty(true);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // First pass: mark all chunks as dirty that have active materials or neighbors
+    for (int i = 0; i < (int)m_chunks.size(); ++i) {
+        auto& chunk = m_chunks[i];
+        if (chunk && chunk->isDirty()) {
+            int y = i / m_chunksX;
+            int x = i % m_chunksX;
+            
+            // Mark neighboring chunks as dirty too to ensure proper physics
+            // across chunk boundaries
+            for (int dy = -1; dy <= 1; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    // Skip self, already marked
+                    if (dx == 0 && dy == 0) continue;
+                    
+                    int nx = x + dx;
+                    int ny = y + dy;
+                    
+                    if (nx >= 0 && nx < m_chunksX && ny >= 0 && ny < m_chunksY) {
+                        Chunk* neighbor = getChunkAt(nx, ny);
+                        if (neighbor) {
+                            neighbor->setDirty(true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Update all marked chunks - simulate physics
     for (int i = 0; i < (int)m_chunks.size(); ++i) {
         auto& chunk = m_chunks[i];
         if (chunk && chunk->isDirty()) {
@@ -729,6 +1762,134 @@ void World::update() {
     
     // Update the combined pixel data from all chunks
     updatePixelData();
+}
+
+void World::update(int startX, int startY, int endX, int endY) {
+    // Bounds check
+    startX = std::max(0, std::min(m_width - 1, startX));
+    startY = std::max(0, std::min(m_height - 1, startY));
+    endX = std::max(startX, std::min(m_width, endX));
+    endY = std::max(startY, std::min(m_height, endY));
+    
+    // Convert world coordinates to chunk coordinates
+    int startChunkX = startX / Chunk::WIDTH;
+    int startChunkY = startY / Chunk::HEIGHT;
+    int endChunkX = (endX + Chunk::WIDTH - 1) / Chunk::WIDTH;  // ceiling division
+    int endChunkY = (endY + Chunk::HEIGHT - 1) / Chunk::HEIGHT;  // ceiling division
+    
+    // Bounds check for chunks
+    startChunkX = std::max(0, std::min(m_chunksX - 1, startChunkX));
+    startChunkY = std::max(0, std::min(m_chunksY - 1, startChunkY));
+    endChunkX = std::max(startChunkX, std::min(m_chunksX, endChunkX));
+    endChunkY = std::max(startChunkY, std::min(m_chunksY, endChunkY));
+    
+    // First pass: mark all chunks in the region and their neighbors as dirty
+    for (int y = startChunkY; y < endChunkY; ++y) {
+        for (int x = startChunkX; x < endChunkX; ++x) {
+            Chunk* chunk = getChunkAt(x, y);
+            if (chunk) {
+                chunk->setDirty(true);
+                
+                // Mark neighboring chunks as dirty too for proper physics
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        // Skip self, already marked
+                        if (dx == 0 && dy == 0) continue;
+                        
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        
+                        if (nx >= 0 && nx < m_chunksX && ny >= 0 && ny < m_chunksY) {
+                            Chunk* neighbor = getChunkAt(nx, ny);
+                            if (neighbor) {
+                                neighbor->setDirty(true);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Update chunks in the specified region with a bit of padding for proper physics at boundaries
+    int paddedStartChunkX = std::max(0, startChunkX - 1);
+    int paddedStartChunkY = std::max(0, startChunkY - 1);
+    int paddedEndChunkX = std::min(m_chunksX, endChunkX + 1);
+    int paddedEndChunkY = std::min(m_chunksY, endChunkY + 1);
+    
+    for (int y = paddedStartChunkY; y < paddedEndChunkY; ++y) {
+        for (int x = paddedStartChunkX; x < paddedEndChunkX; ++x) {
+            Chunk* chunk = getChunkAt(x, y);
+            if (chunk && chunk->isDirty()) {
+                Chunk* chunkBelow  = (y < m_chunksY - 1) ? getChunkAt(x, y + 1) : nullptr;
+                Chunk* chunkLeft   = (x > 0)             ? getChunkAt(x - 1, y) : nullptr;
+                Chunk* chunkRight  = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
+                
+                chunk->update(chunkBelow, chunkLeft, chunkRight);
+            }
+        }
+    }
+    
+    // Update pixel data for the entire world
+    // This is simpler than trying to update just a subset of the pixel data
+    updatePixelData();
+}
+
+void World::levelLiquids() {
+    // This function performs extra simulation steps to ensure liquids properly settle
+    // It's useful after initial world generation or after a large change to the world
+    
+    // Mark all chunks as dirty to ensure everything gets processed
+    for (int i = 0; i < (int)m_chunks.size(); ++i) {
+        if (m_chunks[i]) {
+            m_chunks[i]->setDirty(true);
+        }
+    }
+    
+    // Perform multiple update passes to allow liquids to flow and settle
+    const int SETTLE_PASSES = 10;
+    for (int pass = 0; pass < SETTLE_PASSES; ++pass) {
+        update();
+    }
+}
+
+void World::levelLiquids(int startX, int startY, int endX, int endY) {
+    // Level liquids in a specific region of the world
+    
+    // Bounds check
+    startX = std::max(0, std::min(m_width - 1, startX));
+    startY = std::max(0, std::min(m_height - 1, startY));
+    endX = std::max(startX, std::min(m_width, endX));
+    endY = std::max(startY, std::min(m_height, endY));
+    
+    // Convert to chunk coordinates
+    int startChunkX = startX / Chunk::WIDTH;
+    int startChunkY = startY / Chunk::HEIGHT;
+    int endChunkX = (endX + Chunk::WIDTH - 1) / Chunk::WIDTH;
+    int endChunkY = (endY + Chunk::HEIGHT - 1) / Chunk::HEIGHT;
+    
+    // Add padding to ensure proper settling at region boundaries
+    startChunkX = std::max(0, startChunkX - 1);
+    startChunkY = std::max(0, startChunkY - 1);
+    endChunkX = std::min(m_chunksX, endChunkX + 1);
+    endChunkY = std::min(m_chunksY, endChunkY + 1);
+    
+    // Mark all chunks in region as dirty
+    for (int y = startChunkY; y < endChunkY; ++y) {
+        for (int x = startChunkX; x < endChunkX; ++x) {
+            Chunk* chunk = getChunkAt(x, y);
+            if (chunk) {
+                chunk->setDirty(true);
+            }
+        }
+    }
+    
+    // Perform multiple update passes on the region
+    const int SETTLE_PASSES = 10;
+    for (int pass = 0; pass < SETTLE_PASSES; ++pass) {
+        update(startX - Chunk::WIDTH, startY - Chunk::HEIGHT, 
+               endX + Chunk::WIDTH, endY + Chunk::HEIGHT);
+    }
 }
 
 // Simple Perlin noise implementation
@@ -1244,14 +2405,532 @@ void World::generate(unsigned int seed) {
         // Update pixel data after terrain generation but before caves
         updatePixelData();
         std::cout << "Terrain generated. Build and render to see the result before cave generation." << std::endl;
-        std::cout << "Press any key to continue with Perlin worm cave generation..." << std::endl;
+        std::cout << "Press any key to continue with cave generation..." << std::endl;
         // Here we'd pause in an interactive application
     }
     
+    // ---- Cave Generation ----
+    std::cout << "Generating cave system with cellular automata..." << std::endl;
+    
+    // Define the cave depth zones - Keep caves deeper underground
+    const int upperCaveDepthStart = WORLD_HEIGHT / 2;     // Upper caves start at 1/2 depth
+    const int midCaveDepthStart = 2 * WORLD_HEIGHT / 3;   // Mid caves start at 2/3 depth
+    const int deepCaveDepthStart = 3 * WORLD_HEIGHT / 4;  // Deep caves start at 3/4 depth
+    const int caveZoneHeight = WORLD_HEIGHT / 6;          // Each zone has a height of 1/6 world height
+    
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    
+    // Create cellular automata grid for each zone
+    std::vector<std::vector<int>> upperCaveGrid(caveZoneHeight, std::vector<int>(WORLD_WIDTH, 0));
+    std::vector<std::vector<int>> midCaveGrid(caveZoneHeight, std::vector<int>(WORLD_WIDTH, 0));
+    std::vector<std::vector<int>> deepCaveGrid(caveZoneHeight, std::vector<int>(WORLD_WIDTH, 0));
+    
+    // Initialize the cave grids with random noise
+    // Increased wall probability across all cave types to create more cohesive caves
+    float upperWallProb = 0.65f; // More walls = smaller caves with more structure
+    float midWallProb = 0.60f;   // More walls = more structured medium caves
+    float deepWallProb = 0.55f;  // More walls = more defined large caves
+    
+    std::cout << "Initializing cave grids..." << std::endl;
+    
+    // Initialize upper cave grid (weak CA - smaller, isolated caves)
+    for (int y = 0; y < caveZoneHeight; ++y) {
+        for (int x = 0; x < WORLD_WIDTH; ++x) {
+            // Use Perlin noise for structured initial distribution - lower frequency for larger patterns
+            float noiseFactor = perlinNoise2D(x * 0.03f, y * 0.03f, seed + 100);
+            float probability = upperWallProb + (noiseFactor * 0.15f); // Stronger noise influence
+            
+            // Stronger edge bias to prevent caves at boundaries
+            float edgeFactor = 1.0f;
+            if (y < 10) edgeFactor = 0.9f + (y * 0.01f); // Top edge - stronger bias
+            if (y > caveZoneHeight - 10) edgeFactor = 0.9f + ((caveZoneHeight - y) * 0.01f); // Bottom edge
+            if (x < 10) edgeFactor = 0.9f + (x * 0.01f); // Left edge
+            if (x > WORLD_WIDTH - 10) edgeFactor = 0.9f + ((WORLD_WIDTH - x) * 0.01f); // Right edge
+            
+            // Use pre-defined cave shapes as seeds for more natural formations
+            float shapeFactor = 1.0f;
+            // Create several oval-shaped cave seeds
+            for (int seed = 0; seed < 4; seed++) {
+                int centerX = 150 + (seed * WORLD_WIDTH / 4) + (m_rng() % (WORLD_WIDTH / 10));
+                int centerY = caveZoneHeight / 2 + (m_rng() % (caveZoneHeight / 4) - caveZoneHeight / 8);
+                int radiusX = 20 + (m_rng() % 20);
+                int radiusY = 10 + (m_rng() % 10);
+                
+                float dx = (x - centerX) / static_cast<float>(radiusX);
+                float dy = (y - centerY) / static_cast<float>(radiusY);
+                float distSq = dx*dx + dy*dy;
+                
+                if (distSq < 1.0f) {
+                    shapeFactor = 0.3f; // Lower probability inside cave seeds
+                }
+            }
+            
+            upperCaveGrid[y][x] = (dist(m_rng) < probability * edgeFactor * shapeFactor) ? 1 : 0;
+        }
+    }
+    
+    // Initialize mid cave grid (moderate CA - medium, connected caves)
+    for (int y = 0; y < caveZoneHeight; ++y) {
+        for (int x = 0; x < WORLD_WIDTH; ++x) {
+            // Use Perlin noise for more natural structure - lower frequency for larger patterns
+            float noiseFactor = perlinNoise2D(x * 0.02f, y * 0.02f, seed + 200);
+            float probability = midWallProb + (noiseFactor * 0.15f);
+            
+            // Stronger edge bias
+            float edgeFactor = 1.0f;
+            if (y < 10) edgeFactor = 0.9f + (y * 0.01f);
+            if (y > caveZoneHeight - 10) edgeFactor = 0.9f + ((caveZoneHeight - y) * 0.01f);
+            if (x < 10) edgeFactor = 0.9f + (x * 0.01f);
+            if (x > WORLD_WIDTH - 10) edgeFactor = 0.9f + ((WORLD_WIDTH - x) * 0.01f);
+            
+            // Create cave seeds - larger for mid-level
+            float shapeFactor = 1.0f;
+            for (int seed = 0; seed < 3; seed++) {
+                int centerX = 300 + (seed * WORLD_WIDTH / 3) + (m_rng() % (WORLD_WIDTH / 8));
+                int centerY = caveZoneHeight / 2 + (m_rng() % (caveZoneHeight / 4) - caveZoneHeight / 8);
+                int radiusX = 30 + (m_rng() % 25);
+                int radiusY = 15 + (m_rng() % 15);
+                
+                float dx = (x - centerX) / static_cast<float>(radiusX);
+                float dy = (y - centerY) / static_cast<float>(radiusY);
+                float distSq = dx*dx + dy*dy;
+                
+                if (distSq < 1.0f) {
+                    shapeFactor = 0.2f; // Lower probability inside cave seeds
+                }
+            }
+            
+            midCaveGrid[y][x] = (dist(m_rng) < probability * edgeFactor * shapeFactor) ? 1 : 0;
+        }
+    }
+    
+    // Initialize deep cave grid (strong CA - larger caves with natural feel)
+    for (int y = 0; y < caveZoneHeight; ++y) {
+        for (int x = 0; x < WORLD_WIDTH; ++x) {
+            // Use Perlin noise for more natural structure - lower frequency for larger patterns
+            float noiseFactor = perlinNoise2D(x * 0.015f, y * 0.015f, seed + 300);
+            float probability = deepWallProb + (noiseFactor * 0.15f);
+            
+            // Stronger edge bias
+            float edgeFactor = 1.0f;
+            if (y < 10) edgeFactor = 0.9f + (y * 0.01f);
+            if (y > caveZoneHeight - 10) edgeFactor = 0.9f + ((caveZoneHeight - y) * 0.01f);
+            if (x < 10) edgeFactor = 0.9f + (x * 0.01f);
+            if (x > WORLD_WIDTH - 10) edgeFactor = 0.9f + ((WORLD_WIDTH - x) * 0.01f);
+            
+            // Create cave seeds - largest for deep level
+            float shapeFactor = 1.0f;
+            for (int seed = 0; seed < 2; seed++) {
+                int centerX = WORLD_WIDTH / 4 + (seed * WORLD_WIDTH / 2) + (m_rng() % (WORLD_WIDTH / 6));
+                int centerY = caveZoneHeight / 2 + (m_rng() % (caveZoneHeight / 4) - caveZoneHeight / 8);
+                int radiusX = 40 + (m_rng() % 30);
+                int radiusY = 20 + (m_rng() % 20);
+                
+                float dx = (x - centerX) / static_cast<float>(radiusX);
+                float dy = (y - centerY) / static_cast<float>(radiusY);
+                float distSq = dx*dx + dy*dy;
+                
+                if (distSq < 1.0f) {
+                    shapeFactor = 0.15f; // Lower probability inside cave seeds
+                }
+            }
+            
+            deepCaveGrid[y][x] = (dist(m_rng) < probability * edgeFactor * shapeFactor) ? 1 : 0;
+        }
+    }
+    
+    // Function to count wall neighbors for a cell (including edge handling)
+    auto countWallNeighbors = [](const std::vector<std::vector<int>>& grid, int x, int y) {
+        int count = 0;
+        int height = grid.size();
+        int width = grid[0].size();
+        
+        for (int ny = y - 1; ny <= y + 1; ++ny) {
+            for (int nx = x - 1; nx <= x + 1; ++nx) {
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+                    count++; // Treat out-of-bounds as walls
+                } else if (!(nx == x && ny == y) && grid[ny][nx] == 1) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    };
+    
+    std::cout << "Running weak cellular automata for upper caves..." << std::endl;
+    
+    // Run weak cellular automata for upper caves - conservative rules, fewer iterations
+    int upperIterations = 3;
+    for (int it = 0; it < upperIterations; ++it) {
+        std::vector<std::vector<int>> newGrid = upperCaveGrid;
+        for (int y = 0; y < caveZoneHeight; ++y) {
+            for (int x = 0; x < WORLD_WIDTH; ++x) {
+                int neighbors = countWallNeighbors(upperCaveGrid, x, y);
+                
+                if (upperCaveGrid[y][x] == 1) {
+                    // Wall remains if 4 or more neighbors are walls
+                    newGrid[y][x] = (neighbors >= 4) ? 1 : 0;
+                } else {
+                    // Empty becomes wall if 5 or more neighbors are walls
+                    newGrid[y][x] = (neighbors >= 5) ? 1 : 0;
+                }
+            }
+        }
+        upperCaveGrid.swap(newGrid);
+    }
+    
+    std::cout << "Running moderate cellular automata for mid caves..." << std::endl;
+    
+    // Run moderate cellular automata for mid caves - standard rules
+    int midIterations = 4;
+    for (int it = 0; it < midIterations; ++it) {
+        std::vector<std::vector<int>> newGrid = midCaveGrid;
+        for (int y = 0; y < caveZoneHeight; ++y) {
+            for (int x = 0; x < WORLD_WIDTH; ++x) {
+                int neighbors = countWallNeighbors(midCaveGrid, x, y);
+                
+                if (midCaveGrid[y][x] == 1) {
+                    // Wall remains if 4 or more neighbors are walls
+                    newGrid[y][x] = (neighbors >= 4) ? 1 : 0;
+                } else {
+                    // Empty becomes wall if 5 or more neighbors are walls
+                    newGrid[y][x] = (neighbors >= 5) ? 1 : 0;
+                }
+            }
+        }
+        midCaveGrid.swap(newGrid);
+    }
+    
+    std::cout << "Running strong cellular automata for deep caves..." << std::endl;
+    
+    // Run strong cellular automata for deep caves - more iterations, moderate rules
+    int deepIterations = 5;
+    for (int it = 0; it < deepIterations; ++it) {
+        std::vector<std::vector<int>> newGrid = deepCaveGrid;
+        for (int y = 0; y < caveZoneHeight; ++y) {
+            for (int x = 0; x < WORLD_WIDTH; ++x) {
+                int neighbors = countWallNeighbors(deepCaveGrid, x, y);
+                
+                if (deepCaveGrid[y][x] == 1) {
+                    // Wall remains if 3 or more neighbors are walls (more caverns)
+                    newGrid[y][x] = (neighbors >= 3) ? 1 : 0;
+                } else {
+                    // Empty becomes wall if 5 or more neighbors are walls (standard)
+                    newGrid[y][x] = (neighbors >= 5) ? 1 : 0;
+                }
+            }
+        }
+        deepCaveGrid.swap(newGrid);
+    }
+    
+    // Additional smoothing pass
+    std::cout << "Running extra smoothing passes..." << std::endl;
+    
+    // Function for smoothing caves (removes isolated walls and fills small holes)
+    auto smoothCaveGrid = [&countWallNeighbors](std::vector<std::vector<int>>& grid) {
+        std::vector<std::vector<int>> newGrid = grid;
+        for (size_t y = 0; y < grid.size(); ++y) {
+            for (size_t x = 0; x < grid[0].size(); ++x) {
+                int neighbors = countWallNeighbors(grid, x, y);
+                
+                // Remove single wall tiles surrounded by 6+ empty spaces
+                if (grid[y][x] == 1 && neighbors <= 2) {
+                    newGrid[y][x] = 0;
+                }
+                
+                // Fill single empty tiles surrounded by 6+ walls
+                if (grid[y][x] == 0 && neighbors >= 6) {
+                    newGrid[y][x] = 1;
+                }
+            }
+        }
+        grid.swap(newGrid);
+    };
+    
+    // Apply smoothing to all cave grids
+    smoothCaveGrid(upperCaveGrid);
+    smoothCaveGrid(midCaveGrid);
+    smoothCaveGrid(deepCaveGrid);
+    
+    std::cout << "Applying cellular automata results to world..." << std::endl;
+    
+    // Apply the cave grids to the actual world
+    // Upper caves
+    for (int y = 0; y < caveZoneHeight; ++y) {
+        for (int x = 0; x < WORLD_WIDTH; ++x) {
+            if (upperCaveGrid[y][x] == 0) { // 0 = cave (empty)
+                int worldY = upperCaveDepthStart + y;
+                if (worldY < WORLD_HEIGHT) {
+                    MaterialType material = get(x, worldY);
+                    if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
+                        set(x, worldY, MaterialType::Empty);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Mid caves
+    for (int y = 0; y < caveZoneHeight; ++y) {
+        for (int x = 0; x < WORLD_WIDTH; ++x) {
+            if (midCaveGrid[y][x] == 0) { // 0 = cave (empty)
+                int worldY = midCaveDepthStart + y;
+                if (worldY < WORLD_HEIGHT) {
+                    MaterialType material = get(x, worldY);
+                    if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
+                        set(x, worldY, MaterialType::Empty);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Deep caves
+    for (int y = 0; y < caveZoneHeight; ++y) {
+        for (int x = 0; x < WORLD_WIDTH; ++x) {
+            if (deepCaveGrid[y][x] == 0) { // 0 = cave (empty)
+                int worldY = deepCaveDepthStart + y;
+                if (worldY < WORLD_HEIGHT) {
+                    MaterialType material = get(x, worldY);
+                    if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
+                        set(x, worldY, MaterialType::Empty);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Create more natural connections between cave systems
+    std::cout << "Creating cave system connections..." << std::endl;
+    
+    // Use Perlin worms with variable thickness to connect between cave regions
+    int numConnectors = 10 + (m_rng() % 6); // 10-15 connectors - more but more subtle
+    
+    // Function to create a natural-looking cave connection
+    auto createCaveConnection = [&](int startX, int startY, int endX, int endY, int seed_offset) {
+        // Get distance between points
+        int dx = endX - startX;
+        int dy = endY - startY;
+        float distance = std::sqrt(dx*dx + dy*dy);
+        
+        // Start with angle toward destination
+        float angle = std::atan2(dy, dx);
+        
+        // Current position
+        float x = startX;
+        float y = startY;
+        
+        // Randomized parameters for this connector
+        float segmentLength = 3.0f + dist(m_rng) * 2.0f; // 3-5 segment length
+        float angleVariation = 0.2f + dist(m_rng) * 0.3f; // 0.2-0.5 angle variation
+        float widthVariation = 0.5f + dist(m_rng) * 0.5f; // 0.5-1.0 width variation
+        int baseRadius = 1 + (m_rng() % 2); // 1-2 base radius
+        float radiusScale = 0.1f + dist(m_rng) * 0.3f; // How much radius varies
+        float noiseScale = 0.05f + dist(m_rng) * 0.05f;
+        
+        // Calculate number of steps needed (with some randomness)
+        int steps = static_cast<int>(distance / segmentLength) + 5 + (m_rng() % 10);
+        
+        for (int step = 0; step < steps; step++) {
+            // Calculate progress ratio (0 to 1)
+            float progress = static_cast<float>(step) / steps;
+            
+            // Vary the direction more at the middle of the path, less at start/end
+            float directionFreedom = angleVariation * (1.0f - std::abs(progress - 0.5f) * 2.0f);
+            
+            // Use Perlin noise for direction changes
+            float noiseVal = perlinNoise2D(step * 0.1f, 0, seed + seed_offset);
+            float angleChange = (noiseVal * 2.0f - 1.0f) * directionFreedom;
+            
+            // Gradually bend back toward destination as we get closer
+            float targetAngle = std::atan2(endY - y, endX - x);
+            float angleToTarget = targetAngle - angle;
+            // Normalize angle difference to [-PI, PI]
+            while (angleToTarget > M_PI) angleToTarget -= 2.0f * M_PI;
+            while (angleToTarget < -M_PI) angleToTarget += 2.0f * M_PI;
+            
+            // Apply stronger correction as we get further through the path
+            angle += angleChange + (angleToTarget * 0.1f * (step > steps / 2 ? progress * 2.0f : 0.1f));
+            
+            // Move forward
+            x += std::cos(angle) * segmentLength;
+            y += std::sin(angle) * segmentLength;
+            
+            // Bound check
+            if (x < 0 || x >= WORLD_WIDTH || y < 0 || y >= WORLD_HEIGHT) {
+                break;
+            }
+            
+            // Vary the tunnel width - wider in the middle, narrower at ends
+            float widthFactor = widthVariation * (1.0f - std::abs(progress - 0.5f) * 1.8f);
+            
+            // Add noise to width
+            float widthNoise = perlinNoise2D(x * noiseScale, y * noiseScale, seed + seed_offset + 500);
+            float currentRadius = baseRadius + (widthNoise * radiusScale) + widthFactor;
+            
+            // Carve a small cave section here
+            int radius = static_cast<int>(currentRadius) + 1;
+            for (int cy = -radius; cy <= radius; cy++) {
+                for (int cx = -radius; cx <= radius; cx++) {
+                    // Oval shape - slightly wider horizontally
+                    float distSq = (cx*cx) / (radius*radius * 1.2f) + (cy*cy) / (radius*radius);
+                    if (distSq <= 1.0f) {
+                        int px = static_cast<int>(x) + cx;
+                        int py = static_cast<int>(y) + cy;
+                        
+                        if (px >= 0 && px < WORLD_WIDTH && py >= 0 && py < WORLD_HEIGHT) {
+                            MaterialType material = get(px, py);
+                            if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
+                                set(px, py, MaterialType::Empty);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Sometimes create a small cave pocket
+            if (m_rng() % 15 == 0) {
+                int pocketRadius = 2 + (m_rng() % 3);
+                float pocketAngle = angle + ((dist(m_rng) * 2.0f - 1.0f) * M_PI * 0.5f);
+                float pocketDist = 3.0f + dist(m_rng) * 4.0f;
+                
+                float px = x + std::cos(pocketAngle) * pocketDist;
+                float py = y + std::sin(pocketAngle) * pocketDist;
+                
+                // Carve a small pocket
+                for (int cy = -pocketRadius; cy <= pocketRadius; cy++) {
+                    for (int cx = -pocketRadius; cx <= pocketRadius; cx++) {
+                        float distSq = (cx*cx + cy*cy) / static_cast<float>(pocketRadius * pocketRadius);
+                        if (distSq <= 1.0f) {
+                            int wx = static_cast<int>(px) + cx;
+                            int wy = static_cast<int>(py) + cy;
+                            
+                            if (wx >= 0 && wx < WORLD_WIDTH && wy >= 0 && wy < WORLD_HEIGHT) {
+                                MaterialType material = get(wx, wy);
+                                if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
+                                    set(wx, wy, MaterialType::Empty);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+    
+    // Connect between different cave layers
+    for (int i = 0; i < numConnectors; ++i) {
+        // Start and end points in actual caves, not just random points
+        // Select a point in one system
+        int startX, startY, endX, endY;
+        
+        // For vertical connections between layers
+        int layerChoice = m_rng() % 2; // 0 = upper to mid, 1 = mid to deep
+        
+        if (layerChoice == 0) {
+            // Connect upper to mid cave
+            startX = 100 + (m_rng() % (WORLD_WIDTH - 200));
+            startY = upperCaveDepthStart + (m_rng() % caveZoneHeight);
+            endX = startX + (m_rng() % 200) - 100; // Slight horizontal offset
+            endY = midCaveDepthStart + (m_rng() % caveZoneHeight); 
+        } else {
+            // Connect mid to deep cave 
+            startX = 100 + (m_rng() % (WORLD_WIDTH - 200));
+            startY = midCaveDepthStart + (m_rng() % caveZoneHeight);
+            endX = startX + (m_rng() % 200) - 100; // Slight horizontal offset
+            endY = deepCaveDepthStart + (m_rng() % caveZoneHeight);
+        }
+        
+        // Create natural-looking connection
+        createCaveConnection(startX, startY, endX, endY, i * 100);
+    }
+    
+    // Create horizontal connections within each layer
+    std::cout << "Enhancing cave network connectivity..." << std::endl;
+    
+    // For each layer, connect cave areas horizontally 
+    for (int layer = 0; layer < 3; ++layer) {
+        int baseY = 0;
+        if (layer == 0) baseY = upperCaveDepthStart + (caveZoneHeight / 2);
+        else if (layer == 1) baseY = midCaveDepthStart + (caveZoneHeight / 2);
+        else baseY = deepCaveDepthStart + (caveZoneHeight / 2);
+        
+        // Create multiple connections per layer
+        int connectionsPerLayer = 3 + (m_rng() % 3); // 3-5 connections
+        
+        for (int c = 0; c < connectionsPerLayer; ++c) {
+            // Choose points with significant horizontal separation
+            int startX = 50 + (m_rng() % (WORLD_WIDTH / 3));
+            int endX = (2 * WORLD_WIDTH / 3) + (m_rng() % (WORLD_WIDTH / 3 - 50));
+            
+            int startY = baseY + (m_rng() % 30) - 15; // Vary around the middle
+            int endY = baseY + (m_rng() % 30) - 15;
+            
+            // Create natural-looking connection
+            createCaveConnection(startX, startY, endX, endY, layer * 1000 + c * 100);
+        }
+    }
+    
+    // Optional: Create a few very rare surface entrances - EXTREMELY RARE
+    std::cout << "Creating rare surface entrances..." << std::endl;
+    
+    int numSurfaceEntrances = 1 + (m_rng() % 2); // 1-2 entrances only
+    
+    for (int i = 0; i < numSurfaceEntrances; ++i) {
+        // Choose random X position far from edges
+        int entranceX = 150 + (m_rng() % (WORLD_WIDTH - 300));
+        
+        // Find surface at this X
+        int surfaceY = 0;
+        for (int y = 0; y < WORLD_HEIGHT; ++y) {
+            if (get(entranceX, y) != MaterialType::Empty) {
+                surfaceY = y;
+                break;
+            }
+        }
+        
+        if (surfaceY > 0) {
+            // Target a point in the upper cave system
+            int targetY = upperCaveDepthStart + (m_rng() % (caveZoneHeight / 2));
+            
+            // Create a narrow winding shaft downward
+            float currentX = entranceX;
+            int width = 2; // Fixed narrow width
+            float wiggleAmount = 0.4f; // More winding
+            float noiseScale = 0.03f;
+            
+            for (int y = surfaceY; y <= targetY; ++y) {
+                // Add more pronounced wiggle
+                float noise = perlinNoise2D(0, y * noiseScale, seed + i * 5000);
+                currentX += (noise - 0.5f) * wiggleAmount;
+                
+                int centerX = static_cast<int>(currentX);
+                
+                // Make the entrance wider near the surface and narrow as it goes down
+                int currentWidth = width;
+                if (y < surfaceY + 5) {
+                    currentWidth = 3; // Wider at entrance
+                }
+                
+                // Carve the shaft at this Y level
+                for (int x = centerX - currentWidth; x <= centerX + currentWidth; ++x) {
+                    if (x >= 0 && x < WORLD_WIDTH) {
+                        MaterialType material = get(x, y);
+                        if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
+                            set(x, y, MaterialType::Empty);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    std::cout << "Cellular automata cave generation complete!" << std::endl;
+
     if (renderStepByStep) {
         // Update pixel data after cave generation
         updatePixelData();
-        std::cout << "Perlin worm caves generated. Build and render to see the final cave system." << std::endl;
+        std::cout << "Caves generated. Build and render to see the final cave system." << std::endl;
         std::cout << "Press any key to continue with ore generation..." << std::endl;
         // Here we'd pause in an interactive application
     }
