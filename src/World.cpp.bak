@@ -363,7 +363,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     m_grid[idx] = MaterialType::Empty;
                                     int targetIdx = x - 1;
                                     if (targetIdx >= 0 && targetIdx < static_cast<int>(chunkBelow->m_isFreeFalling.size())) {
-                                        chunkBelow->setFreeFalling(targetIdx, true);
+                                        chunkBelow->setFreeFalling(targetIdx, true) = true;
                                     }
                                     anyMaterialMoved = true;
                                     chunkBelow->setShouldUpdateNextFrame(true);
@@ -385,7 +385,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     m_grid[idx] = MaterialType::Empty;
                                     int targetIdx = x + 1;
                                     if (targetIdx >= 0 && targetIdx < static_cast<int>(chunkBelow->m_isFreeFalling.size())) {
-                                        chunkBelow->setFreeFalling(targetIdx, true);
+                                        chunkBelow->setFreeFalling(targetIdx, true) = true;
                                     }
                                     anyMaterialMoved = true;
                                     chunkBelow->setShouldUpdateNextFrame(true);
@@ -407,7 +407,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     m_grid[idx] = MaterialType::Empty;
                                     int targetIdx = x - 1;
                                     if (targetIdx >= 0 && targetIdx < static_cast<int>(chunkBelow->m_isFreeFalling.size())) {
-                                        chunkBelow->setFreeFalling(targetIdx, true);
+                                        chunkBelow->setFreeFalling(targetIdx, true) = true;
                                     }
                                     anyMaterialMoved = true;
                                     chunkBelow->setShouldUpdateNextFrame(true);
@@ -474,7 +474,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     // Handle cross-chunk boundaries
                                     if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
                                         chunkBelow->set(WIDTH - 1, 0, material);
-                                        chunkBelow->setFreeFalling(WIDTH * 0 + WIDTH - 1, true);
+                                        chunkBelow->setFreeFalling(WIDTH * 0 + WIDTH - 1, true) = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                     } else if (x == 0 && chunkLeft) {
                                         chunkLeft->set(WIDTH - 1, y + 1, material);
@@ -482,7 +482,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkLeft->setShouldUpdateNextFrame(true);;
                                     } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x - 1, 0, material);
-                                        chunkBelow->setFreeFalling(x - 1, true);
+                                        chunkBelow->setFreeFalling(x - 1, true) = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                     } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downLeftIdx] = material;
@@ -515,7 +515,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     // Handle cross-chunk boundaries
                                     if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
                                         chunkBelow->set(0, 0, material);
-                                        chunkBelow->setFreeFalling(0, true);
+                                        chunkBelow->setFreeFalling(0, true) = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                     } else if (x == WIDTH - 1 && chunkRight) {
                                         chunkRight->set(0, y + 1, material);
@@ -523,7 +523,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkRight->setShouldUpdateNextFrame(true);;
                                     } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x + 1, 0, material);
-                                        chunkBelow->setFreeFalling(x + 1, true);
+                                        chunkBelow->setFreeFalling(x + 1, true) = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                     } else if (downRightIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downRightIdx] = material;
@@ -557,7 +557,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     // Handle cross-chunk boundaries
                                     if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
                                         chunkBelow->set(0, 0, material);
-                                        chunkBelow->setFreeFalling(0, true);
+                                        chunkBelow->setFreeFalling(0, true) = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                     } else if (x == WIDTH - 1 && chunkRight) {
                                         chunkRight->set(0, y + 1, material);
@@ -565,7 +565,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkRight->setShouldUpdateNextFrame(true);;
                                     } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x + 1, 0, material);
-                                        chunkBelow->setFreeFalling(x + 1, true);
+                                        chunkBelow->setFreeFalling(x + 1, true) = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                     } else if (downRightIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downRightIdx] = material;
@@ -598,7 +598,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     // Handle cross-chunk boundaries
                                     if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
                                         chunkBelow->set(WIDTH - 1, 0, material);
-                                        chunkBelow->setFreeFalling(WIDTH * 0 + WIDTH - 1, true);
+                                        chunkBelow->setFreeFalling(WIDTH * 0 + WIDTH - 1, true) = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                     } else if (x == 0 && chunkLeft) {
                                         chunkLeft->set(WIDTH - 1, y + 1, material);
@@ -606,7 +606,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkLeft->setShouldUpdateNextFrame(true);;
                                     } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x - 1, 0, material);
-                                        chunkBelow->setFreeFalling(x - 1, true);
+                                        chunkBelow->setFreeFalling(x - 1, true) = true;
                                         chunkBelow->setShouldUpdateNextFrame(true);;
                                     } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downLeftIdx] = material;

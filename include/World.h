@@ -27,11 +27,14 @@ enum class BiomeType {
 class Chunk {
 public:
     // Fixed size for each chunk - for better aligned ore generation
-    static constexpr int WIDTH = 40;   // Slightly larger chunks for more coherent ore patterns
-    static constexpr int HEIGHT = 40;
+    static constexpr int WIDTH = 64;   // Same size as Noita for optimal performance
+    static constexpr int HEIGHT = 64;
     
     Chunk(int posX = 0, int posY = 0);
     ~Chunk() = default;
+    
+    // Public accessor for updating pixel data (used by World class)
+    void updateChunkPixelData() { updatePixelData(); }
     
     // Store chunk position in world coordinates for pixel-perfect alignment
     int m_posX;
@@ -67,6 +70,11 @@ public:
         if (idx >= 0 && idx < static_cast<int>(m_isFreeFalling.size())) {
             m_isFreeFalling[idx] = falling; 
         }
+    }
+    
+    // Get the size of the free falling vector - safer than direct access
+    size_t getFreeFallingVectorSize() const {
+        return m_isFreeFalling.size();
     }
     
     // Get raw pixel data for rendering
@@ -165,6 +173,8 @@ public:
         return m_pixelData.data(); 
     }
     
+// These are in the World class, not the Chunk class - mistake
+
 private:
     // World dimensions in pixels
     int m_width;

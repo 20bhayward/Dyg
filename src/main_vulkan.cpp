@@ -64,7 +64,8 @@ int main() {
     }
     
     // Optionally, set fullscreen (desktop mode)
-    SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    // Disable fullscreen for debugging
+    // SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
     int actualWidth, actualHeight;
     SDL_GetWindowSize(window, &actualWidth, &actualHeight);
     
@@ -209,29 +210,59 @@ int main() {
                     // Move faster when zoomed out, slower when zoomed in
                     int adjustedSpeed = static_cast<int>(CAMERA_SPEED / zoomLevel);
                     cameraX -= adjustedSpeed;
+                    
                     // Clamp camera position to world bounds
                     cameraX = std::max(0, cameraX);
+                    
                     std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_RIGHT || e.key.keysym.sym == SDLK_d) {
                     int adjustedSpeed = static_cast<int>(CAMERA_SPEED / zoomLevel);
                     cameraX += adjustedSpeed;
+                    
+                    // Get current window size for accurate clamping
+                    int currentWidth, currentHeight;
+                    SDL_GetWindowSize(window, &currentWidth, &currentHeight);
+                    
+                    // Calculate pixel size using same formula as in renderer
+                    float pixelSize = std::floor(basePixelSize * zoomLevel);
+                    
+                    // Calculate visible cells based on current window size
+                    int visibleCellsX = static_cast<int>(currentWidth / pixelSize);
+                    
                     // Clamp camera position to world bounds
-                    cameraX = std::min(WORLD_WIDTH - static_cast<int>(actualWidth / (basePixelSize * zoomLevel)), cameraX);
+                    cameraX = std::min(WORLD_WIDTH - visibleCellsX, cameraX);
+                    if (cameraX < 0) cameraX = 0;  // Safeguard against negative positions
+                    
                     std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) {
                     int adjustedSpeed = static_cast<int>(CAMERA_SPEED / zoomLevel);
                     cameraY -= adjustedSpeed; // Up key moves camera up (decreases Y)
+                    
                     // Clamp camera position to world bounds
                     cameraY = std::max(0, cameraY);
+                    
                     std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) {
                     int adjustedSpeed = static_cast<int>(CAMERA_SPEED / zoomLevel);
                     cameraY += adjustedSpeed; // Down key moves camera down (increases Y)
+                    
+                    // Get current window size for accurate clamping
+                    int currentWidth, currentHeight;
+                    SDL_GetWindowSize(window, &currentWidth, &currentHeight);
+                    
+                    // Calculate pixel size using same formula as in renderer
+                    float pixelSize = std::floor(basePixelSize * zoomLevel);
+                    
+                    // Calculate visible cells based on current window size
+                    int visibleCellsY = static_cast<int>(currentHeight / pixelSize);
+                    
                     // Clamp camera position to world bounds
-                    cameraY = std::min(WORLD_HEIGHT - static_cast<int>(actualHeight / (basePixelSize * zoomLevel)), cameraY);
+                    cameraY = std::min(WORLD_HEIGHT - visibleCellsY, cameraY);
+                    if (cameraY < 0) cameraY = 0;  // Safeguard against negative positions
+                    
                     std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 // Reset camera position
@@ -370,11 +401,22 @@ int main() {
                     cameraX = static_cast<int>(worldX - x / (basePixelSize * zoomLevel));
                     cameraY = static_cast<int>(worldY - y / (basePixelSize * zoomLevel));
                     
+                    // Get current window size for accurate calculations
+                    int currentWidth, currentHeight;
+                    SDL_GetWindowSize(window, &currentWidth, &currentHeight);
+                    
+                    // Calculate pixel size for consistent camera bounds
+                    float pixelSize = std::floor(basePixelSize * zoomLevel);
+                    
+                    // Calculate visible cells for boundary checking
+                    int visibleCellsX = static_cast<int>(currentWidth / pixelSize);
+                    int visibleCellsY = static_cast<int>(currentHeight / pixelSize);
+                    
                     // Clamp camera position
                     cameraX = std::max(0, cameraX);
-                    cameraX = std::min(WORLD_WIDTH - static_cast<int>(actualWidth / (basePixelSize * zoomLevel)), cameraX);
+                    cameraX = std::min(WORLD_WIDTH - visibleCellsX, cameraX);
                     cameraY = std::max(0, cameraY);
-                    cameraY = std::min(WORLD_HEIGHT - static_cast<int>(actualHeight / (basePixelSize * zoomLevel)), cameraY);
+                    cameraY = std::min(WORLD_HEIGHT - visibleCellsY, cameraY);
                     
                     std::cout << "Zoom: " << zoomLevel << ", Camera: " << cameraX << "," << cameraY << std::endl;
                 }
@@ -428,11 +470,17 @@ int main() {
                     int dx = (mouseX - prevMouseX);
                     int dy = (mouseY - prevMouseY);
                     
+                    // Get current window size for accurate clamping
+                    int currentWidth, currentHeight;
+                    SDL_GetWindowSize(window, &currentWidth, &currentHeight);
+                    
+                    // Calculate pixel size using same formula as in renderer
+                    float pixelSize = std::floor(basePixelSize * zoomLevel);
+                    
                     // Convert screen space delta to world space
                     // Invert both axes - moving mouse in a direction moves camera in opposite direction
-                    // Calculate total movement in both axes simultaneously
-                    int deltaX = static_cast<int>(dx / (basePixelSize * zoomLevel));
-                    int deltaY = static_cast<int>(dy / (basePixelSize * zoomLevel));
+                    int deltaX = static_cast<int>(dx / pixelSize);
+                    int deltaY = static_cast<int>(dy / pixelSize);
                     
                     // Apply movement in both directions at once
                     // Moving the mouse to the right should move the camera view to the left (panning right)
@@ -440,11 +488,15 @@ int main() {
                     cameraX -= deltaX; // Standard camera panning in X direction
                     cameraY -= deltaY; // Standard camera panning in Y direction
                     
+                    // Calculate visible cells based on current window size
+                    int visibleCellsX = static_cast<int>(currentWidth / pixelSize);
+                    int visibleCellsY = static_cast<int>(currentHeight / pixelSize);
+                    
                     // Clamp camera position
                     cameraX = std::max(0, cameraX);
-                    cameraX = std::min(WORLD_WIDTH - static_cast<int>(actualWidth / (basePixelSize * zoomLevel)), cameraX);
+                    cameraX = std::min(WORLD_WIDTH - visibleCellsX, cameraX);
                     cameraY = std::max(0, cameraY);
-                    cameraY = std::min(WORLD_HEIGHT - static_cast<int>(actualHeight / (basePixelSize * zoomLevel)), cameraY);
+                    cameraY = std::min(WORLD_HEIGHT - visibleCellsY, cameraY);
                     
                     // Update previous mouse position
                     prevMouseX = mouseX;
@@ -464,23 +516,19 @@ int main() {
             SDL_GetMouseState(&latestMouseX, &latestMouseY);
             
             // Convert screen coordinates to world coordinates
-            // Try a different approach to screen-to-world conversion
-            // The logic used in the Renderer would be:
-            // viewportWidth = screenWidth / pixelScale
-            // viewportHeight = screenHeight / pixelScale
-            // So we need to reverse this logic
+            // Simplified approach that directly converts mouse position to world position
+            // This matches exactly how the camera works in the renderer
             
-            // Get the actual viewport dimensions in world units
-            float viewportWidth = actualWidth / (basePixelSize * zoomLevel);
-            float viewportHeight = actualHeight / (basePixelSize * zoomLevel);
+            // Use current window size for accurate calculations
+            int currentWidth, currentHeight;
+            SDL_GetWindowSize(window, &currentWidth, &currentHeight);
             
-            // Calculate percentages across the viewport
-            float percentX = static_cast<float>(latestMouseX) / actualWidth;
-            float percentY = static_cast<float>(latestMouseY) / actualHeight;
+            // Calculate pixel size based on zoom level - same as in Renderer.cpp
+            float pixelSize = std::floor(basePixelSize * zoomLevel);
             
-            // Apply percentages to get position in world space
-            int worldX = cameraX + static_cast<int>(percentX * viewportWidth);
-            int worldY = cameraY + static_cast<int>(percentY * viewportHeight);
+            // Direct conversion from screen to world coordinates
+            int worldX = cameraX + static_cast<int>(latestMouseX / pixelSize);
+            int worldY = cameraY + static_cast<int>(latestMouseY / pixelSize);
             
             // Place material in a circular brush pattern
             for (int dy = -placeBrushSize / 2; dy <= placeBrushSize / 2; dy++) {
@@ -497,8 +545,7 @@ int main() {
                 std::cout << "\nMouse at screen: " << latestMouseX << "," << latestMouseY 
                           << " | World: " << worldX << "," << worldY 
                           << " | Camera: " << cameraX << "," << cameraY 
-                          << " | Zoom: " << zoomLevel 
-                          << " | ViewportSize: " << viewportWidth << "x" << viewportHeight << std::endl;
+                          << " | Zoom: " << zoomLevel << std::endl;
             }
             
             // IMPORTANT: Always continue normal world simulation even while placing materials
@@ -509,6 +556,8 @@ int main() {
             // Update world simulation
             world.update();
         }
+        
+        // Pixel data is already updated in world.update()
         
         // Render the world using our renderer with camera position and zoom level
         renderer->render(world, cameraX, cameraY, zoomLevel);

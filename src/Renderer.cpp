@@ -42,6 +42,10 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
     // Begin rendering
     beginFrame();
     
+    // Update screen dimensions from Vulkan backend's swap chain extent
+    m_screenWidth = vulkanBackend->getSwapChainExtent().width;
+    m_screenHeight = vulkanBackend->getSwapChainExtent().height;
+    
     // Set a black background for better contrast
     m_backend->setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     m_backend->clear();
@@ -64,9 +68,13 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
     int endX = startX + visibleCellsX;
     int endY = startY + visibleCellsY;
     
-    // Debug boundaries
-    std::cout << "Rendering from (" << startX << "," << startY << ") to (" << endX << "," << endY 
-              << ") - World size: " << worldWidth << "x" << worldHeight << std::endl;
+    // Debug boundaries - only output occasionally to reduce logging spam
+    static int frameCounter = 0;
+    if (frameCounter++ % 60 == 0) {
+        std::cout << "Screen: " << m_screenWidth << "x" << m_screenHeight 
+                  << ", Rendering from (" << startX << "," << startY << ") to (" << endX << "," << endY 
+                  << ") - World size: " << worldWidth << "x" << worldHeight << std::endl;
+    }
     
     // Clamp to world bounds
     startX = std::max(0, startX);
@@ -77,6 +85,9 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
     // Create a new hash seed every render to ensure consistency
     std::mt19937 posRng(12345);
 
+    // Get raw pixel data from world if available for optimized rendering
+    const uint8_t* pixelData = world.getPixelData();
+    
     // Render each visible pixel
     for (int y = startY; y < endY; ++y) {  // Normal iteration (world coordinates have 0 at top)
         for (int x = startX; x < endX; ++x) {
