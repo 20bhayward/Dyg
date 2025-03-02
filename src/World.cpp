@@ -298,8 +298,10 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
             
             // Handle powders (like sand)
             if (props.isPowder) {
-                // Get whether this particle is free-falling or settled
-                bool isFalling = m_isFreeFalling[idx];
+                // Always assume powders are falling - simulate continuous motion without requiring clicks
+                bool isFalling = true;
+                // Keep track of whether this material is currently moving
+                m_isFreeFalling[idx] = true;
                 
                 // Try to move powder down
                 if (y < HEIGHT - 1) {
@@ -320,14 +322,14 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             anyMaterialMoved = true;
                             
                             // Mark the particle as falling in the other chunk
-                            chunkBelow->m_isFreeFalling[x] = true;
+                            chunkBelow->setFreeFalling(x, true);
                             
                             // Mark the chunk below as needing update next frame
                             chunkBelow->setShouldUpdateNextFrame(true);
                             continue;
                         } 
-                        // If we can't move down, check diagonally, but only if we are in "falling" state
-                        else if (isFalling) {
+                        // If we can't move down, check diagonally - always try to move diagonally for better flow
+                        else {
                             bool moved = false;
                             
                             // Try diagonal movement - first pick a random side to check
@@ -367,7 +369,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     m_grid[idx] = MaterialType::Empty;
                                     chunkBelow->m_isFreeFalling[x - 1] = true;
                                     anyMaterialMoved = true;
-                                    chunkBelow->setShouldUpdateNextFrame(true);;
+                                    chunkBelow->setShouldUpdateNextFrame(true);
                                     moved = true;
                                 }
                             }
@@ -378,7 +380,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                         }
                         
                         // Always mark the chunk below as needing update next frame
-                        chunkBelow->setShouldUpdateNextFrame(true);;
+                        chunkBelow->setShouldUpdateNextFrame(true);
                     }
                     // Handle within the same chunk
                     else if (belowMaterial == MaterialType::Empty) {
@@ -391,8 +393,8 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                         m_isFreeFalling[belowIdx] = true;
                         continue; // Done moving this particle
                     }
-                    // Handle diagonal movement, but only if the particle is in "falling" state
-                    else if (isFalling) {
+                    // Handle diagonal movement - always attempt for continual flow
+                    else {
                         bool movedDiagonally = false;
                         
                         // Randomly choose which side to check first for more natural behavior
@@ -421,15 +423,15 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
                                         chunkBelow->set(WIDTH - 1, 0, material);
                                         chunkBelow->m_isFreeFalling[WIDTH * 0 + WIDTH - 1] = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                     } else if (x == 0 && chunkLeft) {
                                         chunkLeft->set(WIDTH - 1, y + 1, material);
                                         chunkLeft->m_isFreeFalling[WIDTH * (y + 1) + WIDTH - 1] = true;
-                                        chunkLeft->setShouldUpdateNextFrame(true);;
+                                        chunkLeft->setShouldUpdateNextFrame(true);
                                     } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x - 1, 0, material);
                                         chunkBelow->m_isFreeFalling[x - 1] = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                     } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downLeftIdx] = material;
                                         m_isFreeFalling[downLeftIdx] = true;
@@ -462,15 +464,15 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
                                         chunkBelow->set(0, 0, material);
                                         chunkBelow->m_isFreeFalling[0] = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                     } else if (x == WIDTH - 1 && chunkRight) {
                                         chunkRight->set(0, y + 1, material);
                                         chunkRight->m_isFreeFalling[WIDTH * (y + 1)] = true;
-                                        chunkRight->setShouldUpdateNextFrame(true);;
+                                        chunkRight->setShouldUpdateNextFrame(true);
                                     } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x + 1, 0, material);
                                         chunkBelow->m_isFreeFalling[x + 1] = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                     } else if (downRightIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downRightIdx] = material;
                                         m_isFreeFalling[downRightIdx] = true;
@@ -504,15 +506,15 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
                                         chunkBelow->set(0, 0, material);
                                         chunkBelow->m_isFreeFalling[0] = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                     } else if (x == WIDTH - 1 && chunkRight) {
                                         chunkRight->set(0, y + 1, material);
                                         chunkRight->m_isFreeFalling[WIDTH * (y + 1)] = true;
-                                        chunkRight->setShouldUpdateNextFrame(true);;
+                                        chunkRight->setShouldUpdateNextFrame(true);
                                     } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x + 1, 0, material);
                                         chunkBelow->m_isFreeFalling[x + 1] = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                     } else if (downRightIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downRightIdx] = material;
                                         m_isFreeFalling[downRightIdx] = true;
@@ -545,15 +547,15 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
                                         chunkBelow->set(WIDTH - 1, 0, material);
                                         chunkBelow->m_isFreeFalling[WIDTH * 0 + WIDTH - 1] = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                     } else if (x == 0 && chunkLeft) {
                                         chunkLeft->set(WIDTH - 1, y + 1, material);
                                         chunkLeft->m_isFreeFalling[WIDTH * (y + 1) + WIDTH - 1] = true;
-                                        chunkLeft->setShouldUpdateNextFrame(true);;
+                                        chunkLeft->setShouldUpdateNextFrame(true);
                                     } else if (y == HEIGHT - 1 && chunkBelow) {
                                         chunkBelow->set(x - 1, 0, material);
                                         chunkBelow->m_isFreeFalling[x - 1] = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                     } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
                                         m_grid[downLeftIdx] = material;
                                         m_isFreeFalling[downLeftIdx] = true;
@@ -626,7 +628,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             chunkBelow->set(x, 0, material);
                             m_grid[idx] = MaterialType::Empty; // Always remove source for volume conservation
                             anyMaterialMoved = true;
-                            chunkBelow->setShouldUpdateNextFrame(true);;
+                            chunkBelow->setShouldUpdateNextFrame(true);
                             continue;
                         }
                         
@@ -646,7 +648,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkBelow->set(x - 1, 0, material);
                                         m_grid[idx] = MaterialType::Empty;
                                         anyMaterialMoved = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                         moved = true;
                                     }
                                 }
@@ -658,7 +660,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkBelow->set(x + 1, 0, material);
                                         m_grid[idx] = MaterialType::Empty;
                                         anyMaterialMoved = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                         moved = true;
                                     }
                                 }
@@ -670,7 +672,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkBelow->set(x + 1, 0, material);
                                         m_grid[idx] = MaterialType::Empty;
                                         anyMaterialMoved = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                         moved = true;
                                     }
                                 }
@@ -682,7 +684,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                         chunkBelow->set(x - 1, 0, material);
                                         m_grid[idx] = MaterialType::Empty;
                                         anyMaterialMoved = true;
-                                        chunkBelow->setShouldUpdateNextFrame(true);;
+                                        chunkBelow->setShouldUpdateNextFrame(true);
                                         moved = true;
                                     }
                                 }
@@ -693,7 +695,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             }
                             
                             // Always mark the chunk below for next frame update
-                            chunkBelow->setShouldUpdateNextFrame(true);;
+                            chunkBelow->setShouldUpdateNextFrame(true);
                         }
                     } else if (belowIdx < static_cast<int>(m_grid.size())) {
                         // Within same chunk - check if liquid can displace what's below
@@ -926,7 +928,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     // Move material to neighbor chunk column
                                     targetChunk->set(targetX, y - sideColumnHeight, material);
                                     m_grid[idx] = MaterialType::Empty;
-                                    targetChunk->setShouldUpdateNextFrame(true);;
+                                    targetChunk->setShouldUpdateNextFrame(true);
                                     anyMaterialMoved = true;
                                 } else {
                                     // Move material to lower column within same chunk
@@ -991,7 +993,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     // Move material to neighboring chunk
                                     targetChunk->set(targetX, y, material);
                                     m_grid[idx] = MaterialType::Empty;
-                                    targetChunk->setShouldUpdateNextFrame(true);;
+                                    targetChunk->setShouldUpdateNextFrame(true);
                                     anyMaterialMoved = true;
                                 } else {
                                     // Move material within same chunk
@@ -1062,12 +1064,12 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
     // Mark the chunk for update next frame if materials moved
     // This allows materials to continue being simulated even without player interaction
     if (anyMaterialMoved) {
-        setShouldUpdateNextFrame(true);;
+        setShouldUpdateNextFrame(true);
         
         // Mark neighboring chunks as potentially needing updates too
-        if (chunkBelow) chunkBelow->setShouldUpdateNextFrame(true);;
-        if (chunkLeft) chunkLeft->setShouldUpdateNextFrame(true);;
-        if (chunkRight) chunkRight->setShouldUpdateNextFrame(true);;
+        if (chunkBelow) chunkBelow->setShouldUpdateNextFrame(true);
+        if (chunkLeft) chunkLeft->setShouldUpdateNextFrame(true);
+        if (chunkRight) chunkRight->setShouldUpdateNextFrame(true);
     }
     
     // Update the pixel data to reflect the changes
@@ -1982,8 +1984,8 @@ void World::update() {
                                     chunk->set(0, localY, MaterialType::Empty);
                                     
                                     // Mark chunks for next frame update
-                                    chunk->setShouldUpdateNextFrame(true);;
-                                    chunkLeft->setShouldUpdateNextFrame(true);;
+                                    chunk->setShouldUpdateNextFrame(true);
+                                    chunkLeft->setShouldUpdateNextFrame(true);
                                 }
                             }
                         }
@@ -2011,8 +2013,8 @@ void World::update() {
                                     chunk->set(Chunk::WIDTH - 1, localY, MaterialType::Empty);
                                     
                                     // Mark chunks for next frame update
-                                    chunk->setShouldUpdateNextFrame(true);;
-                                    chunkRight->setShouldUpdateNextFrame(true);;
+                                    chunk->setShouldUpdateNextFrame(true);
+                                    chunkRight->setShouldUpdateNextFrame(true);
                                 }
                             }
                         }
