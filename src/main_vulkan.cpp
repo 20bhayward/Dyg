@@ -14,9 +14,13 @@
 
 const int WINDOW_WIDTH  = 800;
 const int WINDOW_HEIGHT = 600;
-const int WORLD_WIDTH   = 6000;    // World dimensions in world units (wider for multiple biomes)
-const int WORLD_HEIGHT  = 1800;
-const int TARGET_FPS    = 60;
+// Test mode with smaller world for physics testing
+const bool TEST_MODE = true;
+
+// World dimensions - use smaller world in test mode
+const int WORLD_WIDTH   = TEST_MODE ? 800 : 6000;  // Much smaller for test mode
+const int WORLD_HEIGHT  = TEST_MODE ? 600 : 1800;  // Much smaller for test mode
+const int TARGET_FPS    = 120;  // Higher FPS for smoother simulation
 const int FRAME_DELAY   = 1000 / TARGET_FPS;
 
 // Camera parameters
@@ -28,7 +32,7 @@ const float MAX_ZOOM = 4.0f;   // Maximum zoom level
 const float ZOOM_STEP = 0.1f;  // Zoom amount per scroll
 const int CAMERA_SPEED = 15;  // Camera movement speed (pixels per key press)
 const int DEFAULT_VIEW_HEIGHT = 450; // Default height to position camera at start
-const float basePixelSize = 2.0f;  // Base pixel size for world rendering (matches Renderer.cpp)
+const float basePixelSize = 1.5f;  // Base pixel size for world rendering (smaller for more detail)
 
 // Mouse parameters
 bool middleMouseDown = false;
@@ -64,16 +68,70 @@ int main() {
     int actualWidth, actualHeight;
     SDL_GetWindowSize(window, &actualWidth, &actualHeight);
     
-    // Create the world and generate terrain
+    // Create the world and generate terrain or simple test environment
     PixelPhys::World world(WORLD_WIDTH, WORLD_HEIGHT);
-    unsigned int seed = static_cast<unsigned int>(std::time(nullptr));
-    std::cout << "Generating world with seed: " << seed << std::endl;
-    world.generate(seed);
-    SDL_Delay(200);  // Give the world time to generate
     
-    // Position camera at default position - centered on the grasslands biome, at a good viewing height
-    cameraX = WORLD_WIDTH / 3; // Start in the grasslands (middle third of the world)
-    cameraY = DEFAULT_VIEW_HEIGHT;
+    if (TEST_MODE) {
+        // Create a simple test environment instead of a full world
+        std::cout << "Creating test environment for physics testing..." << std::endl;
+        
+        // Create a flat bottom platform across the world
+        for (int x = 0; x < WORLD_WIDTH; x++) {
+            for (int y = WORLD_HEIGHT - 50; y < WORLD_HEIGHT; y++) {
+                world.set(x, y, PixelPhys::MaterialType::Stone);
+            }
+        }
+        
+        // Add a few platforms for testing material interactions
+        for (int x = 100; x < 300; x++) {
+            for (int y = WORLD_HEIGHT - 150; y < WORLD_HEIGHT - 140; y++) {
+                world.set(x, y, PixelPhys::MaterialType::Stone);
+            }
+        }
+        
+        for (int x = 500; x < 700; x++) {
+            for (int y = WORLD_HEIGHT - 250; y < WORLD_HEIGHT - 240; y++) {
+                world.set(x, y, PixelPhys::MaterialType::Stone);
+            }
+        }
+        
+        // Add a "funnel" in the middle for testing
+        for (int x = 350; x < 450; x++) {
+            // Left slope
+            int slopeHeight = (x - 350) / 2;
+            for (int y = WORLD_HEIGHT - 200; y < WORLD_HEIGHT - 200 + slopeHeight; y++) {
+                world.set(x, y, PixelPhys::MaterialType::Stone);
+            }
+        }
+        
+        // Right side funnel
+        for (int x = 450; x < 550; x++) {
+            // Right slope (descending)
+            int slopeHeight = (550 - x) / 2;
+            for (int y = WORLD_HEIGHT - 200; y < WORLD_HEIGHT - 200 + slopeHeight; y++) {
+                world.set(x, y, PixelPhys::MaterialType::Stone);
+            }
+        }
+    } else {
+        // Generate regular terrain for normal mode
+        unsigned int seed = static_cast<unsigned int>(std::time(nullptr));
+        std::cout << "Generating world with seed: " << seed << std::endl;
+        world.generate(seed);
+    }
+    
+    SDL_Delay(200);  // Give the world time to set up
+    
+    // Position camera for best view of the test area
+    if (TEST_MODE) {
+        cameraX = 0; // We want to see the whole test area
+        cameraY = 0; // Start at the top
+        zoomLevel = 1.0f; // Full default zoom to see details
+    } else {
+        // Normal world position
+        cameraX = WORLD_WIDTH / 4;
+        cameraY = 0;
+        zoomLevel = 0.75f;
+    }
     
     // Create the renderer (Vulkan only)
     auto renderer = std::make_shared<PixelPhys::Renderer>(
@@ -178,9 +236,15 @@ int main() {
                 }
                 // Reset camera position
                 else if (e.key.keysym.sym == SDLK_HOME) {
-                    cameraX = WORLD_WIDTH / 3; // Reset to grasslands (middle third)
-                    cameraY = DEFAULT_VIEW_HEIGHT;
-                    zoomLevel = 1.0f;
+                    if (TEST_MODE) {
+                        cameraX = 0; // Reset to origin for test world
+                        cameraY = 0;
+                        zoomLevel = 1.0f;
+                    } else {
+                        cameraX = WORLD_WIDTH / 4; // Reset to a good viewing position
+                        cameraY = 0; // Top of the world
+                        zoomLevel = 0.75f; // Slightly zoomed out
+                    }
                     std::cout << "Camera reset to default position" << std::endl;
                 }
                 // Brush size controls
@@ -197,7 +261,9 @@ int main() {
                 // Material selection hotkeys
                 else if (e.key.keysym.sym == SDLK_1) {
                     currentMaterial = PixelPhys::MaterialType::Sand;
-                    std::cout << "Selected Sand" << std::endl;
+                    std::cout << "Selected Sand (inertialResistance: " 
+                              << static_cast<int>(MATERIAL_PROPERTIES[static_cast<size_t>(PixelPhys::MaterialType::Sand)].inertialResistance)
+                              << ")" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_2) {
                     currentMaterial = PixelPhys::MaterialType::Water;
@@ -209,7 +275,9 @@ int main() {
                 }
                 else if (e.key.keysym.sym == SDLK_4) {
                     currentMaterial = PixelPhys::MaterialType::Gravel;
-                    std::cout << "Selected Gravel" << std::endl;
+                    std::cout << "Selected Gravel (inertialResistance: " 
+                              << static_cast<int>(MATERIAL_PROPERTIES[static_cast<size_t>(PixelPhys::MaterialType::Gravel)].inertialResistance)
+                              << ")" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_5) {
                     currentMaterial = PixelPhys::MaterialType::Oil;
@@ -227,6 +295,57 @@ int main() {
                     // Eraser - set to Empty
                     currentMaterial = PixelPhys::MaterialType::Empty;
                     std::cout << "Selected Eraser (Empty)" << std::endl;
+                }
+                // Add test keys for physics demonstrations
+                else if (e.key.keysym.sym == SDLK_t) {
+                    // Drop a large column of sand to test inertial mechanics
+                    int testX = WORLD_WIDTH / 2;
+                    int testWidth = 40;
+                    int testHeight = 100;
+                    
+                    for (int x = testX - testWidth/2; x < testX + testWidth/2; x++) {
+                        for (int y = 50; y < 50 + testHeight; y++) {
+                            world.set(x, y, PixelPhys::MaterialType::Sand);
+                        }
+                    }
+                    std::cout << "Created test column of sand" << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_y) {
+                    // Create a water pool to test liquid dispersal
+                    int testX = 200;
+                    int testWidth = 30;
+                    int testHeight = 60;
+                    
+                    for (int x = testX - testWidth/2; x < testX + testWidth/2; x++) {
+                        for (int y = 200; y < 200 + testHeight; y++) {
+                            world.set(x, y, PixelPhys::MaterialType::Water);
+                        }
+                    }
+                    std::cout << "Created test water pool" << std::endl;
+                }
+                else if (e.key.keysym.sym == SDLK_u) {
+                    // Add various materials for visual comparison
+                    // Sand
+                    for (int x = 100; x < 130; x++) {
+                        for (int y = 100; y < 130; y++) {
+                            world.set(x, y, PixelPhys::MaterialType::Sand);
+                        }
+                    }
+                    
+                    // Gravel (more resistant)
+                    for (int x = 150; x < 180; x++) {
+                        for (int y = 100; y < 130; y++) {
+                            world.set(x, y, PixelPhys::MaterialType::Gravel);
+                        }
+                    }
+                    
+                    // Dirt
+                    for (int x = 200; x < 230; x++) {
+                        for (int y = 100; y < 130; y++) {
+                            world.set(x, y, PixelPhys::MaterialType::Dirt);
+                        }
+                    }
+                    std::cout << "Created material comparison test" << std::endl;
                 }
             }
             else if (e.type == SDL_MOUSEWHEEL) {

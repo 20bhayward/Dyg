@@ -42,8 +42,8 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
     // Begin rendering
     beginFrame();
     
-    // Set a dark blue background
-    m_backend->setClearColor(0.05f, 0.05f, 0.1f, 1.0f);
+    // Set a black background for better contrast
+    m_backend->setClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     m_backend->clear();
 
     // Get world dimensions
@@ -51,7 +51,7 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
     int worldHeight = world.getHeight();
     
     // Base pixel size for true voxel/pixel simulation, adjusted by zoom level
-    const float basePixelSize = 2.0f;  // Each world pixel is 2x2 screen pixels for better visibility
+    const float basePixelSize = 1.5f;  // Each world pixel is 1.5x1.5 screen pixels for better resolution
     const float pixelSize = std::floor(basePixelSize * zoomLevel);  // Apply zoom factor with discrete steps to ensure grid alignment
     
     // Calculate visible area based on screen size, camera position, and zoom level
@@ -63,6 +63,10 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
     int startY = cameraY;
     int endX = startX + visibleCellsX;
     int endY = startY + visibleCellsY;
+    
+    // Debug boundaries
+    std::cout << "Rendering from (" << startX << "," << startY << ") to (" << endX << "," << endY 
+              << ") - World size: " << worldWidth << "x" << worldHeight << std::endl;
     
     // Clamp to world bounds
     startX = std::max(0, startX);
