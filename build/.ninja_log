@@ -1,7 +1,0 @@
-# ninja log v6
-156	1383	7625940356877534	CMakeFiles/PixelPhys2D.dir/src/RenderBackend.cpp.obj	6518016ce562aa2b
-66	2593	7625940355971754	CMakeFiles/PixelPhys2D.dir/src/Renderer.cpp.obj	7b1df3bde70c607f
-8	2957	7625940355391259	CMakeFiles/PixelPhys2D.dir/src/main_vulkan.cpp.obj	a56feb4b86a609a1
-113	5737	7625940356437157	CMakeFiles/PixelPhys2D.dir/src/VulkanBackend.cpp.obj	b1c842b0cf3cc6ab
-30	6151	7625940355626469	CMakeFiles/PixelPhys2D.dir/src/World.cpp.obj	5b5fb4595e30e695
-6152	6462	7625940416829152	PixelPhys2D.exe	bbfe140324e7a656

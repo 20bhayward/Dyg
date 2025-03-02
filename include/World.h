@@ -50,6 +50,22 @@ public:
     // Mark this chunk as needing update
     void setDirty(bool dirty) { m_isDirty = dirty; }
     
+    // Check if this chunk needs updating next frame
+    bool shouldUpdateNextFrame() const { return m_shouldUpdateNextFrame; }
+    
+    // Mark this chunk for update next frame
+    void setShouldUpdateNextFrame(bool update) { m_shouldUpdateNextFrame = update; }
+    
+    // Get inactivity counter
+    int getInactivityCounter() const { return m_inactivityCounter; }
+    
+    // Set free falling state for a specific cell
+    void setFreeFalling(int idx, bool falling) { 
+        if (idx >= 0 && idx < static_cast<int>(m_isFreeFalling.size())) {
+            m_isFreeFalling[idx] = falling; 
+        }
+    }
+    
     // Get raw pixel data for rendering
     uint8_t* getPixelData() { return m_pixelData.data(); }
     const uint8_t* getPixelData() const { return m_pixelData.data(); }
@@ -61,8 +77,14 @@ private:
     // For rendering: RGBA pixel data (r,g,b,a for each cell)
     std::vector<uint8_t> m_pixelData;
     
-    // Flag to indicate if this chunk needs updating
+    // Flag to indicate if this chunk needs updating this frame
     bool m_isDirty;
+    
+    // Flag to indicate if this chunk should be updated next frame
+    bool m_shouldUpdateNextFrame;
+    
+    // Counter to track how many frames a chunk has been inactive
+    int m_inactivityCounter;
     
     // Update rendering pixel data based on materials
     void updatePixelData();
@@ -81,6 +103,9 @@ private:
     
     // Helpers for liquid dynamics
     bool isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, int y);
+    
+    // Track if an element is currently in motion (for sand inertia)
+    std::vector<bool> m_isFreeFalling;
 };
 
 // The World manages a collection of chunks that make up the entire simulation

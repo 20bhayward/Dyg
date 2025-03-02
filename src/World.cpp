@@ -10,12 +10,16 @@ namespace PixelPhys {
 
 // Chunk implementation
 
-Chunk::Chunk(int posX, int posY) : m_posX(posX), m_posY(posY), m_isDirty(true) {
+Chunk::Chunk(int posX, int posY) : m_posX(posX), m_posY(posY), m_isDirty(true), 
+                                 m_shouldUpdateNextFrame(true), m_inactivityCounter(0) {
     // Initialize chunk with empty cells
     m_grid.resize(WIDTH * HEIGHT, MaterialType::Empty);
     
     // Initialize pixel data for rendering (RGBA for each cell)
     m_pixelData.resize(WIDTH * HEIGHT * 4, 0);
+    
+    // Initialize freeFalling status for each cell (none are falling initially)
+    m_isFreeFalling.resize(WIDTH * HEIGHT, false);
 }
 
 MaterialType Chunk::get(int x, int y) const {
@@ -260,7 +264,19 @@ void Chunk::set(int x, int y, MaterialType material) {
 }
 
 void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
-    // Create a copy of the grid for processing (to avoid updating cells that were already processed this frame)
+    // At the start of each frame, assume this chunk won't need processing next frame
+    setShouldUpdateNextFrame(false);
+    
+    // If this chunk isn't marked as dirty, skip updating it entirely
+    if (!m_isDirty) {
+        m_inactivityCounter++;
+        return;
+    } else {
+        // Reset inactivity counter since we're updating this frame
+        m_inactivityCounter = 0;
+    }
+    
+    // Create a copy of the grid for processing (to avoid updating cells already processed this frame)
     std::vector<MaterialType> oldGrid = m_grid;
     
     // Flag to track if any materials moved during this update
@@ -273,179 +289,307 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
             int idx = y * WIDTH + x;
             MaterialType material = oldGrid[idx];
             
-            // Check if the material is a powder type
-            if (material != MaterialType::Empty) {
-                const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+            // Skip empty cells
+            if (material == MaterialType::Empty) {
+                continue;
+            }
+            
+            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+            
+            // Handle powders (like sand)
+            if (props.isPowder) {
+                // Get whether this particle is free-falling or settled
+                bool isFalling = m_isFreeFalling[idx];
                 
-                if (props.isPowder) {
-                    // Try to move powder down
-                    if (y < HEIGHT - 1) {
-                        // Check directly below
-                        int belowIdx = (y + 1) * WIDTH + x;
-                        MaterialType belowMaterial = (belowIdx < static_cast<int>(m_grid.size())) ? 
-                                                    m_grid[belowIdx] : MaterialType::Empty;
+                // Try to move powder down
+                if (y < HEIGHT - 1) {
+                    // Check directly below
+                    int belowIdx = (y + 1) * WIDTH + x;
+                    MaterialType belowMaterial = (belowIdx < static_cast<int>(m_grid.size())) ? 
+                                                m_grid[belowIdx] : MaterialType::Empty;
+                    
+                    // If below is out of chunk, check the chunk below
+                    if (y == HEIGHT - 1 && chunkBelow) {
+                        belowMaterial = chunkBelow->get(x, 0);
                         
-                        // If below is out of chunk, check the chunk below
-                        if (y == HEIGHT - 1 && chunkBelow) {
-                            belowMaterial = chunkBelow->get(x, 0);
-                            // Mark the chunk below as dirty when there's a powder above it
-                            // This ensures the simulation continues across chunk boundaries
-                            // Always move powder across chunk boundary, regardless of what's below
-                            // This is a more aggressive approach to prevent particles from getting stuck
-                            if (props.isPowder) {
-                                if (belowMaterial == MaterialType::Empty) {
-                                    // Move directly to empty space below
-                                    chunkBelow->set(x, 0, material);
-                                    m_grid[idx] = MaterialType::Empty;
-                                    anyMaterialMoved = true;
-                                } else {
-                                    // If we can't move straight down, try to slide diagonally
-                                    // Check down-left first
-                                    if (x > 0) {
-                                        MaterialType downLeftMaterial = chunkBelow->get(x - 1, 0);
-                                        if (downLeftMaterial == MaterialType::Empty) {
-                                            chunkBelow->set(x - 1, 0, material);
-                                            m_grid[idx] = MaterialType::Empty;
-                                            anyMaterialMoved = true;
-                                            chunkBelow->setDirty(true);
-                                            continue;
-                                        }
-                                    }
-                                    
-                                    // Then check down-right
-                                    if (x < WIDTH - 1) {
-                                        MaterialType downRightMaterial = chunkBelow->get(x + 1, 0);
-                                        if (downRightMaterial == MaterialType::Empty) {
-                                            chunkBelow->set(x + 1, 0, material);
-                                            m_grid[idx] = MaterialType::Empty;
-                                            anyMaterialMoved = true;
-                                            chunkBelow->setDirty(true);
-                                            continue;
-                                        }
-                                    }
-                                }
-                                
-                                // Always mark the chunk below as dirty for next frame
-                                chunkBelow->setDirty(true);
-                            }
-                        }
-                        
+                        // If below is empty, move down
                         if (belowMaterial == MaterialType::Empty) {
-                            // Move powder straight down
-                            if (y == HEIGHT - 1 && chunkBelow) {
-                                // Crossing chunk boundary downward
-                                chunkBelow->set(x, 0, material);
-                                m_grid[idx] = MaterialType::Empty;
-                                chunkBelow->setDirty(true);
-                                anyMaterialMoved = true;
-                            } else if (belowIdx < static_cast<int>(m_grid.size())) {
-                                // Within same chunk
-                                m_grid[belowIdx] = material;
-                                m_grid[idx] = MaterialType::Empty;
-                                anyMaterialMoved = true; // Track that material moved
+                            // Move directly to empty space below
+                            chunkBelow->set(x, 0, material);
+                            m_grid[idx] = MaterialType::Empty;
+                            anyMaterialMoved = true;
+                            
+                            // Mark the particle as falling in the other chunk
+                            chunkBelow->m_isFreeFalling[x] = true;
+                            
+                            // Mark the chunk below as needing update next frame
+                            chunkBelow->setShouldUpdateNextFrame(true);
+                            continue;
+                        } 
+                        // If we can't move down, check diagonally, but only if we are in "falling" state
+                        else if (isFalling) {
+                            bool moved = false;
+                            
+                            // Try diagonal movement - first pick a random side to check
+                            bool checkLeftFirst = (m_rng() % 2 == 0);
+                            
+                            // Check down-left
+                            if (checkLeftFirst && x > 0) {
+                                MaterialType downLeftMaterial = chunkBelow->get(x - 1, 0);
+                                if (downLeftMaterial == MaterialType::Empty) {
+                                    chunkBelow->set(x - 1, 0, material);
+                                    m_grid[idx] = MaterialType::Empty;
+                                    chunkBelow->m_isFreeFalling[x - 1] = true;
+                                    anyMaterialMoved = true;
+                                    chunkBelow->m_shouldUpdateNextFrame = true;
+                                    moved = true;
+                                }
                             }
-                            continue; // Done moving this particle
+                            
+                            // Check down-right if didn't move left
+                            if (!moved && x < WIDTH - 1) {
+                                MaterialType downRightMaterial = chunkBelow->get(x + 1, 0);
+                                if (downRightMaterial == MaterialType::Empty) {
+                                    chunkBelow->set(x + 1, 0, material);
+                                    m_grid[idx] = MaterialType::Empty;
+                                    chunkBelow->m_isFreeFalling[x + 1] = true;
+                                    anyMaterialMoved = true;
+                                    chunkBelow->m_shouldUpdateNextFrame = true;
+                                    moved = true;
+                                }
+                            }
+                            
+                            // If not already moved and we need to check the right first
+                            if (!moved && !checkLeftFirst && x > 0) {
+                                MaterialType downLeftMaterial = chunkBelow->get(x - 1, 0);
+                                if (downLeftMaterial == MaterialType::Empty) {
+                                    chunkBelow->set(x - 1, 0, material);
+                                    m_grid[idx] = MaterialType::Empty;
+                                    chunkBelow->m_isFreeFalling[x - 1] = true;
+                                    anyMaterialMoved = true;
+                                    chunkBelow->m_shouldUpdateNextFrame = true;
+                                    moved = true;
+                                }
+                            }
+                            
+                            if (moved) {
+                                continue;
+                            }
                         }
                         
-                        // Check if we can slide down-left or down-right
+                        // Always mark the chunk below as needing update next frame
+                        chunkBelow->m_shouldUpdateNextFrame = true;
+                    }
+                    // Handle within the same chunk
+                    else if (belowMaterial == MaterialType::Empty) {
+                        // Move powder straight down
+                        m_grid[belowIdx] = material;
+                        m_grid[idx] = MaterialType::Empty;
+                        anyMaterialMoved = true;
+                        
+                        // Mark the particle as free-falling
+                        m_isFreeFalling[belowIdx] = true;
+                        continue; // Done moving this particle
+                    }
+                    // Handle diagonal movement, but only if the particle is in "falling" state
+                    else if (isFalling) {
                         bool movedDiagonally = false;
                         
-                        // Try to move down-left first if there's empty space
-                        if (x > 0) {
-                            int downLeftIdx = (y + 1) * WIDTH + (x - 1);
-                            MaterialType downLeftMaterial = MaterialType::Empty;
-                            
-                            // Check if we're crossing chunk boundaries
-                            if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
-                                // Bottom-left corner case - both chunks
-                                downLeftMaterial = chunkBelow->get(WIDTH - 1, 0);
-                            } else if (x == 0 && chunkLeft) {
-                                // Left edge case
-                                downLeftMaterial = chunkLeft->get(WIDTH - 1, y + 1);
-                            } else if (y == HEIGHT - 1 && chunkBelow) {
-                                // Bottom edge case
-                                downLeftMaterial = chunkBelow->get(x - 1, 0);
-                            } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
-                                // Within same chunk
-                                downLeftMaterial = m_grid[downLeftIdx];
-                            }
-                            
-                            if (downLeftMaterial == MaterialType::Empty) {
-                                // Move powder down-left
+                        // Randomly choose which side to check first for more natural behavior
+                        bool checkLeftFirst = (m_rng() % 2 == 0);
+                        
+                        // Try moving down-left or down-right
+                        if (checkLeftFirst) {
+                            // Try down-left if possible
+                            if (x > 0) {
+                                int downLeftIdx = (y + 1) * WIDTH + (x - 1);
+                                MaterialType downLeftMaterial = MaterialType::Empty;
+                                
+                                // Handle cross-chunk boundaries if needed
                                 if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
-                                    // Corner case - set in other chunk
-                                    chunkBelow->set(WIDTH - 1, 0, material);
-                                    // Mark the chunk as dirty so it continues simulation
-                                    chunkBelow->setDirty(true);
+                                    downLeftMaterial = chunkBelow->get(WIDTH - 1, 0);
                                 } else if (x == 0 && chunkLeft) {
-                                    // Left edge case
-                                    chunkLeft->set(WIDTH - 1, y + 1, material);
-                                    // Mark the chunk as dirty so it continues simulation
-                                    chunkLeft->setDirty(true);
+                                    downLeftMaterial = chunkLeft->get(WIDTH - 1, y + 1);
                                 } else if (y == HEIGHT - 1 && chunkBelow) {
-                                    // Bottom edge case
-                                    chunkBelow->set(x - 1, 0, material);
-                                    // Mark the chunk as dirty so it continues simulation
-                                    chunkBelow->setDirty(true);
+                                    downLeftMaterial = chunkBelow->get(x - 1, 0);
                                 } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
-                                    // Within same chunk
-                                    m_grid[downLeftIdx] = material;
+                                    downLeftMaterial = m_grid[downLeftIdx];
                                 }
                                 
-                                m_grid[idx] = MaterialType::Empty;
-                                movedDiagonally = true;
-                                anyMaterialMoved = true; // Track that material moved
+                                if (downLeftMaterial == MaterialType::Empty) {
+                                    // Handle cross-chunk boundaries
+                                    if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
+                                        chunkBelow->set(WIDTH - 1, 0, material);
+                                        chunkBelow->m_isFreeFalling[WIDTH * 0 + WIDTH - 1] = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                    } else if (x == 0 && chunkLeft) {
+                                        chunkLeft->set(WIDTH - 1, y + 1, material);
+                                        chunkLeft->m_isFreeFalling[WIDTH * (y + 1) + WIDTH - 1] = true;
+                                        chunkLeft->m_shouldUpdateNextFrame = true;
+                                    } else if (y == HEIGHT - 1 && chunkBelow) {
+                                        chunkBelow->set(x - 1, 0, material);
+                                        chunkBelow->m_isFreeFalling[x - 1] = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                    } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
+                                        m_grid[downLeftIdx] = material;
+                                        m_isFreeFalling[downLeftIdx] = true;
+                                    }
+                                    
+                                    m_grid[idx] = MaterialType::Empty;
+                                    movedDiagonally = true;
+                                    anyMaterialMoved = true;
+                                }
+                            }
+                            
+                            // If couldn't move left, try right
+                            if (!movedDiagonally && x < WIDTH - 1) {
+                                int downRightIdx = (y + 1) * WIDTH + (x + 1);
+                                MaterialType downRightMaterial = MaterialType::Empty;
+                                
+                                // Handle cross-chunk boundaries if needed
+                                if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
+                                    downRightMaterial = chunkBelow->get(0, 0);
+                                } else if (x == WIDTH - 1 && chunkRight) {
+                                    downRightMaterial = chunkRight->get(0, y + 1);
+                                } else if (y == HEIGHT - 1 && chunkBelow) {
+                                    downRightMaterial = chunkBelow->get(x + 1, 0);
+                                } else if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                    downRightMaterial = m_grid[downRightIdx];
+                                }
+                                
+                                if (downRightMaterial == MaterialType::Empty) {
+                                    // Handle cross-chunk boundaries
+                                    if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
+                                        chunkBelow->set(0, 0, material);
+                                        chunkBelow->m_isFreeFalling[0] = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                    } else if (x == WIDTH - 1 && chunkRight) {
+                                        chunkRight->set(0, y + 1, material);
+                                        chunkRight->m_isFreeFalling[WIDTH * (y + 1)] = true;
+                                        chunkRight->m_shouldUpdateNextFrame = true;
+                                    } else if (y == HEIGHT - 1 && chunkBelow) {
+                                        chunkBelow->set(x + 1, 0, material);
+                                        chunkBelow->m_isFreeFalling[x + 1] = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                    } else if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                        m_grid[downRightIdx] = material;
+                                        m_isFreeFalling[downRightIdx] = true;
+                                    }
+                                    
+                                    m_grid[idx] = MaterialType::Empty;
+                                    movedDiagonally = true;
+                                    anyMaterialMoved = true;
+                                }
+                            }
+                        } else {
+                            // Try right-first instead (same code but order is reversed)
+                            // Try down-right first
+                            if (x < WIDTH - 1) {
+                                int downRightIdx = (y + 1) * WIDTH + (x + 1);
+                                MaterialType downRightMaterial = MaterialType::Empty;
+                                
+                                // Handle cross-chunk boundaries
+                                if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
+                                    downRightMaterial = chunkBelow->get(0, 0);
+                                } else if (x == WIDTH - 1 && chunkRight) {
+                                    downRightMaterial = chunkRight->get(0, y + 1);
+                                } else if (y == HEIGHT - 1 && chunkBelow) {
+                                    downRightMaterial = chunkBelow->get(x + 1, 0);
+                                } else if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                    downRightMaterial = m_grid[downRightIdx];
+                                }
+                                
+                                if (downRightMaterial == MaterialType::Empty) {
+                                    // Handle cross-chunk boundaries
+                                    if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
+                                        chunkBelow->set(0, 0, material);
+                                        chunkBelow->m_isFreeFalling[0] = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                    } else if (x == WIDTH - 1 && chunkRight) {
+                                        chunkRight->set(0, y + 1, material);
+                                        chunkRight->m_isFreeFalling[WIDTH * (y + 1)] = true;
+                                        chunkRight->m_shouldUpdateNextFrame = true;
+                                    } else if (y == HEIGHT - 1 && chunkBelow) {
+                                        chunkBelow->set(x + 1, 0, material);
+                                        chunkBelow->m_isFreeFalling[x + 1] = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                    } else if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                        m_grid[downRightIdx] = material;
+                                        m_isFreeFalling[downRightIdx] = true;
+                                    }
+                                    
+                                    m_grid[idx] = MaterialType::Empty;
+                                    movedDiagonally = true;
+                                    anyMaterialMoved = true;
+                                }
+                            }
+                            
+                            // If couldn't move right, try left
+                            if (!movedDiagonally && x > 0) {
+                                int downLeftIdx = (y + 1) * WIDTH + (x - 1);
+                                MaterialType downLeftMaterial = MaterialType::Empty;
+                                
+                                // Handle cross-chunk boundaries
+                                if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
+                                    downLeftMaterial = chunkBelow->get(WIDTH - 1, 0);
+                                } else if (x == 0 && chunkLeft) {
+                                    downLeftMaterial = chunkLeft->get(WIDTH - 1, y + 1);
+                                } else if (y == HEIGHT - 1 && chunkBelow) {
+                                    downLeftMaterial = chunkBelow->get(x - 1, 0);
+                                } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
+                                    downLeftMaterial = m_grid[downLeftIdx];
+                                }
+                                
+                                if (downLeftMaterial == MaterialType::Empty) {
+                                    // Handle cross-chunk boundaries
+                                    if (x == 0 && y == HEIGHT - 1 && chunkBelow && chunkLeft) {
+                                        chunkBelow->set(WIDTH - 1, 0, material);
+                                        chunkBelow->m_isFreeFalling[WIDTH * 0 + WIDTH - 1] = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                    } else if (x == 0 && chunkLeft) {
+                                        chunkLeft->set(WIDTH - 1, y + 1, material);
+                                        chunkLeft->m_isFreeFalling[WIDTH * (y + 1) + WIDTH - 1] = true;
+                                        chunkLeft->m_shouldUpdateNextFrame = true;
+                                    } else if (y == HEIGHT - 1 && chunkBelow) {
+                                        chunkBelow->set(x - 1, 0, material);
+                                        chunkBelow->m_isFreeFalling[x - 1] = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                    } else if (downLeftIdx < static_cast<int>(m_grid.size())) {
+                                        m_grid[downLeftIdx] = material;
+                                        m_isFreeFalling[downLeftIdx] = true;
+                                    }
+                                    
+                                    m_grid[idx] = MaterialType::Empty;
+                                    movedDiagonally = true;
+                                    anyMaterialMoved = true;
+                                }
                             }
                         }
                         
-                        // Try to move down-right if we couldn't move down-left
-                        if (!movedDiagonally && x < WIDTH - 1) {
-                            int downRightIdx = (y + 1) * WIDTH + (x + 1);
-                            MaterialType downRightMaterial = MaterialType::Empty;
-                            
-                            // Check if we're crossing chunk boundaries
-                            if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
-                                // Bottom-right corner case - both chunks
-                                downRightMaterial = chunkBelow->get(0, 0);
-                            } else if (x == WIDTH - 1 && chunkRight) {
-                                // Right edge case
-                                downRightMaterial = chunkRight->get(0, y + 1);
-                            } else if (y == HEIGHT - 1 && chunkBelow) {
-                                // Bottom edge case
-                                downRightMaterial = chunkBelow->get(x + 1, 0);
-                            } else if (downRightIdx < static_cast<int>(m_grid.size())) {
-                                // Within same chunk
-                                downRightMaterial = m_grid[downRightIdx];
-                            }
-                            
-                            if (downRightMaterial == MaterialType::Empty) {
-                                // Move powder down-right
-                                if (x == WIDTH - 1 && y == HEIGHT - 1 && chunkBelow && chunkRight) {
-                                    // Corner case - set in other chunk
-                                    chunkBelow->set(0, 0, material);
-                                    // Mark the chunk as dirty so it continues simulation
-                                    chunkBelow->setDirty(true);
-                                } else if (x == WIDTH - 1 && chunkRight) {
-                                    // Right edge case
-                                    chunkRight->set(0, y + 1, material);
-                                    // Mark the chunk as dirty so it continues simulation
-                                    chunkRight->setDirty(true);
-                                } else if (y == HEIGHT - 1 && chunkBelow) {
-                                    // Bottom edge case
-                                    chunkBelow->set(x + 1, 0, material);
-                                    // Mark the chunk as dirty so it continues simulation
-                                    chunkBelow->setDirty(true);
-                                } else if (downRightIdx < static_cast<int>(m_grid.size())) {
-                                    // Within same chunk
-                                    m_grid[downRightIdx] = material;
-                                }
-                                
-                                m_grid[idx] = MaterialType::Empty;
-                                movedDiagonally = true;
-                                anyMaterialMoved = true; // Track that material moved
-                            }
+                        // If this material moved, continue to the next cell
+                        if (movedDiagonally) {
+                            continue;
                         }
                     }
+                }
+                
+                // If we reached here, the material didn't move this frame
+                // So we update its falling status
+                if (anyMaterialMoved) {
+                    // Material didn't move, but others have, so consider whether to set it to free falling 
+                    // This simulates neighboring particles knocking it loose
+                    // The higher the inertial resistance, the less likely it is to be set to freefalling
+                    uint8_t resistance = props.inertialResistance; // 0-100 scale
+                    if (m_rng() % 100 < (100 - resistance)) {
+                        // Set to free falling with a probability inversely proportional to inertial resistance
+                        m_isFreeFalling[idx] = true;
+                    } else {
+                        // Material stays settled
+                        m_isFreeFalling[idx] = false;
+                    }
+                } else {
+                    // Nothing moved, material stays where it is
+                    m_isFreeFalling[idx] = false;
                 }
             }
         }
@@ -482,7 +626,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             chunkBelow->set(x, 0, material);
                             m_grid[idx] = MaterialType::Empty; // Always remove source for volume conservation
                             anyMaterialMoved = true;
-                            chunkBelow->setDirty(true);
+                            chunkBelow->m_shouldUpdateNextFrame = true;
                             continue;
                         }
                         
@@ -491,34 +635,65 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                         if (belowMaterial != MaterialType::Empty) {
                             bool moved = false;
                             
-                            // Try down-left first
-                            if (x > 0) {
-                                MaterialType downLeftMaterial = chunkBelow->get(x - 1, 0);
-                                if (downLeftMaterial == MaterialType::Empty) {
-                                    chunkBelow->set(x - 1, 0, material);
-                                    m_grid[idx] = MaterialType::Empty;
-                                    anyMaterialMoved = true;
-                                    chunkBelow->setDirty(true);
-                                    moved = true;
-                                    continue;
+                            // Randomly choose which side to try first for more natural-looking flow
+                            bool tryLeftFirst = (m_rng() % 2 == 0);
+                            
+                            if (tryLeftFirst) {
+                                // Try down-left first
+                                if (x > 0) {
+                                    MaterialType downLeftMaterial = chunkBelow->get(x - 1, 0);
+                                    if (downLeftMaterial == MaterialType::Empty) {
+                                        chunkBelow->set(x - 1, 0, material);
+                                        m_grid[idx] = MaterialType::Empty;
+                                        anyMaterialMoved = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                        moved = true;
+                                    }
+                                }
+                                
+                                // Then try down-right
+                                if (!moved && x < WIDTH - 1) {
+                                    MaterialType downRightMaterial = chunkBelow->get(x + 1, 0);
+                                    if (downRightMaterial == MaterialType::Empty) {
+                                        chunkBelow->set(x + 1, 0, material);
+                                        m_grid[idx] = MaterialType::Empty;
+                                        anyMaterialMoved = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                        moved = true;
+                                    }
+                                }
+                            } else {
+                                // Try down-right first
+                                if (x < WIDTH - 1) {
+                                    MaterialType downRightMaterial = chunkBelow->get(x + 1, 0);
+                                    if (downRightMaterial == MaterialType::Empty) {
+                                        chunkBelow->set(x + 1, 0, material);
+                                        m_grid[idx] = MaterialType::Empty;
+                                        anyMaterialMoved = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                        moved = true;
+                                    }
+                                }
+                                
+                                // Then try down-left
+                                if (!moved && x > 0) {
+                                    MaterialType downLeftMaterial = chunkBelow->get(x - 1, 0);
+                                    if (downLeftMaterial == MaterialType::Empty) {
+                                        chunkBelow->set(x - 1, 0, material);
+                                        m_grid[idx] = MaterialType::Empty;
+                                        anyMaterialMoved = true;
+                                        chunkBelow->m_shouldUpdateNextFrame = true;
+                                        moved = true;
+                                    }
                                 }
                             }
                             
-                            // Then try down-right
-                            if (!moved && x < WIDTH - 1) {
-                                MaterialType downRightMaterial = chunkBelow->get(x + 1, 0);
-                                if (downRightMaterial == MaterialType::Empty) {
-                                    chunkBelow->set(x + 1, 0, material);
-                                    m_grid[idx] = MaterialType::Empty;
-                                    anyMaterialMoved = true;
-                                    chunkBelow->setDirty(true);
-                                    moved = true;
-                                    continue;
-                                }
+                            if (moved) {
+                                continue;
                             }
                             
-                            // Always mark the chunk below as dirty for next frame
-                            chunkBelow->setDirty(true);
+                            // Always mark the chunk below for next frame update
+                            chunkBelow->m_shouldUpdateNextFrame = true;
                         }
                     } else if (belowIdx < static_cast<int>(m_grid.size())) {
                         // Within same chunk - check if liquid can displace what's below
@@ -529,28 +704,96 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                             anyMaterialMoved = true;
                             continue;
                         }
+                        
+                        // If can't move down, try diagonal
+                        if (belowMaterial != MaterialType::Empty) {
+                            bool moved = false;
+                            
+                            // Randomly choose which side to try first
+                            bool tryLeftFirst = (m_rng() % 2 == 0);
+                            
+                            if (tryLeftFirst) {
+                                // Try down-left
+                                if (x > 0) {
+                                    int downLeftIdx = (y + 1) * WIDTH + (x - 1);
+                                    if (downLeftIdx < static_cast<int>(m_grid.size())) {
+                                        MaterialType downLeftMaterial = m_grid[downLeftIdx];
+                                        if (downLeftMaterial == MaterialType::Empty) {
+                                            m_grid[downLeftIdx] = material;
+                                            m_grid[idx] = MaterialType::Empty;
+                                            anyMaterialMoved = true;
+                                            moved = true;
+                                        }
+                                    }
+                                }
+                                
+                                // Try down-right if didn't move left
+                                if (!moved && x < WIDTH - 1) {
+                                    int downRightIdx = (y + 1) * WIDTH + (x + 1);
+                                    if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                        MaterialType downRightMaterial = m_grid[downRightIdx];
+                                        if (downRightMaterial == MaterialType::Empty) {
+                                            m_grid[downRightIdx] = material;
+                                            m_grid[idx] = MaterialType::Empty;
+                                            anyMaterialMoved = true;
+                                            moved = true;
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Try down-right first
+                                if (x < WIDTH - 1) {
+                                    int downRightIdx = (y + 1) * WIDTH + (x + 1);
+                                    if (downRightIdx < static_cast<int>(m_grid.size())) {
+                                        MaterialType downRightMaterial = m_grid[downRightIdx];
+                                        if (downRightMaterial == MaterialType::Empty) {
+                                            m_grid[downRightIdx] = material;
+                                            m_grid[idx] = MaterialType::Empty;
+                                            anyMaterialMoved = true;
+                                            moved = true;
+                                        }
+                                    }
+                                }
+                                
+                                // Try down-left if didn't move right
+                                if (!moved && x > 0) {
+                                    int downLeftIdx = (y + 1) * WIDTH + (x - 1);
+                                    if (downLeftIdx < static_cast<int>(m_grid.size())) {
+                                        MaterialType downLeftMaterial = m_grid[downLeftIdx];
+                                        if (downLeftMaterial == MaterialType::Empty) {
+                                            m_grid[downLeftIdx] = material;
+                                            m_grid[idx] = MaterialType::Empty;
+                                            anyMaterialMoved = true;
+                                            moved = true;
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (moved) {
+                                continue;
+                            }
+                        }
                     }
                 }
             }
         }
     }
     
-    // Second pass: horizontal spreading for liquids - needs to maintain flat surfaces
+    // Second pass: horizontal spreading for liquids with improved mechanics
     std::vector<MaterialType> spreadGrid = m_grid; // Copy current state for consistent spreading
     
-    // Check all water cells from bottom to top
+    // Process liquids from bottom to top
     for (int y = HEIGHT - 1; y >= 0; --y) {
-        // Process entire row both directions for balanced spreading
-        // Use two iterations with different spread directions
+        // Use alternating directions for balanced spreading
         for (int iteration = 0; iteration < 2; ++iteration) {
-            // First iteration: left-to-right, second: right-to-left
             bool leftToRight = (iteration == 0);
             
             for (int i = 0; i < WIDTH; ++i) {
                 int x = leftToRight ? i : (WIDTH - 1 - i);
                 int idx = y * WIDTH + x;
                 
-                // Skip cells that aren't liquids or already processed
+                // Skip cells that aren't liquids or were already processed
                 MaterialType material = spreadGrid[idx];
                 if (material == MaterialType::Empty || !(m_grid[idx] == material)) {
                     continue;
@@ -588,7 +831,6 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                     int liquidColumnHeight = 0;
                     
                     // Calculate height of fluid column at current position
-                    // This helps us determine if we should spread to achieve a flat surface
                     for (int checkY = y; checkY >= 0; --checkY) {
                         int checkIdx = checkY * WIDTH + x;
                         if (checkIdx >= 0 && checkIdx < static_cast<int>(m_grid.size())) {
@@ -603,21 +845,13 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                     // Set spread direction based on iteration
                     int spreadDirection = leftToRight ? 1 : -1;
                     
-                    // Determine liquid pressure based on type and column height
-                    int baseLiquidPressure = 4; // Default spread distance
+                    // Get material-specific dispersal rate from properties
+                    int dispersalRate = props.dispersalRate;
                     
-                    // Different spread rates for different liquids
-                    if (material == MaterialType::Lava) {
-                        baseLiquidPressure = 2; // Lava spreads more slowly
-                    } else if (material == MaterialType::Oil) {
-                        baseLiquidPressure = 5; // Oil spreads faster
-                    }
+                    // Higher liquid columns create more pressure (further spreading)
+                    int liquidPressure = std::min(dispersalRate + (liquidColumnHeight / 2), 8);
                     
-                    // Higher columns create more pressure (more aggressive spreading)
-                    int liquidPressure = std::min(baseLiquidPressure + (liquidColumnHeight / 2), 12);
-                    
-                    // Find neighboring liquid column heights to determine where to flow
-                    // Check adjacent positions to see if we can create a flatter surface
+                    // Search for empty spaces or lower liquid columns to flow to
                     for (int spread = 1; spread <= liquidPressure; ++spread) {
                         int nx = x + (spreadDirection * spread);
                         MaterialType sideNeighbor = MaterialType::Empty;
@@ -692,7 +926,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                     // Move material to neighbor chunk column
                                     targetChunk->set(targetX, y - sideColumnHeight, material);
                                     m_grid[idx] = MaterialType::Empty;
-                                    targetChunk->setDirty(true);
+                                    targetChunk->m_shouldUpdateNextFrame = true;
                                     anyMaterialMoved = true;
                                 } else {
                                     // Move material to lower column within same chunk
@@ -723,13 +957,41 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                 }
                             }
                             
-                            // Only flow horizontally to supported cells or if close to source
-                            if (hasSupport || spread <= 1) {
+                            // Check each cell along the path to ensure we don't skip over solid blocks
+                            bool pathBlocked = false;
+                            for (int checkSpread = 1; checkSpread < spread; checkSpread++) {
+                                int checkX = x + (spreadDirection * checkSpread);
+                                // Handle cross-chunk checks
+                                MaterialType checkMaterial = MaterialType::Empty;
+                                
+                                if (checkX < 0 && chunkLeft) {
+                                    int leftCheckX = WIDTH + checkX;
+                                    checkMaterial = chunkLeft->get(leftCheckX, y);
+                                } else if (checkX >= WIDTH && chunkRight) {
+                                    int rightCheckX = checkX - WIDTH;
+                                    checkMaterial = chunkRight->get(rightCheckX, y);
+                                } else if (checkX >= 0 && checkX < WIDTH) {
+                                    checkMaterial = m_grid[y * WIDTH + checkX];
+                                }
+                                
+                                // If a solid block is in the way, path is blocked
+                                if (checkMaterial != MaterialType::Empty && checkMaterial != material) {
+                                    const auto& checkProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(checkMaterial)];
+                                    if (checkProps.isSolid) {
+                                        pathBlocked = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            // Only flow horizontally if the path is clear and the destination has support
+                            // or if it's very close to the source
+                            if (!pathBlocked && (hasSupport || spread <= 1)) {
                                 if (isCrossingChunk) {
                                     // Move material to neighboring chunk
                                     targetChunk->set(targetX, y, material);
                                     m_grid[idx] = MaterialType::Empty;
-                                    targetChunk->setDirty(true);
+                                    targetChunk->m_shouldUpdateNextFrame = true;
                                     anyMaterialMoved = true;
                                 } else {
                                     // Move material within same chunk
@@ -746,9 +1008,9 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                         }
                     }
                 }
-                }
             }
         }
+    }
     
 
     
@@ -797,15 +1059,15 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
     // Handle material interactions (like fire spreading, water effects, etc.)
     handleMaterialInteractions(oldGrid, anyMaterialMoved);
     
-    // Mark the chunk as dirty for next frame if materials moved
-    // This allows materials to continue falling even without player interaction
+    // Mark the chunk for update next frame if materials moved
+    // This allows materials to continue being simulated even without player interaction
     if (anyMaterialMoved) {
-        m_isDirty = true;
+        m_shouldUpdateNextFrame = true;
         
         // Mark neighboring chunks as potentially needing updates too
-        if (chunkBelow) chunkBelow->setDirty(true);
-        if (chunkLeft) chunkLeft->setDirty(true);
-        if (chunkRight) chunkRight->setDirty(true);
+        if (chunkBelow) chunkBelow->m_shouldUpdateNextFrame = true;
+        if (chunkLeft) chunkLeft->m_shouldUpdateNextFrame = true;
+        if (chunkRight) chunkRight->m_shouldUpdateNextFrame = true;
     }
     
     // Update the pixel data to reflect the changes
@@ -1541,13 +1803,23 @@ void World::update() {
     static int cleanupCounter = 0;
     cleanupCounter++;
     
-    // Every 10 frames, do a full check for stuck powders at chunk boundaries
-    if (cleanupCounter >= 10) {
+    // Every 30 frames, do a full check for stuck powders at chunk boundaries
+    if (cleanupCounter >= 30) {
         cleanupCounter = 0;
-        // Force all chunks to update at least once
+        // Force chunks that have been inactive for a long time to update at least once
         for (auto& chunk : m_chunks) {
-            if (chunk) {
+            if (chunk && chunk->getInactivityCounter() > 50) {
                 chunk->setDirty(true);
+            }
+        }
+    }
+    
+    // At the start of the frame, transfer shouldUpdateNextFrame flags to dirty flags
+    for (auto& chunk : m_chunks) {
+        if (chunk) {
+            if (chunk->shouldUpdateNextFrame()) {
+                chunk->setDirty(true); // Set chunk to update this frame
+                chunk->setShouldUpdateNextFrame(false); // Reset flag for next frame
             }
         }
     }
@@ -1555,7 +1827,7 @@ void World::update() {
     // Special check for powders and liquids at chunk boundaries to prevent stuck particles
     for (int i = 0; i < (int)m_chunks.size(); ++i) {
         auto& chunk = m_chunks[i];
-        if (chunk) {
+        if (chunk && chunk->isDirty()) {
             int y = i / m_chunksX;
             int x = i % m_chunksX;
             
@@ -1599,27 +1871,59 @@ void World::update() {
                                     MaterialType originalBelowMaterial = belowMaterial;
                                     chunkBelow->set(localX, 0, material);
                                     chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
+                                    
+                                    // Set the element as free-falling in the chunk below
+                                    chunkBelow->setFreeFalling(localX, true);
                                 } else {
                                     // Try to move diagonally if directly below is blocked
                                     bool moved = false;
                                     
-                                    // Try down-left
-                                    if (localX > 0) {
-                                        MaterialType downLeftMaterial = chunkBelow->get(localX - 1, 0);
-                                        if (downLeftMaterial == MaterialType::Empty) {
-                                            chunkBelow->set(localX - 1, 0, material);
-                                            chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
-                                            moved = true;
-                                        }
-                                    }
+                                    // Randomly choose which side to try first
+                                    bool tryLeftFirst = (rand() % 2 == 0);
                                     
-                                    // Try down-right if didn't move down-left
-                                    if (!moved && localX < Chunk::WIDTH - 1) {
-                                        MaterialType downRightMaterial = chunkBelow->get(localX + 1, 0);
-                                        if (downRightMaterial == MaterialType::Empty) {
-                                            chunkBelow->set(localX + 1, 0, material);
-                                            chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
-                                            moved = true;
+                                    if (tryLeftFirst) {
+                                        // Try down-left
+                                        if (localX > 0) {
+                                            MaterialType downLeftMaterial = chunkBelow->get(localX - 1, 0);
+                                            if (downLeftMaterial == MaterialType::Empty) {
+                                                chunkBelow->set(localX - 1, 0, material);
+                                                chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
+                                                chunkBelow->m_isFreeFalling[localX - 1] = true;
+                                                moved = true;
+                                            }
+                                        }
+                                        
+                                        // Try down-right if didn't move down-left
+                                        if (!moved && localX < Chunk::WIDTH - 1) {
+                                            MaterialType downRightMaterial = chunkBelow->get(localX + 1, 0);
+                                            if (downRightMaterial == MaterialType::Empty) {
+                                                chunkBelow->set(localX + 1, 0, material);
+                                                chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
+                                                chunkBelow->m_isFreeFalling[localX + 1] = true;
+                                                moved = true;
+                                            }
+                                        }
+                                    } else {
+                                        // Try down-right first
+                                        if (localX < Chunk::WIDTH - 1) {
+                                            MaterialType downRightMaterial = chunkBelow->get(localX + 1, 0);
+                                            if (downRightMaterial == MaterialType::Empty) {
+                                                chunkBelow->set(localX + 1, 0, material);
+                                                chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
+                                                chunkBelow->m_isFreeFalling[localX + 1] = true;
+                                                moved = true;
+                                            }
+                                        }
+                                        
+                                        // Try down-left if didn't move down-right
+                                        if (!moved && localX > 0) {
+                                            MaterialType downLeftMaterial = chunkBelow->get(localX - 1, 0);
+                                            if (downLeftMaterial == MaterialType::Empty) {
+                                                chunkBelow->set(localX - 1, 0, material);
+                                                chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
+                                                chunkBelow->m_isFreeFalling[localX - 1] = true;
+                                                moved = true;
+                                            }
                                         }
                                     }
                                     
@@ -1648,9 +1952,9 @@ void World::update() {
                                     }
                                 }
                                 
-                                // Always mark both chunks as dirty to ensure proper continued physics
-                                chunk->setDirty(true);
-                                chunkBelow->setDirty(true);
+                                // Always mark both chunks for update next frame
+                                chunk->m_shouldUpdateNextFrame = true;
+                                chunkBelow->m_shouldUpdateNextFrame = true;
                             }
                         }
                     }
@@ -1677,9 +1981,9 @@ void World::update() {
                                     chunkLeft->set(Chunk::WIDTH - 1, localY, material);
                                     chunk->set(0, localY, MaterialType::Empty);
                                     
-                                    // Mark chunks as dirty
-                                    chunk->setDirty(true);
-                                    chunkLeft->setDirty(true);
+                                    // Mark chunks for next frame update
+                                    chunk->m_shouldUpdateNextFrame = true;
+                                    chunkLeft->m_shouldUpdateNextFrame = true;
                                 }
                             }
                         }
@@ -1706,9 +2010,9 @@ void World::update() {
                                     chunkRight->set(0, localY, material);
                                     chunk->set(Chunk::WIDTH - 1, localY, MaterialType::Empty);
                                     
-                                    // Mark chunks as dirty
-                                    chunk->setDirty(true);
-                                    chunkRight->setDirty(true);
+                                    // Mark chunks for next frame update
+                                    chunk->m_shouldUpdateNextFrame = true;
+                                    chunkRight->m_shouldUpdateNextFrame = true;
                                 }
                             }
                         }
@@ -1718,15 +2022,14 @@ void World::update() {
         }
     }
     
-    // First pass: mark all chunks as dirty that have active materials or neighbors
+    // Update all dirty chunks and propagate activity to neighbors
     for (int i = 0; i < (int)m_chunks.size(); ++i) {
         auto& chunk = m_chunks[i];
         if (chunk && chunk->isDirty()) {
             int y = i / m_chunksX;
             int x = i % m_chunksX;
             
-            // Mark neighboring chunks as dirty too to ensure proper physics
-            // across chunk boundaries
+            // Mark neighboring chunks for update next frame to ensure proper physics across chunk boundaries
             for (int dy = -1; dy <= 1; ++dy) {
                 for (int dx = -1; dx <= 1; ++dx) {
                     // Skip self, already marked
@@ -1738,25 +2041,17 @@ void World::update() {
                     if (nx >= 0 && nx < m_chunksX && ny >= 0 && ny < m_chunksY) {
                         Chunk* neighbor = getChunkAt(nx, ny);
                         if (neighbor) {
-                            neighbor->setDirty(true);
+                            neighbor->m_shouldUpdateNextFrame = true;
                         }
                     }
                 }
             }
-        }
-    }
-    
-    // Update all marked chunks - simulate physics
-    for (int i = 0; i < (int)m_chunks.size(); ++i) {
-        auto& chunk = m_chunks[i];
-        if (chunk && chunk->isDirty()) {
-            int y = i / m_chunksX;
-            int x = i % m_chunksX;
-    
-            Chunk* chunkBelow  = (y < m_chunksY - 1) ? getChunkAt(x, y + 1) : nullptr;
-            Chunk* chunkLeft   = (x > 0)             ? getChunkAt(x - 1, y) : nullptr;
-            Chunk* chunkRight  = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
-    
+            
+            // Now update the chunk with references to its neighbors
+            Chunk* chunkBelow = (y < m_chunksY - 1) ? getChunkAt(x, y + 1) : nullptr;
+            Chunk* chunkLeft = (x > 0) ? getChunkAt(x - 1, y) : nullptr;
+            Chunk* chunkRight = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
+            
             chunk->update(chunkBelow, chunkLeft, chunkRight);
         }
     }
