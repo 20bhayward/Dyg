@@ -268,6 +268,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
     setShouldUpdateNextFrame(false);
     
     // If this chunk isn't marked as dirty, skip updating it entirely
+    // This is the core of the optimization - don't process inactive chunks
     if (!m_isDirty) {
         m_inactivityCounter++;
         return;
@@ -275,6 +276,9 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
         // Reset inactivity counter since we're updating this frame
         m_inactivityCounter = 0;
     }
+    
+    // At the beginning of each update, assume no activity will happen
+    // Only if materials actually move will we mark this as dirty for next frame
     
     // Create a copy of the grid for processing (to avoid updating cells already processed this frame)
     std::vector<MaterialType> oldGrid = m_grid;
@@ -580,7 +584,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                     // This simulates neighboring particles knocking it loose
                     // The higher the inertial resistance, the less likely it is to be set to freefalling
                     uint8_t resistance = props.inertialResistance; // 0-100 scale
-                    if (m_rng() % 100 < (100 - resistance)) {
+                    if (static_cast<int>(m_rng() % 100) < (100 - resistance)) {
                         // Set to free falling with a probability inversely proportional to inertial resistance
                         m_isFreeFalling[idx] = true;
                     } else {
@@ -818,7 +822,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                         belowMaterial = chunkBelow->get(x, 0);
                     }
                     
-                    const auto& belowProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(belowMaterial)];
+                    // Just check for empty or liquid properties directly
                     hasLiquidBelow = (belowMaterial == material); // Same liquid type below
                     hasEmptyBelow = (belowMaterial == MaterialType::Empty);
                 }
@@ -1062,13 +1066,17 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
     // Mark the chunk for update next frame if materials moved
     // This allows materials to continue being simulated even without player interaction
     if (anyMaterialMoved) {
-        setShouldUpdateNextFrame(true);;
+        // Mark self for update next frame - critical for continuous animation!
+        setShouldUpdateNextFrame(true);
         
         // Mark neighboring chunks as potentially needing updates too
-        if (chunkBelow) chunkBelow->setShouldUpdateNextFrame(true);;
-        if (chunkLeft) chunkLeft->setShouldUpdateNextFrame(true);;
-        if (chunkRight) chunkRight->setShouldUpdateNextFrame(true);;
+        // This ensures activity propagates properly across chunk boundaries
+        if (chunkBelow) chunkBelow->setShouldUpdateNextFrame(true);
+        if (chunkLeft) chunkLeft->setShouldUpdateNextFrame(true);
+        if (chunkRight) chunkRight->setShouldUpdateNextFrame(true);
     }
+    // If nothing moved, we'll naturally sleep next frame since setShouldUpdateNextFrame(false)
+    // was called at the start of this method
     
     // Update the pixel data to reflect the changes
     updatePixelData();
@@ -1128,7 +1136,7 @@ bool Chunk::canDisplace(MaterialType above, MaterialType below) const {
     return false;
 }
 
-void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& oldGrid, bool& anyMaterialMoved) {
+void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& /* oldGrid - unused */, bool& anyMaterialMoved) {
     // Process all cells in the grid for material interactions
     for (int y = 0; y < HEIGHT; ++y) {
         for (int x = 0; x < WIDTH; ++x) {
@@ -1140,8 +1148,7 @@ void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& oldGrid,
                 continue;
             }
             
-            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(current)];
-            
+            // Only need properties for specific interactions
             // Fire interactions with flammable materials
             if (current == MaterialType::Fire) {
                 // Check surrounding cells for flammable materials
@@ -1685,8 +1692,27 @@ World::World(int width, int height) : m_width(width), m_height(height) {
     std::random_device rd;
     m_rng = std::mt19937(rd());
     
+    // Setup thread count based on available cores (capped at a sensible maximum)
+    m_numThreads = std::min(std::thread::hardware_concurrency(), 16u);
+    if (m_numThreads == 0) m_numThreads = 4; // Fallback if detection fails
+    
     std::cout << "Created world with dimensions: " << width << "x" << height << std::endl;
     std::cout << "Chunk grid size: " << m_chunksX << "x" << m_chunksY << std::endl;
+    if (m_useMultithreading) {
+        std::cout << "Using " << m_numThreads << " threads for simulation" << std::endl;
+    }
+}
+
+World::~World() {
+    // Signal threads to stop
+    m_shouldStopThreads = true;
+    
+    // Wait for all threads to finish
+    for (auto& thread : m_threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
 }
 
 MaterialType World::get(int x, int y) const {
@@ -1803,24 +1829,64 @@ void World::update() {
     static int cleanupCounter = 0;
     cleanupCounter++;
     
-    // Every 30 frames, do a full check for stuck powders at chunk boundaries
+    // Every 30 frames, do a full check for chunks that have been inactive for too long
+    // This prevents materials from getting permanently stuck at chunk boundaries
     if (cleanupCounter >= 30) {
         cleanupCounter = 0;
         // Force chunks that have been inactive for a long time to update at least once
+        // This way we periodically check if stuck materials should be moving again
         for (auto& chunk : m_chunks) {
             if (chunk && chunk->getInactivityCounter() > 50) {
                 chunk->setDirty(true);
+                
+                // Find the index of this chunk in our vector
+                int index = -1;
+                for (size_t i = 0; i < m_chunks.size(); i++) {
+                    if (m_chunks[i].get() == chunk.get()) {
+                        index = static_cast<int>(i);
+                        break;
+                    }
+                }
+                // Only proceed if we found the index
+                if (index >= 0) {
+                    int y = index / m_chunksX;
+                    int x = index % m_chunksX;
+                
+                    // Wake neighbors in all 8 directions to be thorough
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (dx == 0 && dy == 0) continue; // Skip self
+                            
+                            int nx = x + dx;
+                            int ny = y + dy;
+                            if (nx >= 0 && nx < m_chunksX && ny >= 0 && ny < m_chunksY) {
+                                Chunk* neighbor = getChunkAt(nx, ny);
+                                if (neighbor) {
+                                    neighbor->setDirty(true);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
     
-    // At the start of the frame, transfer shouldUpdateNextFrame flags to dirty flags
+    // This is the key part of the chunk optimization system as described in the video:
+    // 1. At start of frame, the shouldUpdateNextFrame flag becomes this frame's shouldUpdate (isDirty)
+    // 2. Reset shouldUpdateNextFrame to false, assuming chunk will sleep next frame unless woken
     for (auto& chunk : m_chunks) {
         if (chunk) {
+            // Set this frame's update status based on next frame flag from previous frame
             if (chunk->shouldUpdateNextFrame()) {
-                chunk->setDirty(true); // Set chunk to update this frame
-                chunk->setShouldUpdateNextFrame(false); // Reset flag for next frame
+                chunk->setDirty(true); // Mark for update this frame
+            } else {
+                chunk->setDirty(false); // Explicitly mark as NOT dirty if not scheduled for update
             }
+            
+            // ALWAYS reset the next frame flag to false - crucial for the sleep system
+            // This way chunks sleep by default unless something wakes them
+            chunk->setShouldUpdateNextFrame(false);
         }
     }
     
@@ -1868,7 +1934,8 @@ void World::update() {
                                 
                                 if (canMove) {
                                     // Directly move material down, displacing what's below if needed
-                                    MaterialType originalBelowMaterial = belowMaterial;
+                                    // Original material is tracked for debugging
+                                    // MaterialType originalBelowMaterial = belowMaterial;
                                     chunkBelow->set(localX, 0, material);
                                     chunk->set(localX, Chunk::HEIGHT - 1, MaterialType::Empty);
                                     
@@ -2022,14 +2089,13 @@ void World::update() {
         }
     }
     
-    // Update all dirty chunks and propagate activity to neighbors
+    // Mark neighboring chunks for update next frame to ensure proper physics across chunk boundaries
     for (int i = 0; i < (int)m_chunks.size(); ++i) {
         auto& chunk = m_chunks[i];
         if (chunk && chunk->isDirty()) {
             int y = i / m_chunksX;
             int x = i % m_chunksX;
             
-            // Mark neighboring chunks for update next frame to ensure proper physics across chunk boundaries
             for (int dy = -1; dy <= 1; ++dy) {
                 for (int dx = -1; dx <= 1; ++dx) {
                     // Skip self, already marked
@@ -2046,13 +2112,31 @@ void World::update() {
                     }
                 }
             }
-            
-            // Now update the chunk with references to its neighbors
-            Chunk* chunkBelow = (y < m_chunksY - 1) ? getChunkAt(x, y + 1) : nullptr;
-            Chunk* chunkLeft = (x > 0) ? getChunkAt(x - 1, y) : nullptr;
-            Chunk* chunkRight = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
-            
-            chunk->update(chunkBelow, chunkLeft, chunkRight);
+        }
+    }
+    
+    // Use multithreading if enabled
+    if (m_useMultithreading) {
+        // Process odd columns first to avoid race conditions
+        processOddColumns();
+        
+        // Then process even columns
+        processEvenColumns();
+    } else {
+        // Standard single-threaded update
+        for (int i = 0; i < (int)m_chunks.size(); ++i) {
+            auto& chunk = m_chunks[i];
+            if (chunk && chunk->isDirty()) {
+                int y = i / m_chunksX;
+                int x = i % m_chunksX;
+                
+                // Now update the chunk with references to its neighbors
+                Chunk* chunkBelow = (y < m_chunksY - 1) ? getChunkAt(x, y + 1) : nullptr;
+                Chunk* chunkLeft = (x > 0) ? getChunkAt(x - 1, y) : nullptr;
+                Chunk* chunkRight = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
+                
+                chunk->update(chunkBelow, chunkLeft, chunkRight);
+            }
         }
     }
     
@@ -3394,9 +3478,9 @@ void World::generate(unsigned int seed) {
             continue; // Too close to surface or bottom
         }
         
-        // Determine biome based on surface (for future use if needed)
-        // We keep this code even though it's currently unused
-        MaterialType surfaceMaterial = get(x, surfaceY);
+        // Biome determination based on surface material isn't needed for small veins
+        // So we comment it out to avoid the unused variable warning
+        // MaterialType surfaceMaterial = get(x, surfaceY);
         
         // Check if position is valid for ore placement
         if (isValidPositionForOre(x, y)) {
@@ -3512,6 +3596,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
     
     // Different ore types have different "personalities" for their vein generation
     float directionRandomness = 0.3f;   // How random the direction changes are (0-1)
+    // We use this directionRandomness variable throughout the function
     float branchChance = 0.15f;         // Chance to create a branch (0-1)
     float upwardBias = 0.0f;            // Bias toward moving upward (-1 to 1)
     float horizontalBias = 0.0f;        // Bias toward moving horizontally (-1 to 1)
@@ -3628,9 +3713,8 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
     // Main vein generation loop
     while (veinsPlaced < maxSize) {
         // Change direction with more randomness to prevent directional bias
-        // Mix between Perlin noise and pure randomness
+        // Use Perlin noise instead of pure randomness for smoother curves
         float noiseVal = perlinNoise2D(x * 0.1f, y * 0.1f, static_cast<unsigned int>(oreType) + 123);
-        float randomVal = static_cast<float>(m_rng() % 1000) / 1000.0f * 2.0f - 1.0f; // -1 to 1
         
         // Return to a more controlled, predictable angle change
     float angleChange = (noiseVal * 2.0f - 1.0f) * directionRandomness * 3.14159f;
@@ -3734,7 +3818,7 @@ void World::generateOreVein(int startX, int startY, MaterialType oreType, int ma
 
 
 void World::generateOreVeinBranch(int startX, int startY, MaterialType oreType, int maxSize, float density, 
-                                 int maxRadius, float startAngle, BiomeType biome) {
+                                 int maxRadius, float startAngle, BiomeType /* biome - unused */) {
     // Similar to main vein generation but used for branches
     int x = startX;
     int y = startY;
@@ -3751,7 +3835,7 @@ void World::generateOreVeinBranch(int startX, int startY, MaterialType oreType, 
     float angle = startAngle;
     
     // Branch veins are now more substantial with more clusters
-    float directionRandomness = 0.3f; // More randomness
+    // Branch parameters - unused but kept for consistency with main vein code
     int minStepsBetweenClusters = 1;  // Place clusters more frequently
     int maxStepsBetweenClusters = 3;
     int stepsToNextCluster = minStepsBetweenClusters + m_rng() % (maxStepsBetweenClusters - minStepsBetweenClusters + 1);
@@ -3885,6 +3969,90 @@ void World::updatePixelData() {
             }
         }
     }
+}
+
+void World::processOddColumns() {
+    // Process all chunks in odd-numbered columns concurrently
+    std::vector<std::thread> oddThreads;
+    
+    // Reserve for expected number of threads to avoid reallocations
+    oddThreads.reserve(m_numThreads);
+    
+    // Process chunks in chunks with odd x coordinates (1, 3, 5, etc.)
+    for (int tid = 0; tid < m_numThreads; tid++) {
+        oddThreads.emplace_back([this, tid]() {
+            int startIdx = tid;
+            int stepSize = m_numThreads;
+            
+            for (int i = startIdx; i < (int)m_chunks.size(); i += stepSize) {
+                auto& chunk = m_chunks[i];
+                if (!chunk || !chunk->isDirty()) continue;
+                
+                int y = i / m_chunksX;
+                int x = i % m_chunksX;
+                
+                // Only process odd columns in this pass
+                if (x % 2 == 1) {
+                    updateChunkThreaded(chunk.get(), x, y);
+                }
+            }
+        });
+    }
+    
+    // Wait for all odd column threads to complete
+    for (auto& thread : oddThreads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+}
+
+void World::processEvenColumns() {
+    // Process all chunks in even-numbered columns concurrently
+    std::vector<std::thread> evenThreads;
+    
+    // Reserve for expected number of threads to avoid reallocations
+    evenThreads.reserve(m_numThreads);
+    
+    // Process chunks in chunks with even x coordinates (0, 2, 4, etc.)
+    for (int tid = 0; tid < m_numThreads; tid++) {
+        evenThreads.emplace_back([this, tid]() {
+            int startIdx = tid;
+            int stepSize = m_numThreads;
+            
+            for (int i = startIdx; i < (int)m_chunks.size(); i += stepSize) {
+                auto& chunk = m_chunks[i];
+                if (!chunk || !chunk->isDirty()) continue;
+                
+                int y = i / m_chunksX;
+                int x = i % m_chunksX;
+                
+                // Only process even columns in this pass
+                if (x % 2 == 0) {
+                    updateChunkThreaded(chunk.get(), x, y);
+                }
+            }
+        });
+    }
+    
+    // Wait for all even column threads to complete
+    for (auto& thread : evenThreads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+}
+
+void World::updateChunkThreaded(Chunk* chunk, int chunkX, int chunkY) {
+    if (!chunk) return;
+    
+    // Get neighbor chunks for this chunk
+    Chunk* chunkBelow = (chunkY < m_chunksY - 1) ? getChunkAt(chunkX, chunkY + 1) : nullptr;
+    Chunk* chunkLeft = (chunkX > 0) ? getChunkAt(chunkX - 1, chunkY) : nullptr;
+    Chunk* chunkRight = (chunkX < m_chunksX - 1) ? getChunkAt(chunkX + 1, chunkY) : nullptr;
+    
+    // Update the chunk with its neighbors
+    chunk->update(chunkBelow, chunkLeft, chunkRight);
 }
 
 } // namespace PixelPhys

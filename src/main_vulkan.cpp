@@ -501,9 +501,9 @@ int main() {
                           << " | ViewportSize: " << viewportWidth << "x" << viewportHeight << std::endl;
             }
             
-            // Mark the region as dirty for physics simulation
-            world.update(worldX - placeBrushSize, worldY - placeBrushSize, 
-                         worldX + placeBrushSize, worldY + placeBrushSize);
+            // IMPORTANT: Always continue normal world simulation even while placing materials
+            // This ensures chunks don't freeze when holding the mouse button
+            world.update();
         }
         else {
             // Update world simulation

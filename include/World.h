@@ -7,6 +7,9 @@
 #include <cstdint>
 #include <iostream>
 #include <map>
+#include <thread>
+#include <atomic>
+#include <mutex>
 
 namespace PixelPhys {
 
@@ -112,7 +115,7 @@ private:
 class World {
 public:
     World(int width, int height);
-    ~World() = default;
+    ~World();  // Need non-default destructor to clean up threads
     
     // Get world dimensions in pixels
     int getWidth() const { return m_width; }
@@ -179,6 +182,17 @@ private:
     
     // Random number generator
     std::mt19937 m_rng;
+    
+    // Multi-threading support
+    bool m_useMultithreading = true;  // Enable/disable multi-threading
+    int m_numThreads = std::thread::hardware_concurrency();  // Number of threads to use
+    std::vector<std::thread> m_threads;  // Thread pool
+    std::atomic<bool> m_shouldStopThreads{false};  // Signal to stop threads
+    
+    // Process chunks in odd/even columns to avoid race conditions
+    void processOddColumns();
+    void processEvenColumns();
+    void updateChunkThreaded(Chunk* chunk, int chunkX, int chunkY);
     
     // Helper functions
     Chunk* getChunkAt(int x, int y);
