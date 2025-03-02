@@ -2115,27 +2115,44 @@ void World::update() {
         }
     }
     
-    // Use multithreading if enabled
-    if (m_useMultithreading) {
-        // Process odd columns first to avoid race conditions
-        processOddColumns();
-        
-        // Then process even columns
-        processEvenColumns();
-    } else {
-        // Standard single-threaded update
-        for (int i = 0; i < (int)m_chunks.size(); ++i) {
-            auto& chunk = m_chunks[i];
-            if (chunk && chunk->isDirty()) {
-                int y = i / m_chunksX;
-                int x = i % m_chunksX;
-                
-                // Now update the chunk with references to its neighbors
-                Chunk* chunkBelow = (y < m_chunksY - 1) ? getChunkAt(x, y + 1) : nullptr;
-                Chunk* chunkLeft = (x > 0) ? getChunkAt(x - 1, y) : nullptr;
-                Chunk* chunkRight = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
-                
-                chunk->update(chunkBelow, chunkLeft, chunkRight);
+    // Process all dirty chunks, alternating between odd and even columns to prevent race conditions
+    // We first update all odd-column chunks, then all even-column chunks, as described in the video
+    // This prevents thread conflicts when accessing neighboring chunks
+    
+    // Process odd columns first (1, 3, 5, etc.)
+    for (int y = 0; y < m_chunksY; y++) {
+        for (int x = 1; x < m_chunksX; x += 2) {
+            int idx = y * m_chunksX + x;
+            if (idx >= 0 && idx < (int)m_chunks.size()) {
+                auto& chunk = m_chunks[idx];
+                if (chunk && chunk->isDirty()) {
+                    // Get neighbor chunks for this chunk
+                    Chunk* chunkBelow = (y < m_chunksY - 1) ? getChunkAt(x, y + 1) : nullptr;
+                    Chunk* chunkLeft = (x > 0) ? getChunkAt(x - 1, y) : nullptr;
+                    Chunk* chunkRight = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
+                    
+                    // Update the chunk with its neighbors
+                    chunk->update(chunkBelow, chunkLeft, chunkRight);
+                }
+            }
+        }
+    }
+    
+    // Then process even columns (0, 2, 4, etc.)
+    for (int y = 0; y < m_chunksY; y++) {
+        for (int x = 0; x < m_chunksX; x += 2) {
+            int idx = y * m_chunksX + x;
+            if (idx >= 0 && idx < (int)m_chunks.size()) {
+                auto& chunk = m_chunks[idx];
+                if (chunk && chunk->isDirty()) {
+                    // Get neighbor chunks for this chunk
+                    Chunk* chunkBelow = (y < m_chunksY - 1) ? getChunkAt(x, y + 1) : nullptr;
+                    Chunk* chunkLeft = (x > 0) ? getChunkAt(x - 1, y) : nullptr;
+                    Chunk* chunkRight = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
+                    
+                    // Update the chunk with its neighbors
+                    chunk->update(chunkBelow, chunkLeft, chunkRight);
+                }
             }
         }
     }
@@ -3972,73 +3989,43 @@ void World::updatePixelData() {
 }
 
 void World::processOddColumns() {
-    // Process all chunks in odd-numbered columns concurrently
-    std::vector<std::thread> oddThreads;
-    
-    // Reserve for expected number of threads to avoid reallocations
-    oddThreads.reserve(m_numThreads);
-    
-    // Process chunks in chunks with odd x coordinates (1, 3, 5, etc.)
-    for (int tid = 0; tid < m_numThreads; tid++) {
-        oddThreads.emplace_back([this, tid]() {
-            int startIdx = tid;
-            int stepSize = m_numThreads;
-            
-            for (int i = startIdx; i < (int)m_chunks.size(); i += stepSize) {
-                auto& chunk = m_chunks[i];
-                if (!chunk || !chunk->isDirty()) continue;
-                
-                int y = i / m_chunksX;
-                int x = i % m_chunksX;
-                
-                // Only process odd columns in this pass
-                if (x % 2 == 1) {
-                    updateChunkThreaded(chunk.get(), x, y);
+    // Process odd-column chunks sequentially for now
+    for (int y = 0; y < m_chunksY; y++) {
+        for (int x = 1; x < m_chunksX; x += 2) { // Start at 1, increment by 2 for odd columns only
+            int idx = y * m_chunksX + x;
+            if (idx >= 0 && idx < (int)m_chunks.size()) {
+                auto& chunk = m_chunks[idx];
+                if (chunk && chunk->isDirty()) {
+                    // Get neighbor chunks for this chunk
+                    Chunk* chunkBelow = (y < m_chunksY - 1) ? getChunkAt(x, y + 1) : nullptr;
+                    Chunk* chunkLeft = (x > 0) ? getChunkAt(x - 1, y) : nullptr;
+                    Chunk* chunkRight = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
+                    
+                    // Update the chunk with its neighbors
+                    chunk->update(chunkBelow, chunkLeft, chunkRight);
                 }
             }
-        });
-    }
-    
-    // Wait for all odd column threads to complete
-    for (auto& thread : oddThreads) {
-        if (thread.joinable()) {
-            thread.join();
         }
     }
 }
 
 void World::processEvenColumns() {
-    // Process all chunks in even-numbered columns concurrently
-    std::vector<std::thread> evenThreads;
-    
-    // Reserve for expected number of threads to avoid reallocations
-    evenThreads.reserve(m_numThreads);
-    
-    // Process chunks in chunks with even x coordinates (0, 2, 4, etc.)
-    for (int tid = 0; tid < m_numThreads; tid++) {
-        evenThreads.emplace_back([this, tid]() {
-            int startIdx = tid;
-            int stepSize = m_numThreads;
-            
-            for (int i = startIdx; i < (int)m_chunks.size(); i += stepSize) {
-                auto& chunk = m_chunks[i];
-                if (!chunk || !chunk->isDirty()) continue;
-                
-                int y = i / m_chunksX;
-                int x = i % m_chunksX;
-                
-                // Only process even columns in this pass
-                if (x % 2 == 0) {
-                    updateChunkThreaded(chunk.get(), x, y);
+    // Process even-column chunks sequentially for now
+    for (int y = 0; y < m_chunksY; y++) {
+        for (int x = 0; x < m_chunksX; x += 2) { // Start at 0, increment by 2 for even columns only
+            int idx = y * m_chunksX + x;
+            if (idx >= 0 && idx < (int)m_chunks.size()) {
+                auto& chunk = m_chunks[idx];
+                if (chunk && chunk->isDirty()) {
+                    // Get neighbor chunks for this chunk
+                    Chunk* chunkBelow = (y < m_chunksY - 1) ? getChunkAt(x, y + 1) : nullptr;
+                    Chunk* chunkLeft = (x > 0) ? getChunkAt(x - 1, y) : nullptr;
+                    Chunk* chunkRight = (x < m_chunksX - 1) ? getChunkAt(x + 1, y) : nullptr;
+                    
+                    // Update the chunk with its neighbors
+                    chunk->update(chunkBelow, chunkLeft, chunkRight);
                 }
             }
-        });
-    }
-    
-    // Wait for all even column threads to complete
-    for (auto& thread : evenThreads) {
-        if (thread.joinable()) {
-            thread.join();
         }
     }
 }
