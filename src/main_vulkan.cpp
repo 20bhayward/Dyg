@@ -12,10 +12,10 @@
 #include "../include/Renderer.h"
 #include "../include/VulkanBackend.h"
 
-const int WINDOW_WIDTH  = 1980;
-const int WINDOW_HEIGHT = 1080;
+const int WINDOW_WIDTH  = 800;
+const int WINDOW_HEIGHT = 600;
 // Test mode with smaller world for physics testing
-const bool TEST_MODE = false;
+const bool TEST_MODE = true;
 
 // World dimensions - use smaller world in test mode
 const int WORLD_WIDTH   = TEST_MODE ? 800 : 6000;  // Much smaller for test mode
@@ -79,37 +79,6 @@ int main() {
         // Create a flat bottom platform across the world
         for (int x = 0; x < WORLD_WIDTH; x++) {
             for (int y = WORLD_HEIGHT - 50; y < WORLD_HEIGHT; y++) {
-                world.set(x, y, PixelPhys::MaterialType::Stone);
-            }
-        }
-        
-        // Add a few platforms for testing material interactions
-        for (int x = 100; x < 300; x++) {
-            for (int y = WORLD_HEIGHT - 150; y < WORLD_HEIGHT - 140; y++) {
-                world.set(x, y, PixelPhys::MaterialType::Stone);
-            }
-        }
-        
-        for (int x = 500; x < 700; x++) {
-            for (int y = WORLD_HEIGHT - 250; y < WORLD_HEIGHT - 240; y++) {
-                world.set(x, y, PixelPhys::MaterialType::Stone);
-            }
-        }
-        
-        // Add a "funnel" in the middle for testing
-        for (int x = 350; x < 450; x++) {
-            // Left slope
-            int slopeHeight = (x - 350) / 2;
-            for (int y = WORLD_HEIGHT - 200; y < WORLD_HEIGHT - 200 + slopeHeight; y++) {
-                world.set(x, y, PixelPhys::MaterialType::Stone);
-            }
-        }
-        
-        // Right side funnel
-        for (int x = 450; x < 550; x++) {
-            // Right slope (descending)
-            int slopeHeight = (550 - x) / 2;
-            for (int y = WORLD_HEIGHT - 200; y < WORLD_HEIGHT - 200 + slopeHeight; y++) {
                 world.set(x, y, PixelPhys::MaterialType::Stone);
             }
         }
