@@ -12,10 +12,10 @@
 #include "../include/Renderer.h"
 #include "../include/VulkanBackend.h"
 
-const int WINDOW_WIDTH  = 800;
-const int WINDOW_HEIGHT = 600;
+const int WINDOW_WIDTH  = 1980;
+const int WINDOW_HEIGHT = 1080;
 // Test mode with smaller world for physics testing
-const bool TEST_MODE = true;
+const bool TEST_MODE = false;
 
 // World dimensions - use smaller world in test mode
 const int WORLD_WIDTH   = TEST_MODE ? 800 : 6000;  // Much smaller for test mode
@@ -32,7 +32,7 @@ const float MAX_ZOOM = 4.0f;   // Maximum zoom level
 const float ZOOM_STEP = 0.1f;  // Zoom amount per scroll
 const int CAMERA_SPEED = 15;  // Camera movement speed (pixels per key press)
 const int DEFAULT_VIEW_HEIGHT = 450; // Default height to position camera at start
-const float basePixelSize = 1.5f;  // Base pixel size for world rendering (smaller for more detail)
+const float basePixelSize = 1.0f;  // Base pixel size for world rendering (smaller for more detail)
 
 // Mouse parameters
 bool middleMouseDown = false;
@@ -63,10 +63,11 @@ int main() {
         return 1;
     }
     
-    // Optionally, set fullscreen (desktop mode)
     SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
     int actualWidth, actualHeight;
-    SDL_GetWindowSize(window, &actualWidth, &actualHeight);
+    SDL_Vulkan_GetDrawableSize(window, &actualWidth, &actualHeight); // IMPORTANT
+    std::cout << "Drawable size (after going fullscreen): "
+              << actualWidth << "x" << actualHeight << std::endl;
     
     // Create the world and generate terrain or simple test environment
     PixelPhys::World world(WORLD_WIDTH, WORLD_HEIGHT);
@@ -201,7 +202,7 @@ int main() {
                     // Toggle fullscreen mode
                     Uint32 flags = SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
                     SDL_SetWindowFullscreen(window, flags ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
-                    SDL_GetWindowSize(window, &actualWidth, &actualHeight);
+                    SDL_Vulkan_GetDrawableSize(window, &actualWidth, &actualHeight);
                     std::cout << "Window resized to " << actualWidth << "x" << actualHeight << std::endl;
                 }
                 // Camera movement - adjust speed based on zoom level (move faster when zoomed out)
@@ -363,12 +364,12 @@ int main() {
                     SDL_GetMouseState(&x, &y);
                     
                     // Calculate world position under cursor before zoom
-                    float worldX = cameraX + x / (basePixelSize * prevZoom);
-                    float worldY = cameraY + y / (basePixelSize * prevZoom);
+                    float worldX = x;
+                    float worldY = y;
                     
                     // Adjust camera to keep world position under cursor
-                    cameraX = static_cast<int>(worldX - x / (basePixelSize * zoomLevel));
-                    cameraY = static_cast<int>(worldY - y / (basePixelSize * zoomLevel));
+                    cameraX = static_cast<int>(x / (basePixelSize * zoomLevel));
+                    cameraY = static_cast<int>(y / (basePixelSize * zoomLevel));
                     
                     // Clamp camera position
                     cameraX = std::max(0, cameraX);
@@ -452,16 +453,13 @@ int main() {
                 }
             }
             else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED) {
-                SDL_GetWindowSize(window, &actualWidth, &actualHeight);
+                SDL_Vulkan_GetDrawableSize(window, &actualWidth, &actualHeight);
                 std::cout << "Window manually resized to " << actualWidth << "x" << actualHeight << std::endl;
             }
         }
-        
+        SDL_GetMouseState(&mouseX, &mouseY);
         // Handle material placement with left mouse button
         if (leftMouseDown) {
-            // Get current mouse position to ensure we have the latest position
-            int latestMouseX, latestMouseY;
-            SDL_GetMouseState(&latestMouseX, &latestMouseY);
             
             // Convert screen coordinates to world coordinates
             // Try a different approach to screen-to-world conversion
@@ -471,12 +469,12 @@ int main() {
             // So we need to reverse this logic
             
             // Get the actual viewport dimensions in world units
-            float viewportWidth = actualWidth / (basePixelSize * zoomLevel);
-            float viewportHeight = actualHeight / (basePixelSize * zoomLevel);
+            float viewportWidth = actualWidth / (zoomLevel);
+            float viewportHeight = actualHeight / (zoomLevel);
             
             // Calculate percentages across the viewport
-            float percentX = static_cast<float>(latestMouseX) / actualWidth;
-            float percentY = static_cast<float>(latestMouseY) / actualHeight;
+            float percentX = static_cast<float>(mouseX) / actualWidth;
+            float percentY = static_cast<float>(mouseY) / actualHeight;
             
             // Apply percentages to get position in world space
             int worldX = cameraX + static_cast<int>(percentX * viewportWidth);
@@ -487,28 +485,21 @@ int main() {
                 for (int dx = -placeBrushSize / 2; dx <= placeBrushSize / 2; dx++) {
                     // Check if point is within brush radius for circular brush shape
                     if (dx*dx + dy*dy <= (placeBrushSize/2)*(placeBrushSize/2)) {
-                        world.set(worldX + dx, worldY + dy, currentMaterial);
+                        world.set(mouseX, mouseY, currentMaterial);
                     }
                 }
             }
             
             // Debug output - only show occasionally to avoid console spam
-            if (frameCount % 10 == 0) {
-                std::cout << "\nMouse at screen: " << latestMouseX << "," << latestMouseY 
+            if (frameCount % 100 == 0) {
+                std::cout << "\nMouse at screen: " << mouseX << "," << mouseY 
                           << " | World: " << worldX << "," << worldY 
                           << " | Camera: " << cameraX << "," << cameraY 
                           << " | Zoom: " << zoomLevel 
                           << " | ViewportSize: " << viewportWidth << "x" << viewportHeight << std::endl;
             }
-            
-            // Mark the region as dirty for physics simulation
-            world.update(worldX - placeBrushSize, worldY - placeBrushSize, 
-                         worldX + placeBrushSize, worldY + placeBrushSize);
         }
-        else {
-            // Update world simulation
-            world.update();
-        }
+        world.update();
         
         // Render the world using our renderer with camera position and zoom level
         renderer->render(world, cameraX, cameraY, zoomLevel);
@@ -519,9 +510,6 @@ int main() {
         if (it != materialNames.end()) {
             materialName = it->second;
         }
-        std::string statusText = "Material: " + materialName + " | Brush Size: " + std::to_string(placeBrushSize);
-        std::cout << "\r" << statusText << std::flush;  // Use carriage return to update in-place
-        
         // FPS calculation (print FPS every second)
         frameCount++;
         if (SDL_GetTicks() - fpsTimer >= 1000) {

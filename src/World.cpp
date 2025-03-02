@@ -1811,6 +1811,7 @@ void World::update() {
         // Force chunks that have been inactive for a long time to update at least once
         for (auto& chunk : m_chunks) {
             if (chunk && chunk->getInactivityCounter() > 50) {
+                std::cout << "Setting chunk to dirty for being inactive for a while" << std::endl;
                 chunk->setDirty(true);
             }
         }

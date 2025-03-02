@@ -24,8 +24,8 @@ enum class BiomeType {
 class Chunk {
 public:
     // Fixed size for each chunk - for better aligned ore generation
-    static constexpr int WIDTH = 40;   // Slightly larger chunks for more coherent ore patterns
-    static constexpr int HEIGHT = 40;
+    static constexpr int WIDTH = 64;   // Slightly larger chunks for more coherent ore patterns
+    static constexpr int HEIGHT = 64;
     
     Chunk(int posX = 0, int posY = 0);
     ~Chunk() = default;
