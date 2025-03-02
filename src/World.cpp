@@ -749,7 +749,8 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                 }
             }
         }
-    }
+    
+
     
     // Handle gas rise (for fire, flammable gas, etc.)
     for (int y = 0; y < HEIGHT; ++y) {  // Bottom-up for gases (they rise)
