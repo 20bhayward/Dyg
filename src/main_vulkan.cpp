@@ -193,7 +193,7 @@ int main() {
                     quit = true;
                 else if (e.key.keysym.sym == SDLK_r) {
                     // Reset world with a new seed
-                    seed = static_cast<unsigned int>(std::time(nullptr));
+                    unsigned int seed = static_cast<unsigned int>(std::time(nullptr));
                     world.generate(seed);
                     std::cout << "World reset with seed: " << seed << std::endl;
                 }
@@ -261,9 +261,7 @@ int main() {
                 // Material selection hotkeys
                 else if (e.key.keysym.sym == SDLK_1) {
                     currentMaterial = PixelPhys::MaterialType::Sand;
-                    std::cout << "Selected Sand (inertialResistance: " 
-                              << static_cast<int>(MATERIAL_PROPERTIES[static_cast<size_t>(PixelPhys::MaterialType::Sand)].inertialResistance)
-                              << ")" << std::endl;
+                    std::cout << "Selected Sand" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_2) {
                     currentMaterial = PixelPhys::MaterialType::Water;
@@ -275,9 +273,7 @@ int main() {
                 }
                 else if (e.key.keysym.sym == SDLK_4) {
                     currentMaterial = PixelPhys::MaterialType::Gravel;
-                    std::cout << "Selected Gravel (inertialResistance: " 
-                              << static_cast<int>(MATERIAL_PROPERTIES[static_cast<size_t>(PixelPhys::MaterialType::Gravel)].inertialResistance)
-                              << ")" << std::endl;
+                    std::cout << "Selected Gravel" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_5) {
                     currentMaterial = PixelPhys::MaterialType::Oil;

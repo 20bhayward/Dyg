@@ -8,7 +8,7 @@
 #include <SDL2/SDL.h>
 
 // Define a debug macro that can be disabled
-// Set to 0 to disable all DEBUG output, 1 to enable only critical debug, 2 for verbose
+// Set to 0 to disable all  output, 1 to enable only critical debug, 2 for verbose
 #define VULKAN_DEBUG_LEVEL 0
 
 // Completely disable all debug output
@@ -475,17 +475,13 @@ void VulkanBackend::endFrame() {
         prInfo.pResults = nullptr;
         
         // Present the frame
-        std::cout << "DEBUG: Presenting image index " << m_currentImageIndex << " to present queue" << std::endl;
         VkResult presResult = vkQueuePresentKHR(m_presentQueue, &prInfo);
-        std::cout << "DEBUG: vkQueuePresentKHR result = " << presResult << std::endl;
         
         if (presResult == VK_ERROR_OUT_OF_DATE_KHR || presResult == VK_SUBOPTIMAL_KHR) {
             std::cout << "Recreating swapchain due to OUT_OF_DATE or SUBOPTIMAL" << std::endl;
             recreateSwapChain();
         } else if (presResult != VK_SUCCESS) {
             std::cerr << "Failed to present swap chain image! Error: " << presResult << std::endl;
-        } else {
-            std::cout << "DEBUG: Image presented successfully" << std::endl;
         }
         
     } catch (const std::exception& e) {
@@ -496,7 +492,6 @@ void VulkanBackend::endFrame() {
     }
     
     // Update frame counter
-    std::cout << "DEBUG: Updating frame counter from " << m_currentFrame;
     m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
     std::cout << " to " << m_currentFrame << std::endl;
 }
@@ -710,12 +705,10 @@ void VulkanBackend::bindRenderTarget(std::shared_ptr<RenderTarget> target) {
 }
 
 void VulkanBackend::bindDefaultRenderTarget() {
-    std::cout << "DEBUG: Binding default render target" << std::endl;
     
     try {
         // End the current render pass if one is active
         if (m_renderPassInProgress) {
-            std::cout << "DEBUG: Ending previous render pass" << std::endl;
             vkCmdEndRenderPass(m_commandBuffers[m_currentFrame]);
             m_renderPassInProgress = false;
         }
@@ -736,8 +729,7 @@ void VulkanBackend::bindDefaultRenderTarget() {
             std::cerr << "ERROR: Framebuffer for current image is null" << std::endl;
             return;
         }
-        
-        std::cout << "DEBUG: Setting up render pass info for default render target" << std::endl;
+    
         
         // Begin the default render pass with the current swap chain frame buffer
         VkRenderPassBeginInfo renderPassInfo{};
@@ -755,10 +747,9 @@ void VulkanBackend::bindDefaultRenderTarget() {
         renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
         renderPassInfo.pClearValues = clearValues.data();
         
-        std::cout << "DEBUG: Starting render pass with framebuffer " << m_swapChainFramebuffers[m_currentImageIndex] << std::endl;
+
         vkCmdBeginRenderPass(m_commandBuffers[m_currentFrame], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         m_renderPassInProgress = true;
-        std::cout << "DEBUG: Render pass started successfully" << std::endl;
         
         // Set viewport and scissor to match swap chain extent
         VkViewport viewport{};
@@ -1950,7 +1941,6 @@ bool VulkanBackend::createRenderPass() {
 }
 
 bool VulkanBackend::createFramebuffers() {
-    std::cout << "DEBUG: Creating framebuffers for " << m_swapChainImageViews.size() << " swap chain images" << std::endl;
     
     if (m_defaultRenderPass == VK_NULL_HANDLE) {
         std::cerr << "ERROR: Trying to create framebuffers with null render pass" << std::endl;
@@ -1964,8 +1954,6 @@ bool VulkanBackend::createFramebuffers() {
             std::cerr << "ERROR: Image view " << i << " is null, cannot create framebuffer" << std::endl;
             continue;
         }
-        
-        std::cout << "DEBUG: Creating framebuffer for image view " << i << std::endl;
         
         // For proper rendering, we need both color and depth attachments
         // Create a depth image for each framebuffer
@@ -2059,10 +2047,9 @@ bool VulkanBackend::createFramebuffers() {
             return false;
         }
         
-        std::cout << "DEBUG: Created framebuffer " << m_swapChainFramebuffers[i] << " for image " << i << std::endl;
+        
     }
     
-    std::cout << "DEBUG: Successfully created " << m_swapChainFramebuffers.size() << " framebuffers" << std::endl;
     return true;
 }
 
@@ -2263,7 +2250,6 @@ bool VulkanBackend::createFullscreenQuad() {
 }
 
 void VulkanBackend::cleanupSwapChain() {
-    std::cout << "DEBUG: Cleaning up swapchain resources" << std::endl;
     
     // Clean up framebuffers
     for (auto framebuffer : m_swapChainFramebuffers) {
@@ -2303,7 +2289,6 @@ void VulkanBackend::cleanupSwapChain() {
         m_swapChain = VK_NULL_HANDLE;
     }
     
-    std::cout << "DEBUG: Swapchain cleanup completed" << std::endl;
 }
 
 void VulkanBackend::recreateSwapChain() {
@@ -2648,8 +2633,6 @@ void VulkanTexture::update(const void* data) {
         return;
     }
     
-    std::cout << "DEBUG: VulkanTexture::update - Texture size: " << m_width << "x" << m_height 
-              << " (hasAlpha: " << (m_hasAlpha ? "true" : "false") << ")" << std::endl;
     
     try {
         VulkanBackend* vulkanBackend = static_cast<VulkanBackend*>(m_backend);
@@ -2660,11 +2643,9 @@ void VulkanTexture::update(const void* data) {
         // Calculate data size based on texture dimensions - ensure proper alignment
         VkDeviceSize bytesPerPixel = m_hasAlpha ? 4 : 3;
         VkDeviceSize imageSize = m_width * m_height * bytesPerPixel;
-        std::cout << "DEBUG: Calculated image size: " << imageSize << " bytes" << std::endl;
         
         // Create a staging buffer if not already present
         if (m_stagingBuffer == VK_NULL_HANDLE || m_stagingMemory == VK_NULL_HANDLE) {
-            std::cout << "DEBUG: Creating new staging buffer" << std::endl;
             
             VkBufferCreateInfo stagingBufferInfo = {};
             stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -2681,7 +2662,6 @@ void VulkanTexture::update(const void* data) {
             // Get staging buffer memory requirements
             VkMemoryRequirements stagingMemReq;
             vkGetBufferMemoryRequirements(m_device, m_stagingBuffer, &stagingMemReq);
-            std::cout << "DEBUG: Staging buffer requires " << stagingMemReq.size << " bytes of memory" << std::endl;
             
             // Allocate staging memory (host visible for CPU writing)
             VkMemoryAllocateInfo stagingAllocInfo = {};
@@ -2693,7 +2673,6 @@ void VulkanTexture::update(const void* data) {
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
             
             stagingAllocInfo.memoryTypeIndex = memoryTypeIndex;
-            std::cout << "DEBUG: Using memory type index: " << memoryTypeIndex << std::endl;
             
             VkResult allocResult = vkAllocateMemory(m_device, &stagingAllocInfo, nullptr, &m_stagingMemory);
             if (allocResult != VK_SUCCESS) {
@@ -2713,13 +2692,10 @@ void VulkanTexture::update(const void* data) {
                 m_stagingMemory = VK_NULL_HANDLE;
                 return;
             }
-            
-            std::cout << "DEBUG: Staging buffer created successfully" << std::endl;
         }
         
         // Copy data to staging buffer
         void* mapped = nullptr;
-        std::cout << "DEBUG: Mapping staging buffer memory" << std::endl;
         VkResult mapResult = vkMapMemory(m_device, m_stagingMemory, 0, imageSize, 0, &mapped);
         if (mapResult != VK_SUCCESS) {
             std::cerr << "Failed to map staging buffer memory: " << mapResult << std::endl;
@@ -2733,7 +2709,6 @@ void VulkanTexture::update(const void* data) {
             return;
         }
         
-        std::cout << "DEBUG: Copying " << imageSize << " bytes to staging buffer" << std::endl;
         // SAFETY CHECK: Only copy if we have valid pointers and a reasonable size
         if (mapped && data && imageSize > 0 && imageSize < 100 * 1024 * 1024) { // 100MB max
             // Use byte-by-byte copy instead of memcpy to avoid potential segfaults with misaligned data
@@ -2759,7 +2734,6 @@ void VulkanTexture::update(const void* data) {
         }
         
         vkUnmapMemory(m_device, m_stagingMemory);
-        std::cout << "DEBUG: Data copied to staging buffer and unmapped" << std::endl;
         
         // Re-enabled texture upload code for proper rendering
         
