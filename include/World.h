@@ -11,7 +11,44 @@
 #include <unordered_set>
 #include <algorithm> // for std::find, std::sort
 
+// Helper macro for accessing material properties
+#define MAT_PROPS(m) MATERIAL_PROPERTIES[static_cast<std::size_t>(m)]
+
+// Debug logging macro - enable with DEBUG_MODE compilation flag
+#ifdef DEBUG_MODE
+    #define DEBUG_LOG(x) std::cout << x << std::endl
+#else
+    #define DEBUG_LOG(x)
+#endif
+
+// Physics constants to replace magic numbers
+namespace Physics {
+    // Liquid dynamics
+    constexpr float LIQUID_DISPERSAL = 0.3f;
+    constexpr int MAX_LIQUID_PRESSURE = 8;
+    
+    // Powder dynamics
+    constexpr float POWDER_INERTIA_MULTIPLIER = 1.5f;
+    constexpr int MAX_FALL_SPEED = 5;
+    
+    // Material interaction constants
+    constexpr float FIRE_SPREAD_CHANCE = 0.15f;
+    constexpr int FIRE_LIFETIME = 120;
+}
+
 namespace PixelPhys {
+
+// Helper functions for camera clamping
+inline void ClampCamera(int& camX, int& camY, int worldWidth, int worldHeight, int viewWidth, int viewHeight) {
+    camX = std::clamp(camX, 0, worldWidth - viewWidth);
+    camY = std::clamp(camY, 0, worldHeight - viewHeight);
+}
+
+// Helper for coordinate translation
+inline void WorldToScreen(int wx, int wy, int cameraX, int cameraY, int pixelSize, int& sx, int& sy) {
+    sx = (wx - cameraX) * pixelSize;
+    sy = (wy - cameraY) * pixelSize;
+}
 
 // Define biome types for ore generation and world generation
 enum class BiomeType {
@@ -66,6 +103,7 @@ public:
     
     // Update physics for this chunk (will be called every frame)
     // Needs access to surrounding chunks for proper boundary physics
+    // Also stores the neighboring chunks for later boundary checks
     void update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight);
     
     // Check if this chunk needs updating (has active materials)
@@ -106,6 +144,15 @@ public:
     // Set modified flag
     void setModified(bool modified) { m_isModified = modified; }
     
+    // Helper function to calculate material color variations
+    void GetMaterialVariation(MaterialType material, int x, int y, 
+                             int& rVar, int& gVar, int& bVar, bool forRendering = false) const;
+    
+    // Helper functions for checking neighboring chunks
+    bool HasLeftNeighbor() const { return chunkLeft != nullptr; }
+    bool HasRightNeighbor() const { return chunkRight != nullptr; }
+    bool HasBottomNeighbor() const { return chunkBelow != nullptr; }
+    
 private:
     // Grid of materials in the chunk
     std::vector<MaterialType> m_grid;
@@ -124,6 +171,11 @@ private:
     
     // Counter to track how many frames a chunk has been inactive
     int m_inactivityCounter;
+    
+    // Neighboring chunks for physics updates and boundary checks
+    Chunk* chunkBelow = nullptr;
+    Chunk* chunkLeft = nullptr;
+    Chunk* chunkRight = nullptr;
     
     // Handle interactions between different materials (fire spreading, etc.)
     void handleMaterialInteractions(const std::vector<MaterialType>& oldGrid, bool& anyMaterialMoved);
