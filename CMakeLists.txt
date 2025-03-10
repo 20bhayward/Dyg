@@ -66,6 +66,7 @@ set(SOURCES
     src/Renderer.cpp
     src/VulkanBackend.cpp
     src/RenderBackend.cpp
+    src/ChunkManager.cpp
 )
 
 # Create executable

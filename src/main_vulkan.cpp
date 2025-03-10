@@ -15,7 +15,7 @@
 const int WINDOW_WIDTH  = 800;
 const int WINDOW_HEIGHT = 600;
 // Test mode with smaller world for physics testing
-const bool TEST_MODE = true;
+const bool TEST_MODE = false;
 
 // World dimensions - use smaller world in test mode
 const int WORLD_WIDTH   = TEST_MODE ? 800 : 6000;  // Much smaller for test mode
@@ -95,13 +95,48 @@ int main() {
     if (TEST_MODE) {
         cameraX = 0; // We want to see the whole test area
         cameraY = 0; // Start at the top
-        zoomLevel = 1.0f; // Full default zoom to see details
     } else {
-        // Normal world position
-        cameraX = WORLD_WIDTH / 4;
+        // Focus on the first few chunks
+        cameraX = 0;
         cameraY = 0;
-        zoomLevel = 0.75f;
     }
+    
+    // Ensure camera is properly clamped to world bounds
+    cameraX = std::max(0, cameraX);
+    cameraX = std::min(WORLD_WIDTH - actualWidth, cameraX);
+    cameraY = std::max(0, cameraY);
+    cameraY = std::min(WORLD_HEIGHT - actualHeight, cameraY);
+    
+    // SIMPLER TEST: Create a basic test pattern with directly visible materials
+    std::cout << "Creating simple test pattern..." << std::endl;
+    
+    // Fill the entire viewable area with a simple pattern
+    // Create a flat stone platform on the bottom 100 pixels
+    for (int x = 0; x < actualWidth; x++) {
+        for (int y = actualHeight - 100; y < actualHeight; y++) {
+            world.set(x, y, PixelPhys::MaterialType::Stone);
+        }
+    }
+    
+    // Add some sand columns in the middle
+    for (int i = 0; i < 5; i++) {
+        int columnX = 100 + i * 100;
+        int columnHeight = 150 + i * 20;
+        for (int x = columnX; x < columnX + 50; x++) {
+            for (int y = actualHeight - 100 - columnHeight; y < actualHeight - 100; y++) {
+                world.set(x, y, PixelPhys::MaterialType::Sand);
+            }
+        }
+    }
+    
+    // Add some water on the right
+    for (int x = actualWidth / 2; x < actualWidth; x++) {
+        for (int y = actualHeight - 150; y < actualHeight - 100; y++) {
+            world.set(x, y, PixelPhys::MaterialType::Water);
+        }
+    }
+    
+    std::cout << "Simple test pattern created!" << std::endl;
     
     // Create the renderer (Vulkan only)
     auto renderer = std::make_shared<PixelPhys::Renderer>(
@@ -174,59 +209,47 @@ int main() {
                     SDL_Vulkan_GetDrawableSize(window, &actualWidth, &actualHeight);
                     std::cout << "Window resized to " << actualWidth << "x" << actualHeight << std::endl;
                 }
-                // Camera movement - adjust speed based on zoom level (move faster when zoomed out)
+                // Simple camera movement with keyboard
                 else if (e.key.keysym.sym == SDLK_LEFT || e.key.keysym.sym == SDLK_a) {
-                    // Move faster when zoomed out, slower when zoomed in
-                    int adjustedSpeed = static_cast<int>(CAMERA_SPEED / zoomLevel);
-                    cameraX -= adjustedSpeed;
+                    cameraX -= CAMERA_SPEED;
                     // Clamp camera position to world bounds
                     cameraX = std::max(0, cameraX);
                     std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_RIGHT || e.key.keysym.sym == SDLK_d) {
-                    int adjustedSpeed = static_cast<int>(CAMERA_SPEED / zoomLevel);
-                    cameraX += adjustedSpeed;
+                    cameraX += CAMERA_SPEED;
                     // Clamp camera position to world bounds
-                    cameraX = std::min(WORLD_WIDTH - static_cast<int>(actualWidth / (basePixelSize * zoomLevel)), cameraX);
+                    cameraX = std::min(WORLD_WIDTH - actualWidth, cameraX);
                     std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) {
-                    int adjustedSpeed = static_cast<int>(CAMERA_SPEED / zoomLevel);
-                    cameraY -= adjustedSpeed; // Up key moves camera up (decreases Y)
+                    cameraY -= CAMERA_SPEED; // Up key moves camera up (decreases Y)
                     // Clamp camera position to world bounds
                     cameraY = std::max(0, cameraY);
                     std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) {
-                    int adjustedSpeed = static_cast<int>(CAMERA_SPEED / zoomLevel);
-                    cameraY += adjustedSpeed; // Down key moves camera down (increases Y)
+                    cameraY += CAMERA_SPEED; // Down key moves camera down (increases Y)
                     // Clamp camera position to world bounds
-                    cameraY = std::min(WORLD_HEIGHT - static_cast<int>(actualHeight / (basePixelSize * zoomLevel)), cameraY);
+                    cameraY = std::min(WORLD_HEIGHT - actualHeight, cameraY);
                     std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 // Reset camera position
                 else if (e.key.keysym.sym == SDLK_HOME) {
-                    if (TEST_MODE) {
-                        cameraX = 0; // Reset to origin for test world
-                        cameraY = 0;
-                        zoomLevel = 1.0f;
-                    } else {
-                        cameraX = WORLD_WIDTH / 4; // Reset to a good viewing position
-                        cameraY = 0; // Top of the world
-                        zoomLevel = 0.75f; // Slightly zoomed out
-                    }
+                    cameraX = 0; // Reset to origin
+                    cameraY = 0;
                     std::cout << "Camera reset to default position" << std::endl;
                 }
                 // Brush size controls
-                else if (e.key.keysym.sym == SDLK_EQUALS || e.key.keysym.sym == SDLK_PLUS) {
-                    // Increase brush size
+                else if (e.key.keysym.sym == SDLK_EQUALS || e.key.keysym.sym == SDLK_PLUS || e.key.keysym.sym == SDLK_KP_PLUS) {
+                    // Increase brush size (support both keyboard and numeric keypad plus)
                     placeBrushSize = std::min(20, placeBrushSize + 1);
-                    std::cout << "Brush size: " << placeBrushSize << std::endl;
+                    std::cout << "Brush size increased to: " << placeBrushSize << std::endl;
                 }
-                else if (e.key.keysym.sym == SDLK_MINUS) {
-                    // Decrease brush size
+                else if (e.key.keysym.sym == SDLK_MINUS || e.key.keysym.sym == SDLK_KP_MINUS) {
+                    // Decrease brush size (support both keyboard and numeric keypad minus)
                     placeBrushSize = std::max(1, placeBrushSize - 1);
-                    std::cout << "Brush size: " << placeBrushSize << std::endl;
+                    std::cout << "Brush size decreased to: " << placeBrushSize << std::endl;
                 }
                 // Material selection hotkeys
                 else if (e.key.keysym.sym == SDLK_1) {
@@ -315,39 +338,18 @@ int main() {
                 }
             }
             else if (e.type == SDL_MOUSEWHEEL) {
-                // Zoom in/out with mouse wheel
-                float prevZoom = zoomLevel;
+                // Simple zoom in/out with mouse wheel
                 if (e.wheel.y > 0) {
-                    // Zoom in - use multiplication for smoother zoom feel
-                    zoomLevel *= 1.1f;
+                    // Zoom in
+                    zoomLevel += ZOOM_STEP;
                     if (zoomLevel > MAX_ZOOM) zoomLevel = MAX_ZOOM;
                 } else if (e.wheel.y < 0) {
-                    // Zoom out - use division for smoother zoom feel
-                    zoomLevel /= 1.1f;
+                    // Zoom out
+                    zoomLevel -= ZOOM_STEP;
                     if (zoomLevel < MIN_ZOOM) zoomLevel = MIN_ZOOM;
                 }
                 
-                if (prevZoom != zoomLevel) {
-                    // Get current mouse position
-                    int x, y;
-                    SDL_GetMouseState(&x, &y);
-                    
-                    // Calculate world position under cursor before zoom
-                    float worldX = x;
-                    float worldY = y;
-                    
-                    // Adjust camera to keep world position under cursor
-                    cameraX = static_cast<int>(x / (basePixelSize * zoomLevel));
-                    cameraY = static_cast<int>(y / (basePixelSize * zoomLevel));
-                    
-                    // Clamp camera position
-                    cameraX = std::max(0, cameraX);
-                    cameraX = std::min(WORLD_WIDTH - static_cast<int>(actualWidth / (basePixelSize * zoomLevel)), cameraX);
-                    cameraY = std::max(0, cameraY);
-                    cameraY = std::min(WORLD_HEIGHT - static_cast<int>(actualHeight / (basePixelSize * zoomLevel)), cameraY);
-                    
-                    std::cout << "Zoom: " << zoomLevel << ", Camera: " << cameraX << "," << cameraY << std::endl;
-                }
+                std::cout << "Zoom: " << zoomLevel << std::endl;
             }
             else if (e.type == SDL_MOUSEBUTTONDOWN) {
                 if (e.button.button == SDL_BUTTON_MIDDLE) {
@@ -395,26 +397,23 @@ int main() {
                 
                 // Handle panning with middle mouse button
                 if (middleMouseDown) {
-                    int dx = (mouseX - prevMouseX);
-                    int dy = (mouseY - prevMouseY);
+                    // Simple direct camera movement based on mouse movement
+                    int dx = mouseX - prevMouseX;
+                    int dy = mouseY - prevMouseY;
                     
-                    // Convert screen space delta to world space
-                    // Invert both axes - moving mouse in a direction moves camera in opposite direction
-                    // Calculate total movement in both axes simultaneously
-                    int deltaX = static_cast<int>(dx / (basePixelSize * zoomLevel));
-                    int deltaY = static_cast<int>(dy / (basePixelSize * zoomLevel));
+                    // Move camera opposite to mouse movement (standard pan behavior)
+                    cameraX -= dx;
+                    cameraY -= dy;
                     
-                    // Apply movement in both directions at once
-                    // Moving the mouse to the right should move the camera view to the left (panning right)
-                    // Moving the mouse down should move the camera view up (panning down)
-                    cameraX -= deltaX; // Standard camera panning in X direction
-                    cameraY -= deltaY; // Standard camera panning in Y direction
-                    
-                    // Clamp camera position
+                    // Ensure camera doesn't go out of bounds
                     cameraX = std::max(0, cameraX);
-                    cameraX = std::min(WORLD_WIDTH - static_cast<int>(actualWidth / (basePixelSize * zoomLevel)), cameraX);
                     cameraY = std::max(0, cameraY);
-                    cameraY = std::min(WORLD_HEIGHT - static_cast<int>(actualHeight / (basePixelSize * zoomLevel)), cameraY);
+                    // Simple right/bottom boundary checks
+                    cameraX = std::min(cameraX, WORLD_WIDTH - actualWidth);
+                    cameraY = std::min(cameraY, WORLD_HEIGHT - actualHeight);
+                    
+                    // Update active chunks based on new camera position (streaming system)
+                    world.updatePlayerPosition(cameraX + actualWidth/2, cameraY + actualHeight/2);
                     
                     // Update previous mouse position
                     prevMouseX = mouseX;
@@ -429,43 +428,34 @@ int main() {
         SDL_GetMouseState(&mouseX, &mouseY);
         // Handle material placement with left mouse button
         if (leftMouseDown) {
-            
-            // Convert screen coordinates to world coordinates
-            // Try a different approach to screen-to-world conversion
-            // The logic used in the Renderer would be:
-            // viewportWidth = screenWidth / pixelScale
-            // viewportHeight = screenHeight / pixelScale
-            // So we need to reverse this logic
-            
-            // Get the actual viewport dimensions in world units
-            float viewportWidth = actualWidth / (zoomLevel);
-            float viewportHeight = actualHeight / (zoomLevel);
-            
-            // Calculate percentages across the viewport
-            float percentX = static_cast<float>(mouseX) / actualWidth;
-            float percentY = static_cast<float>(mouseY) / actualHeight;
-            
-            // Apply percentages to get position in world space
-            int worldX = cameraX + static_cast<int>(percentX * viewportWidth);
-            int worldY = cameraY + static_cast<int>(percentY * viewportHeight);
+            // Very simple direct mapping from screen to world coordinates
+            // Just add camera position to get world position
+            int worldX = cameraX + mouseX;
+            int worldY = cameraY + mouseY;
             
             // Place material in a circular brush pattern
             for (int dy = -placeBrushSize / 2; dy <= placeBrushSize / 2; dy++) {
                 for (int dx = -placeBrushSize / 2; dx <= placeBrushSize / 2; dx++) {
                     // Check if point is within brush radius for circular brush shape
                     if (dx*dx + dy*dy <= (placeBrushSize/2)*(placeBrushSize/2)) {
-                        world.set(mouseX, mouseY, currentMaterial);
+                        // Calculate world coordinates with brush offset
+                        int placeX = worldX + dx;
+                        int placeY = worldY + dy;
+                        
+                        // Ensure we're within world bounds
+                        if (placeX >= 0 && placeX < WORLD_WIDTH && placeY >= 0 && placeY < WORLD_HEIGHT) {
+                            world.set(placeX, placeY, currentMaterial);
+                        }
                     }
                 }
             }
             
             // Debug output - only show occasionally to avoid console spam
-            if (frameCount % 100 == 0) {
-                std::cout << "\nMouse at screen: " << mouseX << "," << mouseY 
+            if (frameCount % 60 == 0) {
+                std::cout << "Mouse at screen: " << mouseX << "," << mouseY 
                           << " | World: " << worldX << "," << worldY 
                           << " | Camera: " << cameraX << "," << cameraY 
-                          << " | Zoom: " << zoomLevel 
-                          << " | ViewportSize: " << viewportWidth << "x" << viewportHeight << std::endl;
+                          << " | Brush size: " << placeBrushSize << std::endl;
             }
         }
         world.update();

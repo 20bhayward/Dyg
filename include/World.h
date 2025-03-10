@@ -7,6 +7,9 @@
 #include <cstdint>
 #include <iostream>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
+#include <algorithm> // for std::find, std::sort
 
 namespace PixelPhys {
 
@@ -18,6 +21,27 @@ enum class BiomeType {
     SNOW,
     JUNGLE
 };
+
+// Structure to represent chunk coordinates for the streaming system
+struct ChunkCoord {
+    int x;
+    int y;
+    
+    bool operator==(const ChunkCoord& other) const {
+        return x == other.x && y == other.y;
+    }
+};
+
+// Hash function for ChunkCoord to use in unordered_map/set
+struct ChunkCoordHash {
+    std::size_t operator()(const ChunkCoord& coord) const {
+        return std::hash<int>()(coord.x) ^ (std::hash<int>()(coord.y) << 1);
+    }
+};
+
+// Forward declarations
+class Chunk;
+class ChunkManager;
 
 // A chunk is a fixed-size part of the world
 // Using a chunk-based approach allows easier multithreading and memory management
@@ -70,12 +94,28 @@ public:
     uint8_t* getPixelData() { return m_pixelData.data(); }
     const uint8_t* getPixelData() const { return m_pixelData.data(); }
     
+    // Update rendering pixel data based on materials
+    void updatePixelData();
+    
+    // Serialization methods for streaming system (will be implemented later)
+    bool serialize(std::ostream& out) const;
+    bool deserialize(std::istream& in);
+    
+    // Check if the chunk has been modified since last save
+    bool isModified() const { return m_isModified; }
+    
+    // Set modified flag
+    void setModified(bool modified) { m_isModified = modified; }
+    
 private:
     // Grid of materials in the chunk
     std::vector<MaterialType> m_grid;
     
     // For rendering: RGBA pixel data (r,g,b,a for each cell)
     std::vector<uint8_t> m_pixelData;
+    
+    // Flag to track if this chunk has been modified since last save
+    bool m_isModified = false;
     
     // Flag to indicate if this chunk needs updating this frame
     bool m_isDirty;
@@ -85,9 +125,6 @@ private:
     
     // Counter to track how many frames a chunk has been inactive
     int m_inactivityCounter;
-    
-    // Update rendering pixel data based on materials
-    void updatePixelData();
     
     // Handle interactions between different materials (fire spreading, etc.)
     void handleMaterialInteractions(const std::vector<MaterialType>& oldGrid, bool& anyMaterialMoved);
@@ -106,6 +143,48 @@ private:
     
     // Track if an element is currently in motion (for sand inertia)
     std::vector<bool> m_isFreeFalling;
+};
+
+// Chunk streaming system
+class ChunkManager {
+public:
+    ChunkManager(int chunkSize = 512);
+    ~ChunkManager() = default;
+    
+    // Core chunk operations
+    Chunk* getChunk(int chunkX, int chunkY, bool loadIfNeeded = true);
+    void updateActiveChunks(int centerX, int centerY);
+    
+    // Visibility checker
+    bool isChunkVisible(int chunkX, int chunkY, int cameraX, int cameraY, int screenWidth, int screenHeight) const;
+    
+    // Get active chunks for rendering
+    const std::vector<ChunkCoord>& getActiveChunks() const { return m_activeChunks; }
+    
+    // Chunk status
+    bool isChunkLoaded(const ChunkCoord& coord) const;
+    
+    // Convert world to chunk coordinates
+    void worldToChunkCoords(int worldX, int worldY, int& chunkX, int& chunkY, int& localX, int& localY) const;
+    
+private:
+    // Map of loaded chunks - initially all chunks are loaded
+    std::unordered_map<ChunkCoord, std::unique_ptr<Chunk>, ChunkCoordHash> m_loadedChunks;
+    
+    // Currently active chunk coordinates
+    std::vector<ChunkCoord> m_activeChunks;
+    
+    // Maximum number of chunks to keep loaded
+    const int MAX_LOADED_CHUNKS = 12;
+    
+    // Size of chunks in world units
+    const int m_chunkSize;
+    
+    // Calculate distance between chunk and player
+    float calculateChunkDistance(const ChunkCoord& coord, int centerX, int centerY) const;
+    
+    // Create new chunk
+    std::unique_ptr<Chunk> createNewChunk(const ChunkCoord& coord);
 };
 
 // The World manages a collection of chunks that make up the entire simulation
@@ -146,6 +225,26 @@ public:
     // Generate the initial world with terrain, etc.
     void generate(unsigned int seed);
     
+    // Update active chunks based on camera position
+    void updatePlayerPosition(int playerX, int playerY) {
+        m_chunkManager.updateActiveChunks(playerX, playerY);
+    }
+    
+    // Get the list of active chunks for rendering
+    const std::vector<ChunkCoord>& getActiveChunks() const {
+        return m_chunkManager.getActiveChunks();
+    }
+    
+    // Get a chunk at specific chunk coordinates
+    Chunk* getChunkByCoords(int chunkX, int chunkY) {
+        return m_chunkManager.getChunk(chunkX, chunkY);
+    }
+    
+    // Check if a chunk is visible from the camera
+    bool isChunkVisible(int chunkX, int chunkY, int cameraX, int cameraY, int screenWidth, int screenHeight) const {
+        return m_chunkManager.isChunkVisible(chunkX, chunkY, cameraX, cameraY, screenWidth, screenHeight);
+    }
+    
     // Get the raw pixel data for rendering
     uint8_t* getPixelData() { 
         if (m_pixelData.empty()) {
@@ -171,7 +270,10 @@ private:
     int m_chunksX;
     int m_chunksY;
     
-    // Grid of chunks
+    // Chunk manager for streaming system
+    ChunkManager m_chunkManager;
+    
+    // Legacy vector of chunks (will be phased out)
     std::vector<std::unique_ptr<Chunk>> m_chunks;
     
     // For rendering: RGBA pixel data for the entire world
@@ -188,7 +290,7 @@ private:
     void worldToChunkCoords(int worldX, int worldY, int& chunkX, int& chunkY, int& localX, int& localY) const;
     
     // Update the combined pixel data from all chunks for rendering
-    void updatePixelData();
+    void updateWorldPixelData();
     
     // World generation helper functions
     void generateTerrain();

@@ -1665,18 +1665,67 @@ void Chunk::updatePixelData() {
     m_isDirty = false;
 }
 
+bool Chunk::serialize(std::ostream& out) const {
+    // Stub implementation - will be expanded in later phases
+    
+    // Write chunk position
+    out.write(reinterpret_cast<const char*>(&m_posX), sizeof(m_posX));
+    out.write(reinterpret_cast<const char*>(&m_posY), sizeof(m_posY));
+    
+    // Write chunk grid
+    uint32_t gridSize = static_cast<uint32_t>(m_grid.size());
+    out.write(reinterpret_cast<const char*>(&gridSize), sizeof(gridSize));
+    out.write(reinterpret_cast<const char*>(m_grid.data()), gridSize * sizeof(MaterialType));
+    
+    // Reset modified flag after serialization
+    const_cast<Chunk*>(this)->setModified(false);
+    
+    return out.good();
+}
+
+bool Chunk::deserialize(std::istream& in) {
+    // Stub implementation - will be expanded in later phases
+    
+    // Read chunk position
+    in.read(reinterpret_cast<char*>(&m_posX), sizeof(m_posX));
+    in.read(reinterpret_cast<char*>(&m_posY), sizeof(m_posY));
+    
+    // Read chunk grid
+    uint32_t gridSize;
+    in.read(reinterpret_cast<char*>(&gridSize), sizeof(gridSize));
+    m_grid.resize(gridSize);
+    in.read(reinterpret_cast<char*>(m_grid.data()), gridSize * sizeof(MaterialType));
+    
+    // Update pixel data for rendering
+    updatePixelData();
+    
+    // Mark as clean
+    setModified(false);
+    // But mark as dirty for physics update
+    m_isDirty = true;
+    m_shouldUpdateNextFrame = true;
+    
+    return in.good();
+}
+
 // World implementation
 
-World::World(int width, int height) : m_width(width), m_height(height) {
+World::World(int width, int height) 
+    : m_width(width), m_height(height), m_chunkManager(Chunk::WIDTH) {
+    std::cout << "Creating world with chunk size: " << Chunk::WIDTH << "x" << Chunk::HEIGHT << std::endl;
     // Compute chunk dimensions
     m_chunksX = (width + Chunk::WIDTH - 1) / Chunk::WIDTH;
     m_chunksY = (height + Chunk::HEIGHT - 1) / Chunk::HEIGHT;
     
-    // Create all chunks
+    // Create all chunks (legacy system)
     m_chunks.resize(m_chunksX * m_chunksY);
     for (int y = 0; y < m_chunksY; ++y) {
         for (int x = 0; x < m_chunksX; ++x) {
             m_chunks[y * m_chunksX + x] = std::make_unique<Chunk>(x * Chunk::WIDTH, y * Chunk::HEIGHT);
+            
+            // Initially initialize chunk manager too
+            // This will be replaced with dynamic loading/unloading later
+            m_chunkManager.getChunk(x, y, true);
         }
     }
     
@@ -1689,6 +1738,43 @@ World::World(int width, int height) : m_width(width), m_height(height) {
     
     std::cout << "Created world with dimensions: " << width << "x" << height << std::endl;
     std::cout << "Chunk grid size: " << m_chunksX << "x" << m_chunksY << std::endl;
+    
+    // TEST: Add some blocks to each chunk for debugging the streaming system
+    for (int y = 0; y < m_chunksY; ++y) {
+        for (int x = 0; x < m_chunksX; ++x) {
+            // Get chunk
+            Chunk* chunk = getChunkAt(x, y);
+            if (!chunk) continue;
+            
+            // Add a distinctive pattern to each chunk
+            // Fill the entire chunk with different materials based on position
+            for (int localX = 0; localX < Chunk::WIDTH; localX++) {
+                for (int localY = 0; localY < Chunk::HEIGHT; localY++) {
+                    // Add a solid pattern with some materials
+                    MaterialType material;
+                    if ((x + y) % 3 == 0) material = MaterialType::Sand;
+                    else if ((x + y) % 3 == 1) material = MaterialType::Stone;
+                    else material = MaterialType::Gravel;
+                    
+                    // Set the material and mark as modified to force pixel update
+                    chunk->set(localX, localY, material);
+                }
+            }
+            
+            // Force pixel data update
+            chunk->updatePixelData();
+            
+            // Draw a border around each chunk
+            for (int i = 0; i < Chunk::WIDTH; i++) {
+                chunk->set(i, 0, MaterialType::Bedrock);
+                chunk->set(i, Chunk::HEIGHT-1, MaterialType::Bedrock);
+            }
+            for (int i = 0; i < Chunk::HEIGHT; i++) {
+                chunk->set(0, i, MaterialType::Bedrock);
+                chunk->set(Chunk::WIDTH-1, i, MaterialType::Bedrock);
+            }
+        }
+    }
 }
 
 MaterialType World::get(int x, int y) const {
@@ -1701,13 +1787,26 @@ MaterialType World::get(int x, int y) const {
     int chunkX, chunkY, localX, localY;
     worldToChunkCoords(x, y, chunkX, chunkY, localX, localY);
     
-    const Chunk* chunk = getChunkAt(chunkX, chunkY);
-    if (!chunk) {
+    // Try to get from ChunkManager first (for streaming system)
+    ChunkCoord coord{chunkX, chunkY};
+    
+    // Need a non-const chunk to try loading from ChunkManager
+    // This const_cast is necessary because get() is const but needs to potentially load chunks
+    ChunkManager& manager = const_cast<ChunkManager&>(m_chunkManager);
+    Chunk* chunk = manager.getChunk(chunkX, chunkY, false); // Don't try to load, just check if available
+    
+    if (chunk) {
+        return chunk->get(localX, localY);
+    }
+    
+    // Fall back to the regular chunks
+    const Chunk* oldChunk = getChunkAt(chunkX, chunkY);
+    if (!oldChunk) {
         return MaterialType::Empty;
     }
     
     // Get material at local coordinates
-    return chunk->get(localX, localY);
+    return oldChunk->get(localX, localY);
 }
 
 void World::set(int x, int y, MaterialType material) {
@@ -1720,13 +1819,19 @@ void World::set(int x, int y, MaterialType material) {
     int chunkX, chunkY, localX, localY;
     worldToChunkCoords(x, y, chunkX, chunkY, localX, localY);
     
-    Chunk* chunk = getChunkAt(chunkX, chunkY);
-    if (!chunk) {
-        return;
+    // Try to get from ChunkManager first (for streaming system)
+    Chunk* chunk = m_chunkManager.getChunk(chunkX, chunkY, true); // Load if needed
+    if (chunk) {
+        // Set material at local coordinates in the ChunkManager's chunk
+        chunk->set(localX, localY, material);
     }
     
-    // Set material at local coordinates
-    chunk->set(localX, localY, material);
+    // Also set in the legacy system for now (for compatibility)
+    Chunk* oldChunk = getChunkAt(chunkX, chunkY);
+    if (oldChunk) {
+        // Set material at local coordinates
+        oldChunk->set(localX, localY, material);
+    }
     
     // Update pixel data
     int idx = y * m_width + x;
@@ -1825,6 +1930,35 @@ void World::update() {
                 chunk->setShouldUpdateNextFrame(false); // Reset flag for next frame
             }
         }
+    }
+    
+    // Update all chunks in the streaming system with proper physics
+    const auto& activeChunks = m_chunkManager.getActiveChunks();
+    
+    // First, mark all active chunks as dirty
+    for (const auto& coord : activeChunks) {
+        Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
+        if (chunk) {
+            chunk->setDirty(true); // Force update for active chunks
+        }
+    }
+    
+    // Then properly update each chunk with physics from its neighbors
+    for (const auto& coord : activeChunks) {
+        Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
+        if (!chunk) continue;
+        
+        // Get neighboring chunks from ChunkManager
+        ChunkCoord belowCoord = {coord.x, coord.y + 1};
+        ChunkCoord leftCoord = {coord.x - 1, coord.y};
+        ChunkCoord rightCoord = {coord.x + 1, coord.y};
+        
+        Chunk* chunkBelow = m_chunkManager.getChunk(belowCoord.x, belowCoord.y, false);
+        Chunk* chunkLeft = m_chunkManager.getChunk(leftCoord.x, leftCoord.y, false);
+        Chunk* chunkRight = m_chunkManager.getChunk(rightCoord.x, rightCoord.y, false);
+        
+        // Update this chunk with its neighbors from the ChunkManager
+        chunk->update(chunkBelow, chunkLeft, chunkRight);
     }
     
     // Special check for powders and liquids at chunk boundaries to prevent stuck particles
@@ -2060,7 +2194,7 @@ void World::update() {
     }
     
     // Update the combined pixel data from all chunks
-    updatePixelData();
+    updateWorldPixelData();
 }
 
 void World::update(int startX, int startY, int endX, int endY) {
@@ -2131,7 +2265,7 @@ void World::update(int startX, int startY, int endX, int endY) {
     
     // Update pixel data for the entire world
     // This is simpler than trying to update just a subset of the pixel data
-    updatePixelData();
+    // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
 }
 
 void World::levelLiquids() {
@@ -2702,7 +2836,7 @@ void World::generate(unsigned int seed) {
     // Step 6: Generate caves
     if (renderStepByStep) {
         // Update pixel data after terrain generation but before caves
-        updatePixelData();
+        // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
         std::cout << "Terrain generated. Build and render to see the result before cave generation." << std::endl;
         std::cout << "Press any key to continue with cave generation..." << std::endl;
         // Here we'd pause in an interactive application
@@ -3228,7 +3362,7 @@ void World::generate(unsigned int seed) {
 
     if (renderStepByStep) {
         // Update pixel data after cave generation
-        updatePixelData();
+        // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
         std::cout << "Caves generated. Build and render to see the final cave system." << std::endl;
         std::cout << "Press any key to continue with ore generation..." << std::endl;
         // Here we'd pause in an interactive application
@@ -3446,11 +3580,11 @@ void World::generate(unsigned int seed) {
     
     if (renderStepByStep) {
         // Update pixel data after ore generation
-        updatePixelData();
+        // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
         std::cout << "Ore deposits generated. Build and render to see the final world." << std::endl;
     } else {
         // Update pixel data
-        updatePixelData();
+        // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
     }
 }
 
@@ -3852,7 +3986,7 @@ void World::placeOreCluster(int centerX, int centerY, MaterialType oreType, int 
     }
 }
 
-void World::updatePixelData() {
+void World::updateWorldPixelData() {
     // Update combined pixel data from all chunks
     for (int y = 0; y < m_chunksY; ++y) {
         for (int x = 0; x < m_chunksX; ++x) {
