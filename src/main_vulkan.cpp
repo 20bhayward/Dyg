@@ -26,11 +26,7 @@ const int FRAME_DELAY   = 1000 / TARGET_FPS;
 // Camera parameters
 int cameraX = 0;         // Camera position X
 int cameraY = 0;         // Camera position Y
-float zoomLevel = 1.0f;  // Zoom level (1.0 = normal, >1.0 = zoomed in, <1.0 = zoomed out)
-const float MIN_ZOOM = 0.25f;  // Minimum zoom level
-const float MAX_ZOOM = 4.0f;   // Maximum zoom level
-const float ZOOM_STEP = 0.1f;  // Zoom amount per scroll
-const int CAMERA_SPEED = 15;  // Camera movement speed (pixels per key press)
+const int CAMERA_SPEED = 20;   // Camera movement speed (adjust for zoom level)
 const int DEFAULT_VIEW_HEIGHT = 450; // Default height to position camera at start
 const float basePixelSize = 1.0f;  // Base pixel size for world rendering (smaller for more detail)
 
@@ -91,15 +87,9 @@ int main() {
     
     SDL_Delay(200);  // Give the world time to set up
     
-    // Position camera for best view of the test area
-    if (TEST_MODE) {
-        cameraX = 0; // We want to see the whole test area
-        cameraY = 0; // Start at the top
-    } else {
-        // Focus on the first few chunks
-        cameraX = 0;
-        cameraY = 0;
-    }
+    // Just set camera to a simple position - no fancy positioning
+    cameraX = 1024;
+    cameraY = 1024;
     
     // Ensure camera is properly clamped to world bounds
     cameraX = std::max(0, cameraX);
@@ -107,36 +97,9 @@ int main() {
     cameraY = std::max(0, cameraY);
     cameraY = std::min(WORLD_HEIGHT - actualHeight, cameraY);
     
-    // SIMPLER TEST: Create a basic test pattern with directly visible materials
-    std::cout << "Creating simple test pattern..." << std::endl;
-    
-    // Fill the entire viewable area with a simple pattern
-    // Create a flat stone platform on the bottom 100 pixels
-    for (int x = 0; x < actualWidth; x++) {
-        for (int y = actualHeight - 100; y < actualHeight; y++) {
-            world.set(x, y, PixelPhys::MaterialType::Stone);
-        }
-    }
-    
-    // Add some sand columns in the middle
-    for (int i = 0; i < 5; i++) {
-        int columnX = 100 + i * 100;
-        int columnHeight = 150 + i * 20;
-        for (int x = columnX; x < columnX + 50; x++) {
-            for (int y = actualHeight - 100 - columnHeight; y < actualHeight - 100; y++) {
-                world.set(x, y, PixelPhys::MaterialType::Sand);
-            }
-        }
-    }
-    
-    // Add some water on the right
-    for (int x = actualWidth / 2; x < actualWidth; x++) {
-        for (int y = actualHeight - 150; y < actualHeight - 100; y++) {
-            world.set(x, y, PixelPhys::MaterialType::Water);
-        }
-    }
-    
-    std::cout << "Simple test pattern created!" << std::endl;
+    // Initialize world player position to center camera view
+    world.updatePlayerPosition(cameraX + actualWidth/2, cameraY + actualHeight/2);
+    std::cout << "Camera positioned at world center" << std::endl;
     
     // Create the renderer (Vulkan only)
     auto renderer = std::make_shared<PixelPhys::Renderer>(
@@ -338,18 +301,19 @@ int main() {
                 }
             }
             else if (e.type == SDL_MOUSEWHEEL) {
-                // Simple zoom in/out with mouse wheel
+                // Mouse wheel can be used for scrolling vertically instead
                 if (e.wheel.y > 0) {
-                    // Zoom in
-                    zoomLevel += ZOOM_STEP;
-                    if (zoomLevel > MAX_ZOOM) zoomLevel = MAX_ZOOM;
+                    // Scroll up
+                    cameraY -= CAMERA_SPEED * 5;
+                    cameraY = std::max(0, cameraY);
                 } else if (e.wheel.y < 0) {
-                    // Zoom out
-                    zoomLevel -= ZOOM_STEP;
-                    if (zoomLevel < MIN_ZOOM) zoomLevel = MIN_ZOOM;
+                    // Scroll down
+                    cameraY += CAMERA_SPEED * 5;
+                    cameraY = std::min(WORLD_HEIGHT - actualHeight, cameraY);
                 }
                 
-                std::cout << "Zoom: " << zoomLevel << std::endl;
+                // Update player position for appropriate chunk loading
+                world.updatePlayerPosition(cameraX + actualWidth/2, cameraY + actualHeight/2);
             }
             else if (e.type == SDL_MOUSEBUTTONDOWN) {
                 if (e.button.button == SDL_BUTTON_MIDDLE) {
@@ -460,8 +424,8 @@ int main() {
         }
         world.update();
         
-        // Render the world using our renderer with camera position and zoom level
-        renderer->render(world, cameraX, cameraY, zoomLevel);
+        // Render the world using our renderer with camera position
+        renderer->render(world, cameraX, cameraY);
         
         // Display current material and brush size in status bar
         std::string materialName = "Unknown";

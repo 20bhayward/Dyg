@@ -173,8 +173,8 @@ private:
     // Currently active chunk coordinates
     std::vector<ChunkCoord> m_activeChunks;
     
-    // Maximum number of chunks to keep loaded
-    const int MAX_LOADED_CHUNKS = 12;
+    // Maximum number of chunks to keep loaded - matches Noita's approach in GDC talk
+    const int MAX_LOADED_CHUNKS = 12; // Exactly 12 chunks as specified
     
     // Size of chunks in world units
     const int m_chunkSize;

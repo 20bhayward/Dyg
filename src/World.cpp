@@ -1913,8 +1913,10 @@ void World::update() {
     // Every 30 frames, do a full check for stuck powders at chunk boundaries
     if (cleanupCounter >= 30) {
         cleanupCounter = 0;
-        // Force chunks that have been inactive for a long time to update at least once
-        for (auto& chunk : m_chunks) {
+        // Only clean up active chunks to avoid wasting resources
+        const auto& activeChunks = m_chunkManager.getActiveChunks();
+        for (const auto& coord : activeChunks) {
+            Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
             if (chunk && chunk->getInactivityCounter() > 50) {
                 std::cout << "Setting chunk to dirty for being inactive for a while" << std::endl;
                 chunk->setDirty(true);
@@ -1923,19 +1925,17 @@ void World::update() {
     }
     
     // At the start of the frame, transfer shouldUpdateNextFrame flags to dirty flags
-    for (auto& chunk : m_chunks) {
-        if (chunk) {
-            if (chunk->shouldUpdateNextFrame()) {
-                chunk->setDirty(true); // Set chunk to update this frame
-                chunk->setShouldUpdateNextFrame(false); // Reset flag for next frame
-            }
+    // Only for active chunks to avoid processing every chunk in the world
+    const auto& activeChunks = m_chunkManager.getActiveChunks();
+    for (const auto& coord : activeChunks) {
+        Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
+        if (chunk && chunk->shouldUpdateNextFrame()) {
+            chunk->setDirty(true); // Set chunk to update this frame
+            chunk->setShouldUpdateNextFrame(false); // Reset flag for next frame
         }
     }
     
-    // Update all chunks in the streaming system with proper physics
-    const auto& activeChunks = m_chunkManager.getActiveChunks();
-    
-    // First, mark all active chunks as dirty
+    // First, mark all active chunks as dirty to ensure they're processed
     for (const auto& coord : activeChunks) {
         Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
         if (chunk) {
@@ -1962,9 +1962,11 @@ void World::update() {
     }
     
     // Special check for powders and liquids at chunk boundaries to prevent stuck particles
-    for (int i = 0; i < (int)m_chunks.size(); ++i) {
-        auto& chunk = m_chunks[i];
+    // Only process active chunks to avoid wasting CPU on unseen chunks
+    for (const auto& coord : activeChunks) {
+        Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
         if (chunk && chunk->isDirty()) {
+            int i = coord.y * m_chunksX + coord.x; // Calculate index in m_chunks
             int y = i / m_chunksX;
             int x = i % m_chunksX;
             

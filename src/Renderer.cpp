@@ -32,7 +32,7 @@ bool Renderer::initialize(SDL_Window* window) {
     return true;
 }
 
-void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLevel) {
+void Renderer::render(const World& world, int cameraX, int cameraY) {
     if (!m_backend) return;
 
     // Get Vulkan backend
@@ -50,14 +50,18 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
     int worldWidth = world.getWidth();
     int worldHeight = world.getHeight();
     
-    // Simple fixed pixel size approach
-    const float pixelSize = 1.0f;  // Each world pixel is 1 screen pixel
+    // Force a 2x zoom by using a pixel size of 2.0
+    const float pixelSize = 2.0f;  // Each world pixel is 2 screen pixels - effectively zoomed in
+    
+    // Calculate how much world space we can display with 2x pixels
+    int visibleWorldWidth = m_screenWidth / pixelSize;
+    int visibleWorldHeight = m_screenHeight / pixelSize;
     
     // Define viewport bounds
     int startX = cameraX;
     int startY = cameraY;
-    int endX = std::min(worldWidth, cameraX + m_screenWidth);
-    int endY = std::min(worldHeight, cameraY + m_screenHeight);
+    int endX = std::min(worldWidth, cameraX + visibleWorldWidth);
+    int endY = std::min(worldHeight, cameraY + visibleWorldHeight);
     
     std::cout << "Rendering world from (" << startX << "," << startY 
               << ") to (" << endX << "," << endY << ")" << std::endl;
@@ -111,30 +115,16 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
                     int wx = chunkWorldX + cx;
                     int wy = chunkWorldY + cy;
                     
-                    // Determine color based on material type
+                    // Determine color based on material type using MATERIAL_PROPERTIES
                     float r = 0.0f, g = 0.0f, b = 0.0f;
                     
-                    // Different color for different materials
-                    switch (material) {
-                        case MaterialType::Stone:
-                            r = g = b = 0.7f; // Gray
-                            break;
-                        case MaterialType::Sand:
-                            r = 0.9f; g = 0.8f; b = 0.5f; // Sand color
-                            break;
-                        case MaterialType::Water:
-                            r = 0.2f; g = 0.3f; b = 0.9f; // Blue
-                            break;
-                        case MaterialType::Gravel:
-                            r = 0.5f; g = 0.5f; b = 0.6f; // Gray-blue
-                            break;
-                        case MaterialType::Bedrock:
-                            r = 0.2f; g = 0.2f; b = 0.2f; // Dark gray
-                            break;
-                        default:
-                            // For any other material, use a visible default color
-                            r = 1.0f; g = 0.0f; b = 1.0f; // Magenta
-                            break;
+                    // Use the material properties to get the correct color
+                    if (material != MaterialType::Empty) {
+                        const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+                        // Convert from 0-255 to 0.0-1.0 for Vulkan
+                        r = props.r / 255.0f;
+                        g = props.g / 255.0f;
+                        b = props.b / 255.0f;
                     }
                     
                     // Apply a simple pattern based on coordinates for variety
@@ -148,15 +138,15 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
                         b = std::min(1.0f, b * 1.2f);
                     }
                     
-                    // Calculate screen position
+                    // Calculate screen position with zoom
                     float screenX = (wx - cameraX) * pixelSize;
                     float screenY = (wy - cameraY) * pixelSize;
                     
-                    // Draw larger rectangles (2x2) for better performance
+                    // Draw rectangles with the zoomed size
                     vulkanBackend->drawRectangle(
                         screenX, 
                         screenY,
-                        2.0f, 2.0f,  // 2x2 pixel blocks
+                        2.0f * pixelSize, 2.0f * pixelSize,  // Scale with pixel size
                         r, g, b
                     );
                 }
@@ -168,7 +158,7 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
             
             vulkanBackend->drawRectangle(
                 chunkScreenX, chunkScreenY,
-                chunkPixelWidth * pixelSize, 1.0f,  // Top border
+                chunkPixelWidth * pixelSize, pixelSize,  // Scale top border
                 0.5f, 0.0f, 0.0f
             );
         }
@@ -184,30 +174,16 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
                 MaterialType material = world.get(x, y);
                 if (material == MaterialType::Empty) continue;
                 
-                // Determine color based on material type
+                // Determine color based on material type using MATERIAL_PROPERTIES
                 float r = 0.0f, g = 0.0f, b = 0.0f;
                 
-                // Different color for different materials
-                switch (material) {
-                    case MaterialType::Stone:
-                        r = g = b = 0.7f; // Gray
-                        break;
-                    case MaterialType::Sand:
-                        r = 0.9f; g = 0.8f; b = 0.5f; // Sand color
-                        break;
-                    case MaterialType::Water:
-                        r = 0.2f; g = 0.3f; b = 0.9f; // Blue
-                        break;
-                    case MaterialType::Gravel:
-                        r = 0.5f; g = 0.5f; b = 0.6f; // Gray-blue
-                        break;
-                    case MaterialType::Bedrock:
-                        r = 0.2f; g = 0.2f; b = 0.2f; // Dark gray
-                        break;
-                    default:
-                        // For any other material, use a visible default color
-                        r = 1.0f; g = 0.0f; b = 1.0f; // Magenta
-                        break;
+                // Use the material properties to get the correct color
+                if (material != MaterialType::Empty) {
+                    const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
+                    // Convert from 0-255 to 0.0-1.0 for Vulkan
+                    r = props.r / 255.0f;
+                    g = props.g / 255.0f;
+                    b = props.b / 255.0f;
                 }
                 
                 // Apply a simple pattern based on coordinates for variety
@@ -221,15 +197,15 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
                     b = std::min(1.0f, b * 1.2f);
                 }
                 
-                // Calculate screen position
+                // Calculate screen position with zoom
                 float screenX = (x - cameraX) * pixelSize;
                 float screenY = (y - cameraY) * pixelSize;
                 
-                // Draw larger rectangles (2x2) for better performance
+                // Draw rectangles with the zoomed size
                 vulkanBackend->drawRectangle(
                     screenX, 
                     screenY,
-                    2.0f, 2.0f,  // 2x2 pixel blocks
+                    2.0f * pixelSize, 2.0f * pixelSize,  // Scale with pixel size
                     r, g, b
                 );
             }
@@ -243,21 +219,21 @@ void Renderer::render(const World& world, int cameraX, int cameraY, float zoomLe
     int firstVisibleChunkY = (cameraY / chunkPixelHeight) * chunkPixelHeight;
     
     // Draw vertical grid lines aligned with chunk boundaries
-    for (int x = firstVisibleChunkX; x < cameraX + m_screenWidth; x += chunkPixelWidth) {
+    for (int x = firstVisibleChunkX; x < cameraX + visibleWorldWidth; x += chunkPixelWidth) {
         float screenX = (x - cameraX) * pixelSize;
         vulkanBackend->drawRectangle(
             screenX, 0,
-            1.0f, m_screenHeight,
+            pixelSize, m_screenHeight,  // Scale grid line width
             0.5f, 0.5f, 0.5f
         );
     }
     
     // Draw horizontal grid lines aligned with chunk boundaries
-    for (int y = firstVisibleChunkY; y < cameraY + m_screenHeight; y += chunkPixelHeight) {
+    for (int y = firstVisibleChunkY; y < cameraY + visibleWorldHeight; y += chunkPixelHeight) {
         float screenY = (y - cameraY) * pixelSize;
         vulkanBackend->drawRectangle(
             0, screenY,
-            m_screenWidth, 1.0f,
+            m_screenWidth, pixelSize,  // Scale grid line height
             0.5f, 0.5f, 0.5f
         );
     }

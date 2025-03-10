@@ -34,8 +34,9 @@ void ChunkManager::updateActiveChunks(int centerX, int centerY) {
     // Determine which chunks should be active (in a square around center)
     std::vector<ChunkCoord> desiredChunks;
     
-    // Calculate view distance
-    const int viewDistance = 2; // 5x5 grid = 25 chunks max, we'll trim to MAX_LOADED_CHUNKS
+    // Calculate view distance (chunks visible from player)
+    // For 12 chunks in a pattern, we need approximately 3x4 grid
+    const int viewDistance = 2; // 5x5 grid = 25 chunks, but we'll keep only 12
     
     // Collect coordinates of chunks that should be loaded
     for (int y = centerChunkY - viewDistance; y <= centerChunkY + viewDistance; y++) {
