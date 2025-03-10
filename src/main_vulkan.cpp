@@ -20,7 +20,7 @@ const bool TEST_MODE = false;
 // World dimensions - use smaller world in test mode
 const int WORLD_WIDTH   = TEST_MODE ? 800 : 6000;  // Much smaller for test mode
 const int WORLD_HEIGHT  = TEST_MODE ? 600 : 1800;  // Much smaller for test mode
-const int TARGET_FPS    = 120;  // Higher FPS for smoother simulation
+const int TARGET_FPS    = 60;  // Higher FPS for smoother simulation
 const int FRAME_DELAY   = 1000 / TARGET_FPS;
 
 // Camera parameters

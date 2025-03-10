@@ -48,8 +48,8 @@ class ChunkManager;
 class Chunk {
 public:
     // Fixed size for each chunk - for better aligned ore generation
-    static constexpr int WIDTH = 64;   // Slightly larger chunks for more coherent ore patterns
-    static constexpr int HEIGHT = 64;
+    static constexpr int WIDTH = 512;   // Slightly larger chunks for more coherent ore patterns
+    static constexpr int HEIGHT = 512;
     
     Chunk(int posX = 0, int posY = 0);
     ~Chunk() = default;
@@ -92,7 +92,6 @@ public:
     
     // Get raw pixel data for rendering
     uint8_t* getPixelData() { return m_pixelData.data(); }
-    const uint8_t* getPixelData() const { return m_pixelData.data(); }
     
     // Update rendering pixel data based on materials
     void updatePixelData();
