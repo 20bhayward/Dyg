@@ -66,6 +66,8 @@ struct MaterialProperties {
     uint8_t dispersalRate = 3;        // How far liquids will search for empty spaces (liquids only)
 };
 
+#define MAT_PROPS(m) MATERIAL_PROPERTIES[static_cast<std::size_t>(m)]
+
 // Define properties for each material type
 constexpr std::array<MaterialProperties, static_cast<std::size_t>(MaterialType::COUNT)> MATERIAL_PROPERTIES = {{
     //                         Physical Properties                    Base Color        Color Variation     Material-specific

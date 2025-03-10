@@ -34,7 +34,7 @@ private:
     std::unique_ptr<RenderBackend> m_backend;
     std::shared_ptr<Texture> m_worldTexture;
 
-    void getMaterialColor(MaterialType material, float& r, float& g, float& b);
+    void getMaterialColor(MaterialType material, float& r, float& g, float& b, int x, int y);
     void updateWorldTexture(const World& world);
 };
 

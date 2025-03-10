@@ -95,7 +95,7 @@ int main() {
     cameraX = std::max(0, cameraX);
     cameraX = std::min(WORLD_WIDTH - actualWidth, cameraX);
     cameraY = std::max(0, cameraY);
-    cameraY = std::min(WORLD_HEIGHT - actualHeight, cameraY);
+    cameraY = std::min(WORLD_HEIGHT - 50, cameraY);
     
     // Initialize world player position to center camera view
     world.updatePlayerPosition(cameraX + actualWidth/2, cameraY + actualHeight/2);
@@ -193,8 +193,8 @@ int main() {
                 }
                 else if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) {
                     cameraY += CAMERA_SPEED; // Down key moves camera down (increases Y)
-                    // Clamp camera position to world bounds
-                    cameraY = std::min(WORLD_HEIGHT - actualHeight, cameraY);
+                    // Allow scrolling to the very bottom of the world
+                    cameraY = std::min(WORLD_HEIGHT - 50, cameraY);
                     std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 // Reset camera position
@@ -307,9 +307,9 @@ int main() {
                     cameraY -= CAMERA_SPEED * 5;
                     cameraY = std::max(0, cameraY);
                 } else if (e.wheel.y < 0) {
-                    // Scroll down
+                    // Scroll down - allow scrolling to the very bottom of the world
                     cameraY += CAMERA_SPEED * 5;
-                    cameraY = std::min(WORLD_HEIGHT - actualHeight, cameraY);
+                    cameraY = std::min(WORLD_HEIGHT - 50, cameraY);
                 }
                 
                 // Update player position for appropriate chunk loading
@@ -372,9 +372,9 @@ int main() {
                     // Ensure camera doesn't go out of bounds
                     cameraX = std::max(0, cameraX);
                     cameraY = std::max(0, cameraY);
-                    // Simple right/bottom boundary checks
+                    // Simple right/bottom boundary checks - allow scrolling further down
                     cameraX = std::min(cameraX, WORLD_WIDTH - actualWidth);
-                    cameraY = std::min(cameraY, WORLD_HEIGHT - actualHeight);
+                    cameraY = std::min(cameraY, WORLD_HEIGHT - 50);
                     
                     // Update active chunks based on new camera position (streaming system)
                     world.updatePlayerPosition(cameraX + actualWidth/2, cameraY + actualHeight/2);
@@ -392,10 +392,11 @@ int main() {
         SDL_GetMouseState(&mouseX, &mouseY);
         // Handle material placement with left mouse button
         if (leftMouseDown) {
-            // Very simple direct mapping from screen to world coordinates
-            // Just add camera position to get world position
-            int worldX = cameraX + mouseX;
-            int worldY = cameraY + mouseY;
+            // Map screen coordinates to world coordinates
+            // The renderer uses a 4x zoom (pixelSize = 4.0f), so we need to divide by 4
+            const float pixelSize = 4.0f; // Must match the value in Renderer.cpp
+            int worldX = cameraX + static_cast<int>(mouseX / pixelSize);
+            int worldY = cameraY + static_cast<int>(mouseY / pixelSize);
             
             // Place material in a circular brush pattern
             for (int dy = -placeBrushSize / 2; dy <= placeBrushSize / 2; dy++) {
@@ -419,7 +420,7 @@ int main() {
                 std::cout << "Mouse at screen: " << mouseX << "," << mouseY 
                           << " | World: " << worldX << "," << worldY 
                           << " | Camera: " << cameraX << "," << cameraY 
-                          << " | Brush size: " << placeBrushSize << std::endl;
+                          << " | Zoom: 4x | Brush size: " << placeBrushSize << std::endl;
             }
         }
         world.update();

@@ -50,8 +50,8 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     int worldWidth = world.getWidth();
     int worldHeight = world.getHeight();
     
-    // Force a 2x zoom by using a pixel size of 2.0
-    const float pixelSize = 2.0f;  // Each world pixel is 2 screen pixels - effectively zoomed in
+    // Force a 4x zoom by using a pixel size of 4.0 (doubled from 2.0)
+    const float pixelSize = 4.0f;  // Each world pixel is 4 screen pixels - effectively zoomed in more
     
     // Calculate how much world space we can display with 2x pixels
     int visibleWorldWidth = m_screenWidth / pixelSize;
@@ -105,8 +105,8 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
             int endCY = std::min(chunkPixelHeight, cameraY + m_screenHeight - chunkWorldY);
             
             // Render visible pixels in this chunk
-            for (int cy = startCY; cy < endCY; cy += 2) {
-                for (int cx = startCX; cx < endCX; cx += 2) {
+            for (int cy = startCY; cy < endCY; cy += 1) {
+                for (int cx = startCX; cx < endCX; cx += 1) {
                     // Get material directly from the chunk
                     MaterialType material = chunk->get(cx, cy);
                     if (material == MaterialType::Empty) continue;
@@ -118,35 +118,18 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
                     // Determine color based on material type using MATERIAL_PROPERTIES
                     float r = 0.0f, g = 0.0f, b = 0.0f;
                     
-                    // Use the material properties to get the correct color
-                    if (material != MaterialType::Empty) {
-                        const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
-                        // Convert from 0-255 to 0.0-1.0 for Vulkan
-                        r = props.r / 255.0f;
-                        g = props.g / 255.0f;
-                        b = props.b / 255.0f;
-                    }
-                    
-                    // Apply a simple pattern based on coordinates for variety
-                    int patternX = (wx / 8) % 2;
-                    int patternY = (wy / 8) % 2;
-                    
-                    if ((patternX + patternY) % 2 == 0) {
-                        // Lighter shade in checkerboard pattern
-                        r = std::min(1.0f, r * 1.2f);
-                        g = std::min(1.0f, g * 1.2f);
-                        b = std::min(1.0f, b * 1.2f);
-                    }
+                    // Get material color with position-based variations
+                    getMaterialColor(material, r, g, b, wx, wy);
                     
                     // Calculate screen position with zoom
                     float screenX = (wx - cameraX) * pixelSize;
                     float screenY = (wy - cameraY) * pixelSize;
                     
-                    // Draw rectangles with the zoomed size
+                    // Draw rectangles with the zoomed size - now 1x1 world pixels
                     vulkanBackend->drawRectangle(
                         screenX, 
                         screenY,
-                        2.0f * pixelSize, 2.0f * pixelSize,  // Scale with pixel size
+                        pixelSize, pixelSize,  // Scale with pixel size (1x1 pixels)
                         r, g, b
                     );
                 }
@@ -168,8 +151,8 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     if (!renderedChunks) {
         std::cout << "Falling back to direct pixel rendering" << std::endl;
         // Direct rendering from the world as a fallback
-        for (int y = startY; y < endY; y += 2) {
-            for (int x = startX; x < endX; x += 2) {
+        for (int y = startY; y < endY; y += 1) {
+            for (int x = startX; x < endX; x += 1) {
                 // Get material directly from the world
                 MaterialType material = world.get(x, y);
                 if (material == MaterialType::Empty) continue;
@@ -177,35 +160,18 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
                 // Determine color based on material type using MATERIAL_PROPERTIES
                 float r = 0.0f, g = 0.0f, b = 0.0f;
                 
-                // Use the material properties to get the correct color
-                if (material != MaterialType::Empty) {
-                    const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
-                    // Convert from 0-255 to 0.0-1.0 for Vulkan
-                    r = props.r / 255.0f;
-                    g = props.g / 255.0f;
-                    b = props.b / 255.0f;
-                }
-                
-                // Apply a simple pattern based on coordinates for variety
-                int patternX = (x / 8) % 2;
-                int patternY = (y / 8) % 2;
-                
-                if ((patternX + patternY) % 2 == 0) {
-                    // Lighter shade in checkerboard pattern
-                    r = std::min(1.0f, r * 1.2f);
-                    g = std::min(1.0f, g * 1.2f);
-                    b = std::min(1.0f, b * 1.2f);
-                }
+                // Get material color with position-based variations
+                getMaterialColor(material, r, g, b, x, y);
                 
                 // Calculate screen position with zoom
                 float screenX = (x - cameraX) * pixelSize;
                 float screenY = (y - cameraY) * pixelSize;
                 
-                // Draw rectangles with the zoomed size
+                // Draw rectangles with the zoomed size - now 1x1 world pixels
                 vulkanBackend->drawRectangle(
                     screenX, 
                     screenY,
-                    2.0f * pixelSize, 2.0f * pixelSize,  // Scale with pixel size
+                    pixelSize, pixelSize,  // Scale with pixel size (1x1 pixels)
                     r, g, b
                 );
             }
@@ -242,23 +208,249 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     endFrame();
 }
 
-void Renderer::getMaterialColor(MaterialType material, float& r, float& g, float& b) {
+void Renderer::getMaterialColor(MaterialType material, float& r, float& g, float& b, int x, int y) {
     // Get the raw pixel data directly from the world for the given material
-    // We need to generate random variations for each pixel based on position
+    // We generate position-based variations for consistent texturing
     
-    // Get base color with some variation
+    // Get base color
     const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
     
-    // Create variation based on random 
-    static std::mt19937 rng(12345); // Fixed seed for consistent colors
-    std::uniform_int_distribution<int> varDist(-50, 50);
+    // Skip processing for empty material
+    if (material == MaterialType::Empty) {
+        r = g = b = 0.0f;
+        return;
+    }
     
-    // Apply strong variation to each color component
-    int rVar = varDist(rng);
-    int gVar = varDist(rng);
-    int bVar = varDist(rng);
+    // Create position-based hash for consistent texture patterns
+    int hash = ((x * 13) + (y * 7)) ^ ((x * 23) + (y * 17));
     
-    // Calculate final color with variation
+    // Initial variation values - moderate defaults for all materials
+    int rVar = (hash % 21) - 10;  
+    int gVar = ((hash >> 4) % 21) - 10;
+    int bVar = ((hash >> 16) % 31) - 15;
+    
+    // Material-specific modifications for texture patterns
+    switch (material) {
+        case MaterialType::Stone:
+            // Stone has gray variations with strong texture
+            rVar = gVar = bVar = (hash % 41) - 20;
+            // Add dark speckles
+            if ((hash % 5) == 0) {
+                rVar -= 25;
+                gVar -= 25;
+                bVar -= 25;
+            }
+            break;
+            
+        case MaterialType::Grass:
+            // Grass has strong green variations with patches
+            gVar = (hash % 31) - 15; // More green variation
+            // Add occasional darker patches
+            if ((hash % 7) == 0) {
+                gVar -= 30;
+                rVar -= 15;
+            }
+            break;
+            
+        case MaterialType::TopSoil:
+        case MaterialType::Dirt:
+            // Soil has rich brown variations with texture
+            rVar = (hash % 25) - 12;
+            gVar = ((hash >> 4) % 21) - 10;
+            bVar = ((hash >> 8) % 17) - 8;
+            // Add darker patches
+            if ((hash % 4) == 0) {
+                rVar -= 15;
+                gVar -= 12;
+            }
+            break;
+            
+        case MaterialType::Gravel:
+            // Gravel has strong texture with varied gray tones
+            rVar = gVar = bVar = (hash % 37) - 18;
+            // Add mixed size pebble effect
+            if ((hash % 5) == 0) {
+                rVar -= 25;
+                gVar -= 25;
+                bVar -= 25;
+            } else if ((hash % 11) == 0) {
+                rVar += 15;
+                gVar += 15;
+                bVar += 15;
+            }
+            break;
+            
+        case MaterialType::DenseRock:
+            // Dense rock has dark blue-gray coloration with crystalline texture
+            rVar = (hash % 18) - 9;
+            gVar = (hash % 18) - 9;
+            bVar = (hash % 22) - 9; // Slight blue tint
+            // Add occasional mineral veins or crystalline structures
+            if ((hash % 9) == 0) {
+                bVar += 15; // Blueish highlights
+            }
+            break;
+            
+        case MaterialType::Sand:
+            // Sand has yellow-brown variations with visible texture
+            rVar = (hash % 30) - 10;
+            gVar = (hash % 25) - 12;
+            bVar = (hash % 15) - 8;
+            // Add occasional darker grains
+            if ((hash % 6) == 0) {
+                rVar -= 15;
+                gVar -= 15;
+            }
+            break;
+            
+        case MaterialType::Water:
+            // Water has blue variations with some subtle waves
+            bVar = (hash % 25) - 10;
+            // Slight green tint variations for depth perception
+            gVar = (hash % 15) - 7;
+            // Very minimal red variation
+            rVar = (hash % 6) - 3;
+            break;
+            
+        case MaterialType::Lava:
+            // Lava has hot red-orange variations with bright spots
+            rVar = (hash % 25) - 5; // More red, less reduction
+            gVar = (hash % 25) - 15; // More variation in orange
+            bVar = (hash % 6) - 3; // Minor blue variation
+            // Add occasional bright yellow-white spots
+            if ((hash % 10) == 0) {
+                rVar += 20;
+                gVar += 15;
+            }
+            break;
+            
+        case MaterialType::Snow:
+            // Snow has very subtle blue-white variations
+            rVar = gVar = bVar = (hash % 10) - 5;
+            break;
+            
+        case MaterialType::Bedrock:
+            // Bedrock has dark gray variations with some texture
+            rVar = gVar = bVar = (hash % 15) - 7;
+            // Add some occasional darker spots for texture
+            if ((hash % 8) == 0) {
+                rVar -= 10;
+                gVar -= 10;
+                bVar -= 10;
+            }
+            break;
+            
+        case MaterialType::Sandstone:
+            // Sandstone has beige-tan variations
+            rVar = (hash % 16) - 8;
+            gVar = (hash % 14) - 7;
+            bVar = (hash % 8) - 4;
+            break;
+            
+        case MaterialType::Fire:
+            // Fire has flickering yellow-orange-red variations
+            rVar = (hash % 20) - 5; // Strong red
+            gVar = (hash % 30) - 15; // Varied green for yellow/orange
+            bVar = (hash % 10) - 8; // Minimal blue
+            // Random bright spots
+            if ((hash % 3) == 0) {
+                rVar += 15;
+                gVar += 10;
+            }
+            break;
+            
+        case MaterialType::Oil:
+            // Oil has dark brown-black variations with slight shine
+            rVar = (hash % 12) - 8;
+            gVar = (hash % 10) - 7;
+            bVar = (hash % 8) - 6;
+            // Occasional slight shine
+            if ((hash % 12) == 0) {
+                rVar += 8;
+                gVar += 8;
+                bVar += 8;
+            }
+            break;
+            
+        case MaterialType::GrassStalks:
+            // Grass stalks have varied green shades
+            gVar = (hash % 22) - 8; // Strong green variation
+            rVar = (hash % 10) - 5; // Some red variation for yellowish tints
+            bVar = (hash % 8) - 4; // Minor blue variation
+            break;
+            
+        case MaterialType::FlammableGas:
+            // Flammable gas has subtle greenish variations with transparency
+            gVar = (hash % 15) - 5;
+            rVar = (hash % 8) - 4;
+            bVar = (hash % 8) - 4;
+            break;
+            
+        // Add ore materials
+        case MaterialType::IronOre:
+            // Iron ore has gray-blue tints with metallic specks
+            rVar = gVar = (hash % 25) - 12;
+            bVar = (hash % 30) - 12;
+            // Add metallic highlights
+            if ((hash % 4) == 0) {
+                rVar += 20;
+                gVar += 20;
+                bVar += 25;
+            }
+            break;
+            
+        case MaterialType::CopperOre:
+            // Copper has orange-brown coloration with patchy texture
+            rVar = (hash % 35) - 10;  // Strong orange-red variation
+            gVar = (hash % 25) - 15;  // Less green variation
+            bVar = (hash % 15) - 10;  // Minimal blue
+            break;
+            
+        case MaterialType::GoldOre:
+            // Gold has shiny yellow with highlight sparkles
+            rVar = (hash % 30) - 10;  // Strong yellow-red
+            gVar = (hash % 30) - 15;  // Yellow-green
+            bVar = (hash % 10) - 8;   // Minimal blue
+            // Add shiny spots
+            if ((hash % 4) == 0) {
+                rVar += 30;
+                gVar += 20;
+            }
+            break;
+            
+        case MaterialType::CoalOre:
+            // Coal has dark with occasional shiny bits
+            rVar = gVar = bVar = (hash % 12) - 9;  // Generally dark
+            // Add occasional shiny anthracite highlights
+            if ((hash % 7) == 0) {
+                rVar += 15;
+                gVar += 15;
+                bVar += 15;
+            }
+            break;
+            
+        case MaterialType::DiamondOre:
+            // Diamond has blue-white sparkles in dark matrix
+            rVar = (hash % 20) - 10;
+            gVar = (hash % 25) - 10;
+            bVar = (hash % 35) - 10;  // More blue variation
+            // Add bright sparkles
+            if ((hash % 3) == 0) {
+                rVar += 30;
+                gVar += 40;
+                bVar += 50;
+            }
+            break;
+            
+        default:
+            // For any other materials, use moderate general variations
+            rVar = ((hash % 21) - 10);
+            gVar = ((hash >> 4) % 21) - 10;
+            bVar = ((hash >> 8) % 21) - 10;
+            break;
+    }
+    
+    // Apply color variation with proper clamping
     int rInt = std::max(0, std::min(255, int(props.r) + rVar));
     int gInt = std::max(0, std::min(255, int(props.g) + gVar));
     int bInt = std::max(0, std::min(255, int(props.b) + bVar));

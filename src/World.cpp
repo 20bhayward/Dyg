@@ -52,201 +52,16 @@ void Chunk::set(int x, int y, MaterialType material) {
     
     MaterialType oldMaterial = m_grid[idx];
     if (oldMaterial != material) {
-        // Always replace the existing material rather than placing on top
+        // Only update material type
         m_grid[idx] = material;
         m_isDirty = true;
         
-        // Update pixel data for this cell with pixel-perfect alignment
-        int pixelIdx = idx * 4;
-        
-        // Ensure we're in bounds for the pixel data too
-        if (pixelIdx < 0 || pixelIdx + 3 >= static_cast<int>(m_pixelData.size())) {
-            return;
-        }
-        
-        // Get the material properties using our helper macro
-        const auto& props = MAT_PROPS(material);
-        
-        // Calculate color variations using our helper method
-        int rVariation, gVariation, bVariation;
-        GetMaterialVariation(material, x, y, rVariation, gVariation, bVariation, false);
-        
-        // Additional water depth effects if needed (special case)
-        if (material == MaterialType::Water) {
-            // Add slight depth effect based on neighboring water pixels
-            int waterBelow = countWaterBelow(x, y);
-            if (waterBelow > 0) {
-                // Deeper water is darker blue
-                bVariation -= std::min(20, waterBelow * 2);
-                rVariation -= std::min(10, waterBelow);
-                gVariation -= std::min(15, waterBelow);
-            }
-        
-                if (posHash1 % 3 == 0) {
-                    gVariation -= 20;
-                    rVariation -= 10;
-                }
-                break;
-            case MaterialType::Sand:
-                // Sand has strong yellow-brown variations with visible texture
-                rVariation = (posHash1 % 30) - 10;
-                gVariation = (posHash1 % 25) - 12;
-                bVariation = (posHash3 % 15) - 10;
-                // Add occasional darker grains
-                if (posHash2 % 4 == 0) {
-                    rVariation -= 15;
-                    gVariation -= 15;
-                }
-                break;
-            case MaterialType::Dirt:
-                // Dirt has rich brown variations with texture
-                rVariation = (posHash1 % 40) - 15;
-                gVariation = (posHash2 % 30) - 15;
-                bVariation = (posHash3 % 20) - 12;
-                // Add occasional darker and lighter patches
-                if (posHash2 % 5 == 0) {
-                    rVariation -= 20;
-                    gVariation -= 20;
-                    bVariation -= 10;
-                } else if (posHash2 % 7 == 0) {
-                    rVariation += 15;
-                    gVariation += 10;
-                }
-                break;
-            case MaterialType::Snow:
-                // Snow has very subtle blue-white variations
-                rVariation = gVariation = bVariation = (posHash1 % 7) - 3;
-                break;
-            case MaterialType::Sandstone:
-                // Sandstone has beige-tan variations
-                rVariation = (posHash1 % 16) - 8;
-                gVariation = (posHash2 % 14) - 7;
-                bVariation = (posHash3 % 8) - 4;
-                break;
-            case MaterialType::Bedrock:
-                // Bedrock has dark gray variations with some texture
-                rVariation = gVariation = bVariation = (posHash1 % 20) - 8;
-                // Add some occasional darker spots for texture
-                if (posHash2 % 8 == 0) {
-                    rVariation -= 10;
-                    gVariation -= 10;
-                    bVariation -= 10;
-                }
-                break;
-            case MaterialType::Gravel:
-                // Gravel has strong texture with varied gray tones
-                rVariation = gVariation = bVariation = (posHash1 % 35) - 17;
-                // Add mixed size pebble effect
-                if (posHash2 % 7 == 0) {
-                    rVariation -= 25;
-                    gVariation -= 25;
-                    bVariation -= 25;
-                } else if (posHash2 % 11 == 0) {
-                    rVariation += 15;
-                    gVariation += 15;
-                    bVariation += 15;
-                }
-                break;
-            case MaterialType::TopSoil:
-                // Topsoil has rich brown variations with organic texture
-                rVariation = (posHash1 % 25) - 10;
-                gVariation = (posHash2 % 20) - 10;
-                bVariation = (posHash3 % 12) - 6;
-                // Add darker organic matter patches
-                if (posHash2 % 4 == 0) {
-                    rVariation -= 15;
-                    gVariation -= 12;
-                    bVariation -= 5;
-                }
-                break;
-            case MaterialType::DenseRock:
-                // Dense rock has dark blue-gray coloration with crystalline texture
-                rVariation = (posHash1 % 18) - 9;
-                gVariation = (posHash1 % 18) - 9;
-                bVariation = (posHash1 % 22) - 9; // Slight blue tint
-                // Add occasional mineral veins or crystalline structures
-                if (posHash2 % 9 == 0) {
-                    rVariation += 10;
-                    gVariation += 12;
-                    bVariation += 15; // Blueish highlights
-                } else if (posHash2 % 16 == 0) {
-                    rVariation -= 15;
-                    gVariation -= 15;
-                    bVariation -= 10; // Dark patches
-                }
-                break;
-            case MaterialType::Water:
-                // Water has blue variations with some subtle waves
-                bVariation = (posHash1 % 18) - 9;
-                // Slight green tint variations for depth perception
-                gVariation = (posHash2 % 10) - 5;
-                // Very minimal red variation
-                rVariation = (posHash3 % 4) - 2;
-                break;
-            case MaterialType::Lava:
-                // Lava has hot red-orange variations with bright spots
-                rVariation = (posHash1 % 30) - 5; // More red, less reduction
-                gVariation = (posHash2 % 25) - 15; // More variation in orange
-                bVariation = (posHash3 % 6) - 3; // Minor blue variation
-                // Add occasional bright yellow-white spots
-                if (posHash2 % 10 == 0) {
-                    rVariation += 20;
-                    gVariation += 15;
-                }
-                break;
-            case MaterialType::GrassStalks:
-                // Grass stalks have varied green shades
-                gVariation = (posHash1 % 22) - 8; // Strong green variation
-                rVariation = (posHash2 % 10) - 5; // Some red variation for yellowish/brownish tints
-                bVariation = (posHash3 % 8) - 4; // Minor blue variation
-                break;
-            case MaterialType::Fire:
-                // Fire has flickering yellow-orange-red variations
-                rVariation = (posHash1 % 20) - 5; // Strong red
-                gVariation = (posHash2 % 30) - 15; // Varied green for yellow/orange
-                bVariation = (posHash3 % 10) - 8; // Minimal blue
-                // Random bright spots
-                if (posHash2 % 5 == 0) {
-                    rVariation += 15;
-                    gVariation += 10;
-                }
-                break;
-            case MaterialType::Oil:
-                // Oil has dark brown-black variations with slight shine
-                rVariation = (posHash1 % 12) - 8;
-                gVariation = (posHash2 % 10) - 7;
-                bVariation = (posHash3 % 8) - 6;
-                // Occasional slight shine
-                if (posHash2 % 12 == 0) {
-                    rVariation += 8;
-                    gVariation += 8;
-                    bVariation += 8;
-                }
-                break;
-            case MaterialType::FlammableGas:
-                // Flammable gas has subtle greenish variations with transparency
-                gVariation = (posHash1 % 15) - 5;
-                rVariation = (posHash2 % 8) - 4;
-                bVariation = (posHash3 % 8) - 4;
-        // Apply the variation to the base color
-        int r = props.r + rVariation + props.varR;
-        int g = props.g + gVariation + props.varG;
-        int b = props.b + bVariation + props.varB;
-        
-        // Clamp values to valid range
-        m_pixelData[pixelIdx] = std::max(0, std::min(255, r));
-        m_pixelData[pixelIdx+1] = std::max(0, std::min(255, g));
-        m_pixelData[pixelIdx+2] = std::max(0, std::min(255, b));
-        m_pixelData[pixelIdx+3] = props.transparency;
+        // Mark the chunk as modified
+        m_isModified = true;
     }
 }
 
 void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
-    // Store neighboring chunks for boundary checks
-    this->chunkBelow = chunkBelow;
-    this->chunkLeft = chunkLeft;
-    this->chunkRight = chunkRight;
-    
     // At the start of each frame, assume this chunk won't need processing next frame
     setShouldUpdateNextFrame(false);
     
@@ -961,7 +776,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                                 
                                 // If a solid block is in the way, path is blocked
                                 if (checkMaterial != MaterialType::Empty && checkMaterial != material) {
-                                    const auto& checkProps = MAT_PROPS(checkMaterial);
+                                    const auto& checkProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(checkMaterial)];
                                     if (checkProps.isSolid) {
                                         pathBlocked = true;
                                         break;
@@ -1009,7 +824,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                 continue; // Skip if already moved
             }
             
-            const auto& props = MAT_PROPS(material);
+            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
             
             if (props.isGas) {
                 // Try to rise upward
@@ -1027,7 +842,7 @@ void Chunk::update(Chunk* chunkBelow, Chunk* chunkLeft, Chunk* chunkRight) {
                         }
                         // Gases can rise through liquids (creating bubbles)
                         else {
-                            const auto& aboveProps = MAT_PROPS(aboveMaterial);
+                            const auto& aboveProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(aboveMaterial)];
                             if (aboveProps.isLiquid) {
                                 // Swap positions - gas rises through liquid
                                 m_grid[aboveIdx] = material;
@@ -1066,8 +881,8 @@ bool Chunk::canDisplace(MaterialType above, MaterialType below) const {
     }
     
     // Get properties of both materials
-    const auto& aboveProps = MAT_PROPS(above);
-    const auto& belowProps = MAT_PROPS(below);
+    const auto& aboveProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(above)];
+    const auto& belowProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(below)];
     
     // Powders can displace liquids if they're dense enough
     if (aboveProps.isPowder && belowProps.isLiquid) {
@@ -1113,122 +928,6 @@ bool Chunk::canDisplace(MaterialType above, MaterialType below) const {
     return false;
 }
 
-void Chunk::GetMaterialVariation(MaterialType material, int x, int y, 
-                               int& rVar, int& gVar, int& bVar, bool forRendering) const {
-    // Create a position-based variation for more natural look
-    // Enhanced variation using multiple hash functions for more texture
-    int posHash1 = ((x * 13) + (y * 7)) % 32;
-    int posHash2 = ((x * 23) + (y * 17)) % 64;
-    int posHash3 = ((x * 5) + (y * 31)) % 16;
-    
-    // Set base variation values
-    rVar = (posHash1 % 35) - 17;
-    gVar = (posHash2 % 31) - 15;
-    bVar = (posHash3 % 27) - 13;
-    
-    // Apply stronger variations if this is for rendering
-    if (forRendering) {
-        rVar *= 5;
-        gVar *= 5;
-        bVar *= 5;
-    }
-    
-    // Apply material-specific variation patterns
-    switch (material) {
-        case MaterialType::Stone:
-            // Stone has gray variations with strong texture
-            rVar = gVar = bVar = (posHash1 % 45) - 22;
-            if (forRendering) rVar *= 5;
-            if (forRendering) gVar = bVar = rVar;
-            // Add dark speckles
-            if (posHash2 % 5 == 0) {
-                rVar -= forRendering ? 50 : 10;
-                gVar -= forRendering ? 50 : 10;
-                bVar -= forRendering ? 50 : 10;
-            }
-            break;
-        case MaterialType::Grass:
-            // Grass has strong green variations with patches
-            gVar = (posHash1 % 50) - 15; // Strong green variation
-            rVar = (posHash2 % 25) - 15; // Variation for yellowish tints
-            // Add occasional darker patches
-            if (posHash1 % 3 == 0) {
-                gVar -= forRendering ? 60 : 15;
-                rVar -= forRendering ? 40 : 8;
-            }
-            break;
-        case MaterialType::Sand:
-            // Sand has strong yellow-brown variations with visible texture
-            rVar = (posHash1 % 30) - 10;
-            gVar = (posHash1 % 25) - 12;
-            bVar = (posHash3 % 15) - 10;
-            // Add occasional darker grains
-            if (posHash2 % 4 == 0) {
-                rVar -= forRendering ? 15 : 5;
-                gVar -= forRendering ? 15 : 5;
-            }
-            break;
-        case MaterialType::Dirt:
-            // Dirt has rich brown variations with texture
-            rVar = (posHash1 % 40) - 15;
-            gVar = (posHash2 % 30) - 15;
-            bVar = (posHash3 % 20) - 12;
-            // Add occasional darker and lighter patches
-            if (posHash2 % 5 == 0) {
-                rVar -= forRendering ? 20 : 5;
-                gVar -= forRendering ? 20 : 5;
-                bVar -= forRendering ? 10 : 3;
-            } else if (posHash2 % 7 == 0) {
-                rVar += forRendering ? 15 : 5;
-                gVar += forRendering ? 10 : 3;
-            }
-            break;
-        case MaterialType::Water:
-            // Water has blue variations with depth effects
-            bVar = (posHash1 % 60) - 20; // Stronger blue variation
-            rVar = (posHash2 % 15) - 10; // Subtle red variation
-            gVar = (posHash3 % 50) - 10; // Moderate green variation
-            break;
-        case MaterialType::Snow:
-            // Snow has very subtle blue-white variations
-            rVar = gVar = bVar = (posHash1 % 7) - 3;
-            break;
-        case MaterialType::Sandstone:
-            // Sandstone has beige-tan variations
-            rVar = (posHash1 % 16) - 8;
-            gVar = (posHash2 % 14) - 7;
-            bVar = (posHash3 % 8) - 4;
-            break;
-        case MaterialType::Bedrock:
-            // Bedrock has dark gray variations with some texture
-            rVar = gVar = bVar = (posHash1 % 20) - 8;
-            // Add some occasional darker spots for texture
-            if (posHash2 % 8 == 0) {
-                rVar -= forRendering ? 10 : 3;
-                gVar -= forRendering ? 10 : 3;
-                bVar -= forRendering ? 10 : 3;
-            }
-            break;
-        case MaterialType::Lava:
-            // Lava has strong orange-red variations
-            rVar = (posHash1 % 70) - 20; // Strong red variation
-            gVar = (posHash2 % 60) - 40; // Less green variation
-            bVar = (posHash3 % 15) - 10; // Minimal blue variation
-            // Add occasional bright spots
-            if (posHash2 % 3 == 0) {
-                rVar += forRendering ? 30 : 10;
-                gVar += forRendering ? 20 : 5;
-            }
-            break;
-        default:
-            // Default variation - still apply some texture for any other materials
-            rVar = (posHash1 % 12) - 6;
-            gVar = (posHash2 % 12) - 6;
-            bVar = (posHash3 % 12) - 6;
-            break;
-    }
-}
-
 void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& oldGrid, bool& anyMaterialMoved) {
     // Process all cells in the grid for material interactions
     for (int y = 0; y < HEIGHT; ++y) {
@@ -1241,7 +940,7 @@ void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& oldGrid,
                 continue;
             }
             
-            const auto& props = MAT_PROPS(current);
+            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(current)];
             
             // Fire interactions with flammable materials
             if (current == MaterialType::Fire) {
@@ -1261,7 +960,7 @@ void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& oldGrid,
                         if (neighborIdx < 0 || neighborIdx >= static_cast<int>(m_grid.size())) continue;
                         
                         MaterialType neighbor = m_grid[neighborIdx];
-                        const auto& neighborProps = MAT_PROPS(neighbor);
+                        const auto& neighborProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(neighbor)];
                         
                         // If neighbor is flammable, chance to ignite it
                         if (neighborProps.isFlammable && (m_rng() % 20) == 0) {
@@ -1378,7 +1077,7 @@ void Chunk::handleMaterialInteractions(const std::vector<MaterialType>& oldGrid,
                                     
                                     // Don't affect solid blocks
                                     MaterialType targetMaterial = m_grid[explosionIdx];
-                                    const auto& targetProps = MAT_PROPS(targetMaterial);
+                                    const auto& targetProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(targetMaterial)];
                                     
                                     if (!targetProps.isSolid || (m_rng() % 3) == 0) {
                                         m_grid[explosionIdx] = MaterialType::Fire;
@@ -1411,26 +1110,23 @@ void Chunk::updatePixelData() {
                 m_pixelData[pixelIdx+2] = 0;
                 m_pixelData[pixelIdx+3] = 0;
             } else {
-                // Get the material properties using our helper macro
-                const auto& props = MAT_PROPS(material);
+                const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
                 
-                // Calculate color variations using our helper method
-                int rVariation, gVariation, bVariation;
-                GetMaterialVariation(material, x, y, rVariation, gVariation, bVariation, true);
+                // Create a position-based variation for more natural look
+                // Enhanced variation using multiple hash functions for more texture
+                int posHash1 = ((x * 13) + (y * 7)) % 32;
+                int posHash2 = ((x * 23) + (y * 17)) % 64;
+                int posHash3 = ((x * 5) + (y * 31)) % 16;
                 
-                // Add water depth effects if needed (special case)
-                if (material == MaterialType::Water) {
-                    // Add slight depth effect based on neighboring water pixels
-                    int waterBelow = countWaterBelow(x, y);
-                    if (waterBelow > 0) {
-                        // Deeper water is darker blue
-                        bVariation -= std::min(100, waterBelow * 10);
-                        rVariation -= std::min(50, waterBelow * 5);
-                        gVariation -= std::min(75, waterBelow * 7);
-                    }
+                // Different variation for each color channel - MODERATE VARIATION
+                int rVariation = ((posHash1 % 35) - 17) * 2;  // Moderate variation
+                int gVariation = ((posHash2 % 31) - 15) * 2;  // Moderate variation
+                int bVariation = ((posHash3 % 27) - 13) * 2;  // Moderate variation
                 
-                // Material variations are already handled by GetMaterialVariation
-                /*    case MaterialType::Stone:
+                // Apply material-specific variation patterns
+                // Various materials have their own unique texture patterns
+                switch (material) {
+                    case MaterialType::Stone:
                         // Stone has gray variations with strong texture
                         rVariation = gVariation = bVariation = ((posHash1 % 45) - 22) * 5;
                         // Add dark speckles
@@ -1747,7 +1443,7 @@ void Chunk::updatePixelData() {
                         gVariation = (posHash2 % 12) - 6;
                         bVariation = (posHash3 % 12) - 6;
                         break;
-                }*/
+                }
                 
                 // Apply the enhanced variation to the base color
                 int r = props.r + rVariation + props.varR;
@@ -1939,15 +1635,57 @@ void World::set(int x, int y, MaterialType material) {
     int idx = y * m_width + x;
     int pixelIdx = idx * 4;
     
-    const auto& props = MAT_PROPS(material);
+    const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
     
-    // Create a position-based variation for more natural look
-    int posHash = ((x * 13) + (y * 7)) % 32;
-    int variation = (posHash % 7) - 3;
+    // Calculate position-based hash for consistent texture patterns
+    int hash = ((x * 13) + (y * 7)) ^ ((x * 23) + (y * 17));
     
-    m_pixelData[pixelIdx] = std::max(0, std::min(255, static_cast<int>(props.r) + variation));     // R
-    m_pixelData[pixelIdx+1] = std::max(0, std::min(255, static_cast<int>(props.g) + variation));   // G
-    m_pixelData[pixelIdx+2] = std::max(0, std::min(255, static_cast<int>(props.b) + variation));   // B
+    // Initial variation values
+    int rVar = (hash % 21) - 10;  
+    int gVar = ((hash >> 4) % 21) - 10;
+    int bVar = ((hash >> 16) % 31) - 15;
+    
+    // Material-specific modifications
+    // Apply moderate variations to certain materials
+    switch (material) {
+        case MaterialType::Stone:
+            // Make stone more gray with moderate variation
+            rVar = gVar = bVar = (hash % 41) - 20;
+            break;
+        case MaterialType::Grass:
+            // Grass has moderate green variations
+            gVar = (hash % 31) - 15;  // More green variation
+            break;
+        case MaterialType::TopSoil:
+        case MaterialType::Dirt:
+            // Soil has brown variation
+            rVar = (hash % 25) - 12;
+            gVar = ((hash >> 4) % 21) - 10;
+            bVar = ((hash >> 8) % 17) - 8;
+            break;
+        case MaterialType::Gravel:
+            // Gravel has distinct texture
+            rVar = gVar = bVar = (hash % 37) - 18;
+            break;
+        case MaterialType::DenseRock:
+            // Dense rock has blue-gray variations
+            rVar = (hash % 25) - 12;
+            gVar = (hash % 25) - 12;
+            bVar = (hash % 33) - 16; // Slight blue tint variation
+            break;
+        default:
+            // Default variation is already set
+            break;
+    }
+    
+    // Apply color variation with proper clamping
+    int rInt = std::max(0, std::min(255, int(props.r) + rVar));
+    int gInt = std::max(0, std::min(255, int(props.g) + gVar));
+    int bInt = std::max(0, std::min(255, int(props.b) + bVar));
+    
+    m_pixelData[pixelIdx] = rInt;     // R
+    m_pixelData[pixelIdx+1] = gInt;   // G
+    m_pixelData[pixelIdx+2] = bInt;   // B
     m_pixelData[pixelIdx+3] = props.transparency;  // A
 }
 
@@ -1959,7 +1697,7 @@ bool Chunk::isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, in
     }
     
     MaterialType material = grid[idx];
-    const auto& props = MAT_PROPS(material);
+    const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
     
     // If not a liquid, it's not an isolated liquid
     if (!props.isLiquid) {
@@ -1995,7 +1733,7 @@ bool Chunk::isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, in
             }
             
             // If neighbor is another liquid, they can interact
-            const auto& neighborProps = MAT_PROPS(neighbor);
+            const auto& neighborProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(neighbor)];
             if (neighborProps.isLiquid) {
                 return true;
             }
@@ -2080,7 +1818,7 @@ void World::update() {
                     for (int localX = 0; localX < Chunk::WIDTH; localX++) {
                         MaterialType material = chunk->get(localX, Chunk::HEIGHT - 1);
                         if (material != MaterialType::Empty) {
-                            const auto& props = MAT_PROPS(material);
+                            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
                             
                             // If it's a powder or liquid, always check for falling
                             if (props.isPowder || props.isLiquid) {
@@ -2095,7 +1833,7 @@ void World::update() {
                                     canMove = true;
                                 } else if (props.isLiquid) {
                                     // For liquids, check if they can displace the material below
-                                    const auto& belowProps = MAT_PROPS(belowMaterial);
+                                    const auto& belowProps = MATERIAL_PROPERTIES[static_cast<std::size_t>(belowMaterial)];
                                     
                                     // Handle density-based displacements between different liquids
                                     if (belowProps.isLiquid) {
@@ -2211,7 +1949,7 @@ void World::update() {
                     for (int localY = 0; localY < Chunk::HEIGHT; localY++) {
                         MaterialType material = chunk->get(0, localY);
                         if (material != MaterialType::Empty) {
-                            const auto& props = MAT_PROPS(material);
+                            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
                             
                             // Only process liquids for horizontal edge cases
                             if (props.isLiquid) {
@@ -2240,7 +1978,7 @@ void World::update() {
                     for (int localY = 0; localY < Chunk::HEIGHT; localY++) {
                         MaterialType material = chunk->get(Chunk::WIDTH - 1, localY);
                         if (material != MaterialType::Empty) {
-                            const auto& props = MAT_PROPS(material);
+                            const auto& props = MATERIAL_PROPERTIES[static_cast<std::size_t>(material)];
                             
                             // Only process liquids for horizontal edge cases
                             if (props.isLiquid) {
@@ -2947,520 +2685,8 @@ void World::generate(unsigned int seed) {
     }
     
     // ---- Cave Generation ----
-    std::cout << "Generating cave system with cellular automata..." << std::endl;
-    
-    // Define the cave depth zones - Keep caves deeper underground
-    const int upperCaveDepthStart = WORLD_HEIGHT / 2;     // Upper caves start at 1/2 depth
-    const int midCaveDepthStart = 2 * WORLD_HEIGHT / 3;   // Mid caves start at 2/3 depth
-    const int deepCaveDepthStart = 3 * WORLD_HEIGHT / 4;  // Deep caves start at 3/4 depth
-    const int caveZoneHeight = WORLD_HEIGHT / 6;          // Each zone has a height of 1/6 world height
-    
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-    
-    // Create cellular automata grid for each zone
-    std::vector<std::vector<int>> upperCaveGrid(caveZoneHeight, std::vector<int>(WORLD_WIDTH, 0));
-    std::vector<std::vector<int>> midCaveGrid(caveZoneHeight, std::vector<int>(WORLD_WIDTH, 0));
-    std::vector<std::vector<int>> deepCaveGrid(caveZoneHeight, std::vector<int>(WORLD_WIDTH, 0));
-    
-    // Initialize the cave grids with random noise
-    // Increased wall probability across all cave types to create more cohesive caves
-    float upperWallProb = 0.65f; // More walls = smaller caves with more structure
-    float midWallProb = 0.60f;   // More walls = more structured medium caves
-    float deepWallProb = 0.55f;  // More walls = more defined large caves
-    
-    std::cout << "Initializing cave grids..." << std::endl;
-    
-    // Initialize upper cave grid (weak CA - smaller, isolated caves)
-    for (int y = 0; y < caveZoneHeight; ++y) {
-        for (int x = 0; x < WORLD_WIDTH; ++x) {
-            // Use Perlin noise for structured initial distribution - lower frequency for larger patterns
-            float noiseFactor = perlinNoise2D(x * 0.03f, y * 0.03f, seed + 100);
-            float probability = upperWallProb + (noiseFactor * 0.15f); // Stronger noise influence
-            
-            // Stronger edge bias to prevent caves at boundaries
-            float edgeFactor = 1.0f;
-            if (y < 10) edgeFactor = 0.9f + (y * 0.01f); // Top edge - stronger bias
-            if (y > caveZoneHeight - 10) edgeFactor = 0.9f + ((caveZoneHeight - y) * 0.01f); // Bottom edge
-            if (x < 10) edgeFactor = 0.9f + (x * 0.01f); // Left edge
-            if (x > WORLD_WIDTH - 10) edgeFactor = 0.9f + ((WORLD_WIDTH - x) * 0.01f); // Right edge
-            
-            // Use pre-defined cave shapes as seeds for more natural formations
-            float shapeFactor = 1.0f;
-            // Create several oval-shaped cave seeds
-            for (int seed = 0; seed < 4; seed++) {
-                int centerX = 150 + (seed * WORLD_WIDTH / 4) + (m_rng() % (WORLD_WIDTH / 10));
-                int centerY = caveZoneHeight / 2 + (m_rng() % (caveZoneHeight / 4) - caveZoneHeight / 8);
-                int radiusX = 20 + (m_rng() % 20);
-                int radiusY = 10 + (m_rng() % 10);
-                
-                float dx = (x - centerX) / static_cast<float>(radiusX);
-                float dy = (y - centerY) / static_cast<float>(radiusY);
-                float distSq = dx*dx + dy*dy;
-                
-                if (distSq < 1.0f) {
-                    shapeFactor = 0.3f; // Lower probability inside cave seeds
-                }
-            }
-            
-            upperCaveGrid[y][x] = (dist(m_rng) < probability * edgeFactor * shapeFactor) ? 1 : 0;
-        }
-    }
-    
-    // Initialize mid cave grid (moderate CA - medium, connected caves)
-    for (int y = 0; y < caveZoneHeight; ++y) {
-        for (int x = 0; x < WORLD_WIDTH; ++x) {
-            // Use Perlin noise for more natural structure - lower frequency for larger patterns
-            float noiseFactor = perlinNoise2D(x * 0.02f, y * 0.02f, seed + 200);
-            float probability = midWallProb + (noiseFactor * 0.15f);
-            
-            // Stronger edge bias
-            float edgeFactor = 1.0f;
-            if (y < 10) edgeFactor = 0.9f + (y * 0.01f);
-            if (y > caveZoneHeight - 10) edgeFactor = 0.9f + ((caveZoneHeight - y) * 0.01f);
-            if (x < 10) edgeFactor = 0.9f + (x * 0.01f);
-            if (x > WORLD_WIDTH - 10) edgeFactor = 0.9f + ((WORLD_WIDTH - x) * 0.01f);
-            
-            // Create cave seeds - larger for mid-level
-            float shapeFactor = 1.0f;
-            for (int seed = 0; seed < 3; seed++) {
-                int centerX = 300 + (seed * WORLD_WIDTH / 3) + (m_rng() % (WORLD_WIDTH / 8));
-                int centerY = caveZoneHeight / 2 + (m_rng() % (caveZoneHeight / 4) - caveZoneHeight / 8);
-                int radiusX = 30 + (m_rng() % 25);
-                int radiusY = 15 + (m_rng() % 15);
-                
-                float dx = (x - centerX) / static_cast<float>(radiusX);
-                float dy = (y - centerY) / static_cast<float>(radiusY);
-                float distSq = dx*dx + dy*dy;
-                
-                if (distSq < 1.0f) {
-                    shapeFactor = 0.2f; // Lower probability inside cave seeds
-                }
-            }
-            
-            midCaveGrid[y][x] = (dist(m_rng) < probability * edgeFactor * shapeFactor) ? 1 : 0;
-        }
-    }
-    
-    // Initialize deep cave grid (strong CA - larger caves with natural feel)
-    for (int y = 0; y < caveZoneHeight; ++y) {
-        for (int x = 0; x < WORLD_WIDTH; ++x) {
-            // Use Perlin noise for more natural structure - lower frequency for larger patterns
-            float noiseFactor = perlinNoise2D(x * 0.015f, y * 0.015f, seed + 300);
-            float probability = deepWallProb + (noiseFactor * 0.15f);
-            
-            // Stronger edge bias
-            float edgeFactor = 1.0f;
-            if (y < 10) edgeFactor = 0.9f + (y * 0.01f);
-            if (y > caveZoneHeight - 10) edgeFactor = 0.9f + ((caveZoneHeight - y) * 0.01f);
-            if (x < 10) edgeFactor = 0.9f + (x * 0.01f);
-            if (x > WORLD_WIDTH - 10) edgeFactor = 0.9f + ((WORLD_WIDTH - x) * 0.01f);
-            
-            // Create cave seeds - largest for deep level
-            float shapeFactor = 1.0f;
-            for (int seed = 0; seed < 2; seed++) {
-                int centerX = WORLD_WIDTH / 4 + (seed * WORLD_WIDTH / 2) + (m_rng() % (WORLD_WIDTH / 6));
-                int centerY = caveZoneHeight / 2 + (m_rng() % (caveZoneHeight / 4) - caveZoneHeight / 8);
-                int radiusX = 40 + (m_rng() % 30);
-                int radiusY = 20 + (m_rng() % 20);
-                
-                float dx = (x - centerX) / static_cast<float>(radiusX);
-                float dy = (y - centerY) / static_cast<float>(radiusY);
-                float distSq = dx*dx + dy*dy;
-                
-                if (distSq < 1.0f) {
-                    shapeFactor = 0.15f; // Lower probability inside cave seeds
-                }
-            }
-            
-            deepCaveGrid[y][x] = (dist(m_rng) < probability * edgeFactor * shapeFactor) ? 1 : 0;
-        }
-    }
-    
-    // Function to count wall neighbors for a cell (including edge handling)
-    auto countWallNeighbors = [](const std::vector<std::vector<int>>& grid, int x, int y) {
-        int count = 0;
-        int height = grid.size();
-        int width = grid[0].size();
-        
-        for (int ny = y - 1; ny <= y + 1; ++ny) {
-            for (int nx = x - 1; nx <= x + 1; ++nx) {
-                if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
-                    count++; // Treat out-of-bounds as walls
-                } else if (!(nx == x && ny == y) && grid[ny][nx] == 1) {
-                    count++;
-                }
-            }
-        }
-        return count;
-    };
-    
-    std::cout << "Running weak cellular automata for upper caves..." << std::endl;
-    
-    // Run weak cellular automata for upper caves - conservative rules, fewer iterations
-    int upperIterations = 3;
-    for (int it = 0; it < upperIterations; ++it) {
-        std::vector<std::vector<int>> newGrid = upperCaveGrid;
-        for (int y = 0; y < caveZoneHeight; ++y) {
-            for (int x = 0; x < WORLD_WIDTH; ++x) {
-                int neighbors = countWallNeighbors(upperCaveGrid, x, y);
-                
-                if (upperCaveGrid[y][x] == 1) {
-                    // Wall remains if 4 or more neighbors are walls
-                    newGrid[y][x] = (neighbors >= 4) ? 1 : 0;
-                } else {
-                    // Empty becomes wall if 5 or more neighbors are walls
-                    newGrid[y][x] = (neighbors >= 5) ? 1 : 0;
-                }
-            }
-        }
-        upperCaveGrid.swap(newGrid);
-    }
-    
-    std::cout << "Running moderate cellular automata for mid caves..." << std::endl;
-    
-    // Run moderate cellular automata for mid caves - standard rules
-    int midIterations = 4;
-    for (int it = 0; it < midIterations; ++it) {
-        std::vector<std::vector<int>> newGrid = midCaveGrid;
-        for (int y = 0; y < caveZoneHeight; ++y) {
-            for (int x = 0; x < WORLD_WIDTH; ++x) {
-                int neighbors = countWallNeighbors(midCaveGrid, x, y);
-                
-                if (midCaveGrid[y][x] == 1) {
-                    // Wall remains if 4 or more neighbors are walls
-                    newGrid[y][x] = (neighbors >= 4) ? 1 : 0;
-                } else {
-                    // Empty becomes wall if 5 or more neighbors are walls
-                    newGrid[y][x] = (neighbors >= 5) ? 1 : 0;
-                }
-            }
-        }
-        midCaveGrid.swap(newGrid);
-    }
-    
-    std::cout << "Running strong cellular automata for deep caves..." << std::endl;
-    
-    // Run strong cellular automata for deep caves - more iterations, moderate rules
-    int deepIterations = 5;
-    for (int it = 0; it < deepIterations; ++it) {
-        std::vector<std::vector<int>> newGrid = deepCaveGrid;
-        for (int y = 0; y < caveZoneHeight; ++y) {
-            for (int x = 0; x < WORLD_WIDTH; ++x) {
-                int neighbors = countWallNeighbors(deepCaveGrid, x, y);
-                
-                if (deepCaveGrid[y][x] == 1) {
-                    // Wall remains if 3 or more neighbors are walls (more caverns)
-                    newGrid[y][x] = (neighbors >= 3) ? 1 : 0;
-                } else {
-                    // Empty becomes wall if 5 or more neighbors are walls (standard)
-                    newGrid[y][x] = (neighbors >= 5) ? 1 : 0;
-                }
-            }
-        }
-        deepCaveGrid.swap(newGrid);
-    }
-    
-    // Additional smoothing pass
-    std::cout << "Running extra smoothing passes..." << std::endl;
-    
-    // Function for smoothing caves (removes isolated walls and fills small holes)
-    auto smoothCaveGrid = [&countWallNeighbors](std::vector<std::vector<int>>& grid) {
-        std::vector<std::vector<int>> newGrid = grid;
-        for (size_t y = 0; y < grid.size(); ++y) {
-            for (size_t x = 0; x < grid[0].size(); ++x) {
-                int neighbors = countWallNeighbors(grid, x, y);
-                
-                // Remove single wall tiles surrounded by 6+ empty spaces
-                if (grid[y][x] == 1 && neighbors <= 2) {
-                    newGrid[y][x] = 0;
-                }
-                
-                // Fill single empty tiles surrounded by 6+ walls
-                if (grid[y][x] == 0 && neighbors >= 6) {
-                    newGrid[y][x] = 1;
-                }
-            }
-        }
-        grid.swap(newGrid);
-    };
-    
-    // Apply smoothing to all cave grids
-    smoothCaveGrid(upperCaveGrid);
-    smoothCaveGrid(midCaveGrid);
-    smoothCaveGrid(deepCaveGrid);
-    
-    std::cout << "Applying cellular automata results to world..." << std::endl;
-    
-    // Apply the cave grids to the actual world
-    // Upper caves
-    for (int y = 0; y < caveZoneHeight; ++y) {
-        for (int x = 0; x < WORLD_WIDTH; ++x) {
-            if (upperCaveGrid[y][x] == 0) { // 0 = cave (empty)
-                int worldY = upperCaveDepthStart + y;
-                if (worldY < WORLD_HEIGHT) {
-                    MaterialType material = get(x, worldY);
-                    if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
-                        set(x, worldY, MaterialType::Empty);
-                    }
-                }
-            }
-        }
-    }
-    
-    // Mid caves
-    for (int y = 0; y < caveZoneHeight; ++y) {
-        for (int x = 0; x < WORLD_WIDTH; ++x) {
-            if (midCaveGrid[y][x] == 0) { // 0 = cave (empty)
-                int worldY = midCaveDepthStart + y;
-                if (worldY < WORLD_HEIGHT) {
-                    MaterialType material = get(x, worldY);
-                    if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
-                        set(x, worldY, MaterialType::Empty);
-                    }
-                }
-            }
-        }
-    }
-    
-    // Deep caves
-    for (int y = 0; y < caveZoneHeight; ++y) {
-        for (int x = 0; x < WORLD_WIDTH; ++x) {
-            if (deepCaveGrid[y][x] == 0) { // 0 = cave (empty)
-                int worldY = deepCaveDepthStart + y;
-                if (worldY < WORLD_HEIGHT) {
-                    MaterialType material = get(x, worldY);
-                    if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
-                        set(x, worldY, MaterialType::Empty);
-                    }
-                }
-            }
-        }
-    }
-    
-    // Create more natural connections between cave systems
-    std::cout << "Creating cave system connections..." << std::endl;
-    
-    // Use Perlin worms with variable thickness to connect between cave regions
-    int numConnectors = 10 + (m_rng() % 6); // 10-15 connectors - more but more subtle
-    
-    // Function to create a natural-looking cave connection
-    auto createCaveConnection = [&](int startX, int startY, int endX, int endY, int seed_offset) {
-        // Get distance between points
-        int dx = endX - startX;
-        int dy = endY - startY;
-        float distance = std::sqrt(dx*dx + dy*dy);
-        
-        // Start with angle toward destination
-        float angle = std::atan2(dy, dx);
-        
-        // Current position
-        float x = startX;
-        float y = startY;
-        
-        // Randomized parameters for this connector
-        float segmentLength = 3.0f + dist(m_rng) * 2.0f; // 3-5 segment length
-        float angleVariation = 0.2f + dist(m_rng) * 0.3f; // 0.2-0.5 angle variation
-        float widthVariation = 0.5f + dist(m_rng) * 0.5f; // 0.5-1.0 width variation
-        int baseRadius = 1 + (m_rng() % 2); // 1-2 base radius
-        float radiusScale = 0.1f + dist(m_rng) * 0.3f; // How much radius varies
-        float noiseScale = 0.05f + dist(m_rng) * 0.05f;
-        
-        // Calculate number of steps needed (with some randomness)
-        int steps = static_cast<int>(distance / segmentLength) + 5 + (m_rng() % 10);
-        
-        for (int step = 0; step < steps; step++) {
-            // Calculate progress ratio (0 to 1)
-            float progress = static_cast<float>(step) / steps;
-            
-            // Vary the direction more at the middle of the path, less at start/end
-            float directionFreedom = angleVariation * (1.0f - std::abs(progress - 0.5f) * 2.0f);
-            
-            // Use Perlin noise for direction changes
-            float noiseVal = perlinNoise2D(step * 0.1f, 0, seed + seed_offset);
-            float angleChange = (noiseVal * 2.0f - 1.0f) * directionFreedom;
-            
-            // Gradually bend back toward destination as we get closer
-            float targetAngle = std::atan2(endY - y, endX - x);
-            float angleToTarget = targetAngle - angle;
-            // Normalize angle difference to [-PI, PI]
-            while (angleToTarget > M_PI) angleToTarget -= 2.0f * M_PI;
-            while (angleToTarget < -M_PI) angleToTarget += 2.0f * M_PI;
-            
-            // Apply stronger correction as we get further through the path
-            angle += angleChange + (angleToTarget * 0.1f * (step > steps / 2 ? progress * 2.0f : 0.1f));
-            
-            // Move forward
-            x += std::cos(angle) * segmentLength;
-            y += std::sin(angle) * segmentLength;
-            
-            // Bound check
-            if (x < 0 || x >= WORLD_WIDTH || y < 0 || y >= WORLD_HEIGHT) {
-                break;
-            }
-            
-            // Vary the tunnel width - wider in the middle, narrower at ends
-            float widthFactor = widthVariation * (1.0f - std::abs(progress - 0.5f) * 1.8f);
-            
-            // Add noise to width
-            float widthNoise = perlinNoise2D(x * noiseScale, y * noiseScale, seed + seed_offset + 500);
-            float currentRadius = baseRadius + (widthNoise * radiusScale) + widthFactor;
-            
-            // Carve a small cave section here
-            int radius = static_cast<int>(currentRadius) + 1;
-            for (int cy = -radius; cy <= radius; cy++) {
-                for (int cx = -radius; cx <= radius; cx++) {
-                    // Oval shape - slightly wider horizontally
-                    float distSq = (cx*cx) / (radius*radius * 1.2f) + (cy*cy) / (radius*radius);
-                    if (distSq <= 1.0f) {
-                        int px = static_cast<int>(x) + cx;
-                        int py = static_cast<int>(y) + cy;
-                        
-                        if (px >= 0 && px < WORLD_WIDTH && py >= 0 && py < WORLD_HEIGHT) {
-                            MaterialType material = get(px, py);
-                            if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
-                                set(px, py, MaterialType::Empty);
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Sometimes create a small cave pocket
-            if (m_rng() % 15 == 0) {
-                int pocketRadius = 2 + (m_rng() % 3);
-                float pocketAngle = angle + ((dist(m_rng) * 2.0f - 1.0f) * M_PI * 0.5f);
-                float pocketDist = 3.0f + dist(m_rng) * 4.0f;
-                
-                float px = x + std::cos(pocketAngle) * pocketDist;
-                float py = y + std::sin(pocketAngle) * pocketDist;
-                
-                // Carve a small pocket
-                for (int cy = -pocketRadius; cy <= pocketRadius; cy++) {
-                    for (int cx = -pocketRadius; cx <= pocketRadius; cx++) {
-                        float distSq = (cx*cx + cy*cy) / static_cast<float>(pocketRadius * pocketRadius);
-                        if (distSq <= 1.0f) {
-                            int wx = static_cast<int>(px) + cx;
-                            int wy = static_cast<int>(py) + cy;
-                            
-                            if (wx >= 0 && wx < WORLD_WIDTH && wy >= 0 && wy < WORLD_HEIGHT) {
-                                MaterialType material = get(wx, wy);
-                                if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
-                                    set(wx, wy, MaterialType::Empty);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    };
-    
-    // Connect between different cave layers
-    for (int i = 0; i < numConnectors; ++i) {
-        // Start and end points in actual caves, not just random points
-        // Select a point in one system
-        int startX, startY, endX, endY;
-        
-        // For vertical connections between layers
-        int layerChoice = m_rng() % 2; // 0 = upper to mid, 1 = mid to deep
-        
-        if (layerChoice == 0) {
-            // Connect upper to mid cave
-            startX = 100 + (m_rng() % (WORLD_WIDTH - 200));
-            startY = upperCaveDepthStart + (m_rng() % caveZoneHeight);
-            endX = startX + (m_rng() % 200) - 100; // Slight horizontal offset
-            endY = midCaveDepthStart + (m_rng() % caveZoneHeight); 
-        } else {
-            // Connect mid to deep cave 
-            startX = 100 + (m_rng() % (WORLD_WIDTH - 200));
-            startY = midCaveDepthStart + (m_rng() % caveZoneHeight);
-            endX = startX + (m_rng() % 200) - 100; // Slight horizontal offset
-            endY = deepCaveDepthStart + (m_rng() % caveZoneHeight);
-        }
-        
-        // Create natural-looking connection
-        createCaveConnection(startX, startY, endX, endY, i * 100);
-    }
-    
-    // Create horizontal connections within each layer
-    std::cout << "Enhancing cave network connectivity..." << std::endl;
-    
-    // For each layer, connect cave areas horizontally 
-    for (int layer = 0; layer < 3; ++layer) {
-        int baseY = 0;
-        if (layer == 0) baseY = upperCaveDepthStart + (caveZoneHeight / 2);
-        else if (layer == 1) baseY = midCaveDepthStart + (caveZoneHeight / 2);
-        else baseY = deepCaveDepthStart + (caveZoneHeight / 2);
-        
-        // Create multiple connections per layer
-        int connectionsPerLayer = 3 + (m_rng() % 3); // 3-5 connections
-        
-        for (int c = 0; c < connectionsPerLayer; ++c) {
-            // Choose points with significant horizontal separation
-            int startX = 50 + (m_rng() % (WORLD_WIDTH / 3));
-            int endX = (2 * WORLD_WIDTH / 3) + (m_rng() % (WORLD_WIDTH / 3 - 50));
-            
-            int startY = baseY + (m_rng() % 30) - 15; // Vary around the middle
-            int endY = baseY + (m_rng() % 30) - 15;
-            
-            // Create natural-looking connection
-            createCaveConnection(startX, startY, endX, endY, layer * 1000 + c * 100);
-        }
-    }
-    
-    // Optional: Create a few very rare surface entrances - EXTREMELY RARE
-    std::cout << "Creating rare surface entrances..." << std::endl;
-    
-    int numSurfaceEntrances = 1 + (m_rng() % 2); // 1-2 entrances only
-    
-    for (int i = 0; i < numSurfaceEntrances; ++i) {
-        // Choose random X position far from edges
-        int entranceX = 150 + (m_rng() % (WORLD_WIDTH - 300));
-        
-        // Find surface at this X
-        int surfaceY = 0;
-        for (int y = 0; y < WORLD_HEIGHT; ++y) {
-            if (get(entranceX, y) != MaterialType::Empty) {
-                surfaceY = y;
-                break;
-            }
-        }
-        
-        if (surfaceY > 0) {
-            // Target a point in the upper cave system
-            int targetY = upperCaveDepthStart + (m_rng() % (caveZoneHeight / 2));
-            
-            // Create a narrow winding shaft downward
-            float currentX = entranceX;
-            int width = 2; // Fixed narrow width
-            float wiggleAmount = 0.4f; // More winding
-            float noiseScale = 0.03f;
-            
-            for (int y = surfaceY; y <= targetY; ++y) {
-                // Add more pronounced wiggle
-                float noise = perlinNoise2D(0, y * noiseScale, seed + i * 5000);
-                currentX += (noise - 0.5f) * wiggleAmount;
-                
-                int centerX = static_cast<int>(currentX);
-                
-                // Make the entrance wider near the surface and narrow as it goes down
-                int currentWidth = width;
-                if (y < surfaceY + 5) {
-                    currentWidth = 3; // Wider at entrance
-                }
-                
-                // Carve the shaft at this Y level
-                for (int x = centerX - currentWidth; x <= centerX + currentWidth; ++x) {
-                    if (x >= 0 && x < WORLD_WIDTH) {
-                        MaterialType material = get(x, y);
-                        if (material != MaterialType::Empty && material != MaterialType::Bedrock) {
-                            set(x, y, MaterialType::Empty);
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // Cave generation has been disabled for better performance.
+    std::cout << "Cave generation skipped." << std::endl;
     
     std::cout << "Cellular automata cave generation complete!" << std::endl;
 
