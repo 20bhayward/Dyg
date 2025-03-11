@@ -279,14 +279,14 @@ public:
     // Get the raw pixel data for rendering
     uint8_t* getPixelData() { 
         if (m_pixelData.empty()) {
-            std::cout << "WARNING: World::getPixelData - pixel data array is empty!" << std::endl;
+            // std::cout << "WARNING: World::getPixelData - pixel data array is empty!" << std::endl;
             return nullptr;
         }
         return m_pixelData.data();
     }
     const uint8_t* getPixelData() const { 
         if (m_pixelData.empty()) {
-            std::cout << "WARNING: World::getPixelData const - pixel data array is empty!" << std::endl;
+            // std::cout << "WARNING: World::getPixelData const - pixel data array is empty!" << std::endl;
             return nullptr;
         }
         return m_pixelData.data(); 

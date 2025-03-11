@@ -95,7 +95,7 @@ VulkanBackend::VulkanBackend(int screenWidth, int screenHeight)
     m_viewport = {{0, 0}, {static_cast<uint32_t>(screenWidth), static_cast<uint32_t>(screenHeight)}};
     m_debugMessenger = VK_NULL_HANDLE;
     
-    std::cout << "Created Vulkan backend" << std::endl;
+    // std::cout << "Created Vulkan backend" << std::endl;
 }
 
 VulkanBackend::~VulkanBackend() {
@@ -103,7 +103,7 @@ VulkanBackend::~VulkanBackend() {
 }
 
 bool VulkanBackend::initialize() {
-    std::cout << "Initializing Vulkan backend" << std::endl;
+    // std::cout << "Initializing Vulkan backend" << std::endl;
     
     // Initialize Vulkan instance
     if (!createInstance()) {
@@ -183,12 +183,12 @@ bool VulkanBackend::initialize() {
         return false;
     }
     
-    std::cout << "Vulkan backend initialized successfully" << std::endl;
+    // std::cout << "Vulkan backend initialized successfully" << std::endl;
     return true;
 }
 
 void VulkanBackend::cleanup() {
-    std::cout << "Cleaning up Vulkan resources" << std::endl;
+    // std::cout << "Cleaning up Vulkan resources" << std::endl;
     
     // Only call vkDeviceWaitIdle if we have a valid device
     if (m_device != VK_NULL_HANDLE) {
@@ -251,10 +251,10 @@ void VulkanBackend::cleanup() {
     
     // Clean up surface if it exists
     if (m_instance != VK_NULL_HANDLE && m_surface != VK_NULL_HANDLE) {
-        std::cout << "Destroying surface" << std::endl;
+        // std::cout << "Destroying surface" << std::endl;
         vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
     } else {
-        std::cout << "Failed to get SDL window" << std::endl;
+        // std::cout << "Failed to get SDL window" << std::endl;
     }
     
     // Clean up instance if it exists
@@ -382,7 +382,7 @@ void VulkanBackend::beginFrame() {
             scissor.extent = m_swapChainExtent;
             vkCmdSetScissor(m_commandBuffers[m_currentFrame], 0, 1, &scissor);
             
-            // std::cout << "Frame " << m_currentFrame << " began with image index " << m_currentImageIndex << std::endl;
+            // // std::cout << "Frame " << m_currentFrame << " began with image index " << m_currentImageIndex << std::endl;
         } else {
             std::cerr << "Cannot begin frame - device or swapchain is null" << std::endl;
             if (m_device == VK_NULL_HANDLE) std::cerr << "  - Device handle is null" << std::endl;
@@ -473,7 +473,7 @@ void VulkanBackend::endFrame() {
         VkResult presResult = vkQueuePresentKHR(m_presentQueue, &prInfo);
         
         if (presResult == VK_ERROR_OUT_OF_DATE_KHR || presResult == VK_SUBOPTIMAL_KHR) {
-            std::cout << "Recreating swapchain due to OUT_OF_DATE or SUBOPTIMAL" << std::endl;
+            // std::cout << "Recreating swapchain due to OUT_OF_DATE or SUBOPTIMAL" << std::endl;
             recreateSwapChain();
         } else if (presResult != VK_SUCCESS) {
             std::cerr << "Failed to present swap chain image! Error: " << presResult << std::endl;
@@ -550,7 +550,7 @@ void VulkanBackend::updateBuffer(std::shared_ptr<Buffer> buffer, const void* dat
         vkFreeMemory(m_device, stagingMemory, nullptr);
     }
     
-    std::cout << "Updated buffer of size " << updateSize << std::endl;
+    // std::cout << "Updated buffer of size " << updateSize << std::endl;
 }
 
 std::shared_ptr<Texture> VulkanBackend::createTexture(int width, int height, bool hasAlpha) {
@@ -695,7 +695,7 @@ void VulkanBackend::bindRenderTarget(std::shared_ptr<RenderTarget> target) {
     
     vkCmdSetScissor(m_commandBuffers[m_currentFrame], 0, 1, &scissor);
     
-    std::cout << "Bound render target with dimensions " << target->getWidth() << "x" << target->getHeight() << std::endl;
+    // std::cout << "Bound render target with dimensions " << target->getWidth() << "x" << target->getHeight() << std::endl;
 }
 
 void VulkanBackend::bindDefaultRenderTarget() {
@@ -762,7 +762,7 @@ void VulkanBackend::bindDefaultRenderTarget() {
         
         vkCmdSetScissor(m_commandBuffers[m_currentFrame], 0, 1, &scissor);
         
-        std::cout << "Bound default render target with dimensions " << m_swapChainExtent.width << "x" << m_swapChainExtent.height << std::endl;
+        // std::cout << "Bound default render target with dimensions " << m_swapChainExtent.width << "x" << m_swapChainExtent.height << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Exception in bindDefaultRenderTarget: " << e.what() << std::endl;
     } catch (...) {
@@ -873,8 +873,8 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
         auto worldTextureBuffer = std::dynamic_pointer_cast<VulkanBuffer>(vertexBuffer);
         
         if (boundTexture && boundTexture->getWidth() > 0 && boundTexture->getHeight() > 0) {
-            std::cout << "Found a valid world texture of size " << boundTexture->getWidth() 
-                      << "x" << boundTexture->getHeight() << std::endl;
+            // std::cout << "Found a valid world texture of size " << boundTexture->getWidth() 
+            //           << "x" << boundTexture->getHeight() << std::endl;
             
             // Draw a gradient background first
             VkClearAttachment clearAttachment{};
@@ -997,7 +997,7 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
                 clearRect.rect.offset = {offsetX + displayWidth, offsetY};
                 vkCmdClearAttachments(m_commandBuffers[m_currentFrame], 1, &clearAttachment, 1, &clearRect);
                 
-                std::cout << "Rendered high-resolution voxel world with " << cellsX << "x" << cellsY << " cells" << std::endl;
+                // std::cout << "Rendered high-resolution voxel world with " << cellsX << "x" << cellsY << " cells" << std::endl;
             } else {
                 // If cells are too small, fall back to a colored rectangle
                 clearAttachment.clearValue.color = {{0.3f, 0.6f, 0.9f, 1.0f}}; // A nice blue
@@ -1007,7 +1007,7 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
                 
                 vkCmdClearAttachments(m_commandBuffers[m_currentFrame], 1, &clearAttachment, 1, &clearRect);
                 
-                std::cout << "Rendered world as a solid rectangle (cells too small)" << std::endl;
+                // std::cout << "Rendered world as a solid rectangle (cells too small)" << std::endl;
             }
         } 
         else if (worldTextureBuffer && worldTextureBuffer->getSize() > 0) {
@@ -1029,7 +1029,7 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
                                 static_cast<uint32_t>(indexCount), 
                                 1, 0, 0, 0);
                 
-                std::cout << "Rendering world as mesh with " << vertexCount << " vertices and " << indexCount << " indices" << std::endl;
+                // std::cout << "Rendering world as mesh with " << vertexCount << " vertices and " << indexCount << " indices" << std::endl;
             } else {
                 // Clear screen to black as a simple fallback
                 VkClearAttachment clearAttachment{};
@@ -1045,7 +1045,7 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
                 
                 vkCmdClearAttachments(m_commandBuffers[m_currentFrame], 1, &clearAttachment, 1, &clearRect);
                 
-                std::cout << "No mesh data available - drawing simple background" << std::endl;
+                // std::cout << "No mesh data available - drawing simple background" << std::endl;
             }
         } else {
             // If we can't find a world texture, fall back to blue rectangle in the center
@@ -1064,7 +1064,7 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
             // This will create a blue rectangle in the middle of the screen
             vkCmdClearAttachments(m_commandBuffers[m_currentFrame], 1, &clearAttachment, 1, &clearRect);
             
-            std::cout << "Drew blue rectangle as fallback (no world texture)" << std::endl;
+            // std::cout << "Drew blue rectangle as fallback (no world texture)" << std::endl;
         }
     }
 }
@@ -1263,7 +1263,7 @@ void VulkanBackend::beginShadowPass() {
         bindRenderTarget(m_shadowMapTarget);
     }
     
-    std::cout << "Shadow pass begins with dedicated shadow map target" << std::endl;
+    // std::cout << "Shadow pass begins with dedicated shadow map target" << std::endl;
 }
 
 void VulkanBackend::beginMainPass() {
@@ -1283,7 +1283,7 @@ void VulkanBackend::beginMainPass() {
         bindRenderTarget(m_mainRenderTarget);
     }
     
-    std::cout << "Main scene pass begins with dedicated main render target" << std::endl;
+    // std::cout << "Main scene pass begins with dedicated main render target" << std::endl;
 }
 
 void VulkanBackend::beginPostProcessPass() {
@@ -1297,7 +1297,7 @@ void VulkanBackend::beginPostProcessPass() {
     // after sampling from the main scene and other effect passes
     bindDefaultRenderTarget();
     
-    std::cout << "Post-process pass begins with default render target" << std::endl;
+    // std::cout << "Post-process pass begins with default render target" << std::endl;
 }
 
 void* VulkanBackend::getNativeHandle(int handleType) {
@@ -1511,7 +1511,7 @@ bool VulkanBackend::createSurface() {
         return false;
     }
     
-    std::cout << "Successfully created Vulkan surface" << std::endl;
+    // std::cout << "Successfully created Vulkan surface" << std::endl;
     return true;
 }
 
@@ -1543,7 +1543,7 @@ bool VulkanBackend::pickPhysicalDevice() {
     // Print selected device name
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(m_physicalDevice, &deviceProperties);
-    std::cout << "Selected GPU: " << deviceProperties.deviceName << std::endl;
+    // std::cout << "Selected GPU: " << deviceProperties.deviceName << std::endl;
     
     return true;
 }
@@ -2398,7 +2398,7 @@ VulkanBuffer::VulkanBuffer(RenderBackend* backend, Buffer::Type type, size_t siz
         }
     }
     
-    std::cout << "Created VulkanBuffer of type " << static_cast<int>(type) << " with size " << size << " bytes" << std::endl;
+    // std::cout << "Created VulkanBuffer of type " << static_cast<int>(type) << " with size " << size << " bytes" << std::endl;
 }
 
 void VulkanBuffer::createAndCopyFromStagingBuffer(VulkanBackend* vulkanBackend, const void* data, size_t size) {
@@ -2465,7 +2465,7 @@ VulkanBuffer::~VulkanBuffer() {
         m_memory = VK_NULL_HANDLE;
     }
     
-    std::cout << "Destroyed VulkanBuffer of size " << getSize() << std::endl;
+    // std::cout << "Destroyed VulkanBuffer of size " << getSize() << std::endl;
 }
 
 // VulkanTexture implementation
@@ -2601,7 +2601,7 @@ VulkanTexture::VulkanTexture(RenderBackend* backend, int width, int height, bool
     // Bind memory to staging buffer
     vkBindBufferMemory(m_device, m_stagingBuffer, m_stagingMemory, 0);
     
-    std::cout << "Created VulkanTexture of size " << width << "x" << height << std::endl;
+    // std::cout << "Created VulkanTexture of size " << width << "x" << height << std::endl;
 }
 
 VulkanTexture::~VulkanTexture() {
@@ -2642,7 +2642,7 @@ void VulkanTexture::update(const void* data) {
         VulkanBackend* vulkanBackend = static_cast<VulkanBackend*>(m_backend);
         
         // Implementing a safer texture update mechanism
-        std::cout << "Updating texture " << m_width << "x" << m_height << std::endl;
+        // std::cout << "Updating texture " << m_width << "x" << m_height << std::endl;
         
         // Calculate data size based on texture dimensions - ensure proper alignment
         VkDeviceSize bytesPerPixel = m_hasAlpha ? 4 : 3;
@@ -2727,10 +2727,10 @@ void VulkanTexture::update(const void* data) {
                 
                 // Show progress for large textures
                 if (imageSize > 1000000 && i % progressMark == 0) {
-                    std::cout << "Copy progress: " << (i * 100 / imageSize) << "%" << std::endl;
+                    // std::cout << "Copy progress: " << (i * 100 / imageSize) << "%" << std::endl;
                 }
             }
-            std::cout << "Copy complete" << std::endl;
+            // std::cout << "Copy complete" << std::endl;
         } else {
             std::cerr << "ERROR: Invalid data or size for copy operation" << std::endl;
             vkUnmapMemory(m_device, m_stagingMemory);
@@ -2814,8 +2814,8 @@ void VulkanTexture::update(const void* data) {
         // End and submit the command buffer
         vulkanBackend->endSingleTimeCommands(commandBuffer);
         
-        std::cout << "Updated VulkanTexture of size " << m_width << "x" << m_height 
-                  << " (format: " << (m_hasAlpha ? "RGBA" : "RGB") << ")" << std::endl;
+        // std::cout << "Updated VulkanTexture of size " << m_width << "x" << m_height 
+           //        << " (format: " << (m_hasAlpha ? "RGBA" : "RGB") << ")" << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Exception in VulkanTexture::update: " << e.what() << std::endl;
     } catch (...) {
@@ -3249,12 +3249,12 @@ VulkanShader::VulkanShader(RenderBackend* backend, const std::string& vertexSour
     m_defaultImageView = defaultImageView;
     m_defaultSampler = defaultSampler;
     
-    std::cout << "Created default 1x1 white texture for shader" << std::endl;
+    // std::cout << "Created default 1x1 white texture for shader" << std::endl;
     
     // Create the graphics pipeline
     createPipeline(vulkanBackend);
     
-    std::cout << "Created VulkanShader with vertex and fragment code" << std::endl;
+    // std::cout << "Created VulkanShader with vertex and fragment code" << std::endl;
 }
 
 // Helper method to create a shader module from GLSL source
@@ -3297,7 +3297,7 @@ VkShaderModule VulkanShader::createShaderModule(const std::string& code) {
     
     // If we found a shader file, load it
     if (!shaderFilePath.empty()) {
-        std::cout << "Loading shader from: " << shaderFilePath << std::endl;
+        // std::cout << "Loading shader from: " << shaderFilePath << std::endl;
         
         // Open the file
         std::ifstream file(shaderFilePath, std::ios::ate | std::ios::binary);
@@ -3315,17 +3315,17 @@ VkShaderModule VulkanShader::createShaderModule(const std::string& code) {
             shaderCode.resize(fileSize / sizeof(uint32_t));
             memcpy(shaderCode.data(), buffer.data(), fileSize);
             
-            std::cout << "Successfully loaded SPIR-V shader: " << shaderFilePath 
-                      << " (" << fileSize << " bytes)" << std::endl;
+            // std::cout << "Successfully loaded SPIR-V shader: " << shaderFilePath 
+           //            << " (" << fileSize << " bytes)" << std::endl;
         } else {
-            std::cout << "Could not open shader file: " << shaderFilePath << std::endl;
+            // std::cout << "Could not open shader file: " << shaderFilePath << std::endl;
             // Fall back to hardcoded shaders
         }
     }
     
     // If we couldn't load from file, use fallback hardcoded SPIR-V
     if (shaderCode.empty()) {
-        std::cout << "Using fallback hardcoded shader" << std::endl;
+        // std::cout << "Using fallback hardcoded shader" << std::endl;
         
         // Hardcoded fallback SPIR-V binary data for basic shaders
         // These are simplified versions that will work if the SPIR-V files are missing
@@ -3436,7 +3436,7 @@ VkShaderModule VulkanShader::createShaderModule(const std::string& code) {
 // Create a simplified graphics pipeline for pixel rendering
 void VulkanShader::createPipeline(VulkanBackend* vulkanBackend) {
     // Create a proper shader pipeline
-    std::cout << "Creating full graphics pipeline" << std::endl;
+    // std::cout << "Creating full graphics pipeline" << std::endl;
     
     // Setup descriptor set layouts
     // Binding 0: Uniform buffer for transformation matrices
@@ -3471,7 +3471,7 @@ void VulkanShader::createPipeline(VulkanBackend* vulkanBackend) {
     pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
     pushConstantRange.offset = 0;
     pushConstantRange.size = sizeof(MaterialPushConstants); // Full material properties structure
-    std::cout << "Push constant size: " << sizeof(MaterialPushConstants) << " bytes" << std::endl;
+    // std::cout << "Push constant size: " << sizeof(MaterialPushConstants) << " bytes" << std::endl;
     
     // Create pipeline layout with descriptor set layout and push constants
     VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
@@ -3678,7 +3678,7 @@ void VulkanShader::createPipeline(VulkanBackend* vulkanBackend) {
         }
         m_pipeline = VK_NULL_HANDLE;
     } else {
-        std::cout << "Successfully created graphics pipeline" << std::endl;
+        // std::cout << "Successfully created graphics pipeline" << std::endl;
     }
 }
 
@@ -3747,8 +3747,8 @@ void VulkanShader::updateTexture(std::shared_ptr<Texture> texture) {
     // Skip descriptor update if we don't have valid descriptor set or sampler
     if (m_descriptorSet == VK_NULL_HANDLE || vulkanTexture->getVkSampler() == VK_NULL_HANDLE || 
         vulkanTexture->getVkImageView() == VK_NULL_HANDLE) {
-        std::cout << "Stored texture reference " << texture->getWidth() << "x" << texture->getHeight() 
-                  << " but cannot update descriptor set (not all handles are valid)" << std::endl;
+        // std::cout << "Stored texture reference " << texture->getWidth() << "x" << texture->getHeight() 
+         //          << " but cannot update descriptor set (not all handles are valid)" << std::endl;
         return;
     }
     
@@ -3769,7 +3769,7 @@ void VulkanShader::updateTexture(std::shared_ptr<Texture> texture) {
         descriptorWrite.pImageInfo = &imageInfo;
         
         vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
-        std::cout << "Updated descriptor set with texture " << texture->getWidth() << "x" << texture->getHeight() << std::endl;
+        // std::cout << "Updated descriptor set with texture " << texture->getWidth() << "x" << texture->getHeight() << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Error updating descriptor set: " << e.what() << std::endl;
     } catch (...) {
@@ -3804,7 +3804,7 @@ void VulkanShader::setUniform(const std::string& name, float value) {
         );
     }
     
-    std::cout << "Setting float uniform " << name << " = " << value << std::endl;
+    // std::cout << "Setting float uniform " << name << " = " << value << std::endl;
 }
 
 void VulkanShader::setUniform(const std::string& name, int value) {
@@ -3816,7 +3816,7 @@ void VulkanShader::setUniform(const std::string& name, int value) {
     // For simplicity in the MVP, we'll just update the uniform buffer
     updateUniformBuffer();
     
-    std::cout << "Setting int uniform " << name << " = " << value << std::endl;
+    // std::cout << "Setting int uniform " << name << " = " << value << std::endl;
 }
 
 void VulkanShader::setUniform(const std::string& name, const std::vector<float>& values) {
@@ -3844,7 +3844,7 @@ void VulkanShader::setUniform(const std::string& name, const std::vector<float>&
         }
     }
     
-    std::cout << "Setting float array uniform " << name << " of size " << values.size() << std::endl;
+    // std::cout << "Setting float array uniform " << name << " of size " << values.size() << std::endl;
 }
 
 void VulkanShader::setUniform(const std::string& name, float x, float y) {
@@ -3852,7 +3852,7 @@ void VulkanShader::setUniform(const std::string& name, float x, float y) {
     m_uniformValues[name] = {x, y};
     
     // Skip push constants for now to avoid Vulkan issues
-    std::cout << "Setting vec2 uniform " << name << " = (" << x << ", " << y << ")" << std::endl;
+    // std::cout << "Setting vec2 uniform " << name << " = (" << x << ", " << y << ")" << std::endl;
 }
 
 void VulkanShader::setUniform(const std::string& name, float x, float y, float z) {
@@ -3860,7 +3860,7 @@ void VulkanShader::setUniform(const std::string& name, float x, float y, float z
     m_uniformValues[name] = {x, y, z};
     
     // Skip uniform buffer update for now to avoid Vulkan issues
-    std::cout << "Setting vec3 uniform " << name << " = (" << x << ", " << y << ", " << z << ")" << std::endl;
+    // std::cout << "Setting vec3 uniform " << name << " = (" << x << ", " << y << ", " << z << ")" << std::endl;
 }
 
 void VulkanShader::setUniform(const std::string& name, float x, float y, float z, float w) {
@@ -3868,7 +3868,7 @@ void VulkanShader::setUniform(const std::string& name, float x, float y, float z
     m_uniformValues[name] = {x, y, z, w};
     
     // Skip uniform buffer update for now to avoid Vulkan issues
-    std::cout << "Setting vec4 uniform " << name << " = (" << x << ", " << y << ", " << z << ", " << w << ")" << std::endl;
+    // std::cout << "Setting vec4 uniform " << name << " = (" << x << ", " << y << ", " << z << ", " << w << ")" << std::endl;
 }
 
 // Set material properties based on the material type
@@ -4121,7 +4121,7 @@ VulkanRenderTarget::VulkanRenderTarget(RenderBackend* backend, int width, int he
         return;
     }
     
-    std::cout << "Created VulkanRenderTarget of size " << width << "x" << height << std::endl;
+    // std::cout << "Created VulkanRenderTarget of size " << width << "x" << height << std::endl;
 }
 
 VulkanRenderTarget::~VulkanRenderTarget() {
@@ -4197,7 +4197,7 @@ VkDescriptorPool VulkanBackend::getDescriptorPool() const {
             return VK_NULL_HANDLE;
         }
         
-        std::cout << "Created dedicated descriptor pool for ImGui" << std::endl;
+        // std::cout << "Created dedicated descriptor pool for ImGui" << std::endl;
     }
     
     return imguiPool;
@@ -4256,7 +4256,7 @@ VkRenderPass VulkanBackend::createImGuiRenderPass() {
         return VK_NULL_HANDLE;
     }
     
-    std::cout << "Created dedicated render pass for ImGui" << std::endl;
+    // std::cout << "Created dedicated render pass for ImGui" << std::endl;
     return imguiRenderPass;
 }
 */
@@ -4279,7 +4279,7 @@ bool VulkanBackend::uploadImGuiFonts() {
     // Cleanup font data
     ImGui_ImplVulkan_DestroyFontUploadObjects();
     
-    std::cout << "Uploaded ImGui fonts texture" << std::endl;
+    // std::cout << "Uploaded ImGui fonts texture" << std::endl;
     return true;
 }
 */

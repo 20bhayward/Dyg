@@ -152,11 +152,11 @@ void ChunkManager::updateActiveChunks(int centerX, int centerY) {
         // Output only occasionally to reduce console spam
         static int debugCounter = 0;
         if (debugCounter++ % 60 == 0) {
-            std::cout << "Active chunks: ";
+            // std::cout << "Active chunks: ";
             for (const auto& coord : m_activeChunks) {
-                std::cout << "(" << coord.x << "," << coord.y << ") ";
+                // std::cout << "(" << coord.x << "," << coord.y << ") ";
             }
-            std::cout << std::endl;
+            // std::cout << std::endl;
         }
     }
 }
@@ -286,7 +286,7 @@ std::unique_ptr<Chunk> ChunkManager::loadChunk(const ChunkCoord& coord) {
     // Reduce logging to improve performance
     static int loadCounter = 0;
     if (loadCounter++ % 10 == 0) {
-        std::cout << "Loaded chunk from " << filePath << std::endl;
+        // std::cout << "Loaded chunk from " << filePath << std::endl;
     }
     return chunk;
 }
@@ -329,7 +329,7 @@ std::unique_ptr<Chunk> ChunkManager::createNewChunk(const ChunkCoord& coord) {
     // Reduce logging to improve performance
     static int createCounter = 0;
     if (createCounter++ % 10 == 0) {
-        std::cout << "Creating new chunk at position (" << posX << "," << posY << ")" << std::endl;
+        // std::cout << "Creating new chunk at position (" << posX << "," << posY << ")" << std::endl;
     }
     return std::make_unique<Chunk>(posX, posY);
 }

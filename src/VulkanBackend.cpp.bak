@@ -84,7 +84,7 @@ VulkanBackend::VulkanBackend(int screenWidth, int screenHeight)
     m_viewport = {{0, 0}, {static_cast<uint32_t>(screenWidth), static_cast<uint32_t>(screenHeight)}};
     m_debugMessenger = VK_NULL_HANDLE;
     
-    std::cout << "Created Vulkan backend" << std::endl;
+    // std::cout << "Created Vulkan backend" << std::endl;
 }
 
 VulkanBackend::~VulkanBackend() {
@@ -92,7 +92,7 @@ VulkanBackend::~VulkanBackend() {
 }
 
 bool VulkanBackend::initialize() {
-    std::cout << "Initializing Vulkan backend" << std::endl;
+    // std::cout << "Initializing Vulkan backend" << std::endl;
     
     // Initialize Vulkan instance
     if (!createInstance()) {
@@ -172,12 +172,12 @@ bool VulkanBackend::initialize() {
         return false;
     }
     
-    std::cout << "Vulkan backend initialized successfully" << std::endl;
+    // std::cout << "Vulkan backend initialized successfully" << std::endl;
     return true;
 }
 
 void VulkanBackend::cleanup() {
-    std::cout << "Cleaning up Vulkan resources" << std::endl;
+    // std::cout << "Cleaning up Vulkan resources" << std::endl;
     
     // Only call vkDeviceWaitIdle if we have a valid device
     if (m_device != VK_NULL_HANDLE) {
@@ -240,10 +240,10 @@ void VulkanBackend::cleanup() {
     
     // Clean up surface if it exists
     if (m_instance != VK_NULL_HANDLE && m_surface != VK_NULL_HANDLE) {
-        std::cout << "Destroying surface" << std::endl;
+        // std::cout << "Destroying surface" << std::endl;
         vkDestroySurfaceKHR(m_instance, m_surface, nullptr);
     } else {
-        std::cout << "Failed to get SDL window" << std::endl;
+        // std::cout << "Failed to get SDL window" << std::endl;
     }
     
     // Clean up instance if it exists
@@ -257,63 +257,63 @@ void VulkanBackend::beginFrame() {
     m_renderPassInProgress = false;
     
     try {
-        std::cout << "DEBUG: beginFrame - m_currentFrame: " << m_currentFrame << std::endl;
+        // std::cout << "DEBUG: beginFrame - m_currentFrame: " << m_currentFrame << std::endl;
         
         // Wait for the previous frame to finish
         if (m_device != VK_NULL_HANDLE && m_inFlightFences[m_currentFrame] != VK_NULL_HANDLE) {
-            std::cout << "DEBUG: Waiting for fence " << m_currentFrame << std::endl;
+            // std::cout << "DEBUG: Waiting for fence " << m_currentFrame << std::endl;
             vkWaitForFences(m_device, 1, &m_inFlightFences[m_currentFrame], VK_TRUE, UINT64_MAX);
-            std::cout << "DEBUG: Fence signaled and wait complete" << std::endl;
+            // std::cout << "DEBUG: Fence signaled and wait complete" << std::endl;
         } else {
-            std::cout << "DEBUG: Skipping fence wait - null handles" << std::endl;
+            // std::cout << "DEBUG: Skipping fence wait - null handles" << std::endl;
         }
         
         // Acquire the next image from the swap chain - use a timeout
         if (m_device != VK_NULL_HANDLE && m_swapChain != VK_NULL_HANDLE) {
-            std::cout << "DEBUG: Acquiring next swapchain image" << std::endl;
+            // std::cout << "DEBUG: Acquiring next swapchain image" << std::endl;
             
             // Use a 5-second timeout instead of UINT64_MAX
             VkResult result = vkAcquireNextImageKHR(m_device, m_swapChain, 5000000000, // 5 seconds in nanoseconds
                                                   m_imageAvailableSemaphores[m_currentFrame], 
                                                   VK_NULL_HANDLE, &m_currentImageIndex);
             
-            std::cout << "DEBUG: vkAcquireNextImageKHR result = " << result << std::endl;
+            // std::cout << "DEBUG: vkAcquireNextImageKHR result = " << result << std::endl;
             
             // Check if swap chain needs to be recreated
             if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-                std::cout << "Recreating swapchain due to OUT_OF_DATE or SUBOPTIMAL" << std::endl;
+                // std::cout << "Recreating swapchain due to OUT_OF_DATE or SUBOPTIMAL" << std::endl;
                 recreateSwapChain();
                 return;
             } else if (result != VK_SUCCESS) {
                 std::cerr << "Failed to acquire swap chain image! Error: " << result << std::endl;
                 
                 // Skip this frame instead of crashing
-                std::cout << "Skipping frame due to swapchain acquisition failure" << std::endl;
+                // std::cout << "Skipping frame due to swapchain acquisition failure" << std::endl;
                 return;
             }
             
-            std::cout << "DEBUG: Acquired image index: " << m_currentImageIndex << std::endl;
+            // std::cout << "DEBUG: Acquired image index: " << m_currentImageIndex << std::endl;
             
             // Check if a previous frame is using this image (i.e. there is its fence to wait on)
             if (m_imagesInFlight[m_currentImageIndex] != VK_NULL_HANDLE) {
-                std::cout << "DEBUG: Waiting for image in flight fence" << std::endl;
+                // std::cout << "DEBUG: Waiting for image in flight fence" << std::endl;
                 vkWaitForFences(m_device, 1, &m_imagesInFlight[m_currentImageIndex], VK_TRUE, UINT64_MAX);
-                std::cout << "DEBUG: Image in flight fence wait complete" << std::endl;
+                // std::cout << "DEBUG: Image in flight fence wait complete" << std::endl;
             } else {
-                std::cout << "DEBUG: No image in flight fence to wait on" << std::endl;
+                // std::cout << "DEBUG: No image in flight fence to wait on" << std::endl;
             }
             
             // Mark the image as now being in use by this frame
             m_imagesInFlight[m_currentImageIndex] = m_inFlightFences[m_currentFrame];
-            std::cout << "DEBUG: Image marked as in flight for frame " << m_currentFrame << std::endl;
+            // std::cout << "DEBUG: Image marked as in flight for frame " << m_currentFrame << std::endl;
             
             // Reset fence to unsignaled state
             vkResetFences(m_device, 1, &m_inFlightFences[m_currentFrame]);
-            std::cout << "DEBUG: Fence reset for frame " << m_currentFrame << std::endl;
+            // std::cout << "DEBUG: Fence reset for frame " << m_currentFrame << std::endl;
             
             // Reset command buffer
             vkResetCommandBuffer(m_commandBuffers[m_currentFrame], 0);
-            std::cout << "DEBUG: Command buffer reset for frame " << m_currentFrame << std::endl;
+            // std::cout << "DEBUG: Command buffer reset for frame " << m_currentFrame << std::endl;
             
             // Start recording the command buffer
             VkCommandBufferBeginInfo beginInfo{};
@@ -327,13 +327,13 @@ void VulkanBackend::beginFrame() {
                 return;
             }
             
-            std::cout << "DEBUG: Command buffer recording begun for frame " << m_currentFrame << std::endl;
+            // std::cout << "DEBUG: Command buffer recording begun for frame " << m_currentFrame << std::endl;
             
             // Note: We don't automatically start a render pass here.
             // Instead, we'll rely on proper binding of render targets by the renderer.
             // This allows for more flexible multi-pass rendering.
             
-            std::cout << "Frame " << m_currentFrame << " began with image index " << m_currentImageIndex << std::endl;
+            // std::cout << "Frame " << m_currentFrame << " began with image index " << m_currentImageIndex << std::endl;
         } else {
             std::cerr << "Cannot begin frame - device or swapchain is null" << std::endl;
             if (m_device == VK_NULL_HANDLE) std::cerr << "  - Device handle is null" << std::endl;
@@ -348,15 +348,15 @@ void VulkanBackend::beginFrame() {
 
 void VulkanBackend::endFrame() {
     try {
-        std::cout << "DEBUG: endFrame - m_currentFrame: " << m_currentFrame << std::endl;
+        // std::cout << "DEBUG: endFrame - m_currentFrame: " << m_currentFrame << std::endl;
         
         // End the current render pass if one is active
         if (m_renderPassInProgress && m_commandBuffers[m_currentFrame] != VK_NULL_HANDLE) {
-            std::cout << "DEBUG: Ending active render pass" << std::endl;
+            // std::cout << "DEBUG: Ending active render pass" << std::endl;
             vkCmdEndRenderPass(m_commandBuffers[m_currentFrame]);
             m_renderPassInProgress = false;
         } else {
-            std::cout << "DEBUG: No render pass to end" << std::endl;
+            // std::cout << "DEBUG: No render pass to end" << std::endl;
         }
         
         // Check for valid command buffer
@@ -366,13 +366,13 @@ void VulkanBackend::endFrame() {
         }
         
         // End command buffer
-        std::cout << "DEBUG: Ending command buffer recording" << std::endl;
+        // std::cout << "DEBUG: Ending command buffer recording" << std::endl;
         VkResult endResult = vkEndCommandBuffer(m_commandBuffers[m_currentFrame]);
         if (endResult != VK_SUCCESS) {
             std::cerr << "Failed to record command buffer! Error: " << endResult << std::endl;
             return;
         }
-        std::cout << "DEBUG: Command buffer recording ended successfully" << std::endl;
+        // std::cout << "DEBUG: Command buffer recording ended successfully" << std::endl;
         
         // Validate all required handles
         if (m_device == VK_NULL_HANDLE || 
@@ -386,7 +386,7 @@ void VulkanBackend::endFrame() {
         }
         
         // Submit command buffer
-        std::cout << "DEBUG: Setting up submit info" << std::endl;
+        // std::cout << "DEBUG: Setting up submit info" << std::endl;
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         
@@ -403,16 +403,16 @@ void VulkanBackend::endFrame() {
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
         
-        std::cout << "DEBUG: Submitting command buffer to graphics queue" << std::endl;
+        // std::cout << "DEBUG: Submitting command buffer to graphics queue" << std::endl;
         VkResult submitResult = vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_inFlightFences[m_currentFrame]);
         if (submitResult != VK_SUCCESS) {
             std::cerr << "Failed to submit draw command buffer! Error: " << submitResult << std::endl;
             return;
         }
-        std::cout << "DEBUG: Command buffer submitted successfully" << std::endl;
+        // std::cout << "DEBUG: Command buffer submitted successfully" << std::endl;
         
         // Prepare presentation info
-        std::cout << "DEBUG: Setting up present info" << std::endl;
+        // std::cout << "DEBUG: Setting up present info" << std::endl;
         VkPresentInfoKHR prInfo{};
         prInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
         prInfo.waitSemaphoreCount = 1;
@@ -425,17 +425,17 @@ void VulkanBackend::endFrame() {
         prInfo.pResults = nullptr;
         
         // Present the frame
-        std::cout << "DEBUG: Presenting image index " << m_currentImageIndex << " to present queue" << std::endl;
+        // std::cout << "DEBUG: Presenting image index " << m_currentImageIndex << " to present queue" << std::endl;
         VkResult presResult = vkQueuePresentKHR(m_presentQueue, &prInfo);
-        std::cout << "DEBUG: vkQueuePresentKHR result = " << presResult << std::endl;
+        // std::cout << "DEBUG: vkQueuePresentKHR result = " << presResult << std::endl;
         
         if (presResult == VK_ERROR_OUT_OF_DATE_KHR || presResult == VK_SUBOPTIMAL_KHR) {
-            std::cout << "Recreating swapchain due to OUT_OF_DATE or SUBOPTIMAL" << std::endl;
+            // std::cout << "Recreating swapchain due to OUT_OF_DATE or SUBOPTIMAL" << std::endl;
             recreateSwapChain();
         } else if (presResult != VK_SUCCESS) {
             std::cerr << "Failed to present swap chain image! Error: " << presResult << std::endl;
         } else {
-            std::cout << "DEBUG: Image presented successfully" << std::endl;
+            // std::cout << "DEBUG: Image presented successfully" << std::endl;
         }
         
     } catch (const std::exception& e) {
@@ -446,9 +446,9 @@ void VulkanBackend::endFrame() {
     }
     
     // Update frame counter
-    std::cout << "DEBUG: Updating frame counter from " << m_currentFrame;
+    // std::cout << "DEBUG: Updating frame counter from " << m_currentFrame;
     m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-    std::cout << " to " << m_currentFrame << std::endl;
+    // std::cout << " to " << m_currentFrame << std::endl;
 }
 
 std::shared_ptr<Buffer> VulkanBackend::createVertexBuffer(size_t size, const void* data) {
@@ -511,7 +511,7 @@ void VulkanBackend::updateBuffer(std::shared_ptr<Buffer> buffer, const void* dat
         vkFreeMemory(m_device, stagingMemory, nullptr);
     }
     
-    std::cout << "Updated buffer of size " << updateSize << std::endl;
+    // std::cout << "Updated buffer of size " << updateSize << std::endl;
 }
 
 std::shared_ptr<Texture> VulkanBackend::createTexture(int width, int height, bool hasAlpha) {
@@ -617,16 +617,16 @@ void VulkanBackend::bindRenderTarget(std::shared_ptr<RenderTarget> target) {
     
     vkCmdSetScissor(m_commandBuffers[m_currentFrame], 0, 1, &scissor);
     
-    std::cout << "Bound render target with dimensions " << target->getWidth() << "x" << target->getHeight() << std::endl;
+    // std::cout << "Bound render target with dimensions " << target->getWidth() << "x" << target->getHeight() << std::endl;
 }
 
 void VulkanBackend::bindDefaultRenderTarget() {
-    std::cout << "DEBUG: Binding default render target" << std::endl;
+    // std::cout << "DEBUG: Binding default render target" << std::endl;
     
     try {
         // End the current render pass if one is active
         if (m_renderPassInProgress) {
-            std::cout << "DEBUG: Ending previous render pass" << std::endl;
+            // std::cout << "DEBUG: Ending previous render pass" << std::endl;
             vkCmdEndRenderPass(m_commandBuffers[m_currentFrame]);
             m_renderPassInProgress = false;
         }
@@ -648,7 +648,7 @@ void VulkanBackend::bindDefaultRenderTarget() {
             return;
         }
         
-        std::cout << "DEBUG: Setting up render pass info for default render target" << std::endl;
+        // std::cout << "DEBUG: Setting up render pass info for default render target" << std::endl;
         
         // Begin the default render pass with the current swap chain frame buffer
         VkRenderPassBeginInfo renderPassInfo{};
@@ -666,10 +666,10 @@ void VulkanBackend::bindDefaultRenderTarget() {
         renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
         renderPassInfo.pClearValues = clearValues.data();
         
-        std::cout << "DEBUG: Starting render pass with framebuffer " << m_swapChainFramebuffers[m_currentImageIndex] << std::endl;
+        // std::cout << "DEBUG: Starting render pass with framebuffer " << m_swapChainFramebuffers[m_currentImageIndex] << std::endl;
         vkCmdBeginRenderPass(m_commandBuffers[m_currentFrame], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
         m_renderPassInProgress = true;
-        std::cout << "DEBUG: Render pass started successfully" << std::endl;
+        // std::cout << "DEBUG: Render pass started successfully" << std::endl;
         
         // Set viewport and scissor to match swap chain extent
         VkViewport viewport{};
@@ -688,7 +688,7 @@ void VulkanBackend::bindDefaultRenderTarget() {
         
         vkCmdSetScissor(m_commandBuffers[m_currentFrame], 0, 1, &scissor);
         
-        std::cout << "Bound default render target with dimensions " << m_swapChainExtent.width << "x" << m_swapChainExtent.height << std::endl;
+        // std::cout << "Bound default render target with dimensions " << m_swapChainExtent.width << "x" << m_swapChainExtent.height << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Exception in bindDefaultRenderTarget: " << e.what() << std::endl;
     } catch (...) {
@@ -779,7 +779,7 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
         auto worldTextureBuffer = std::dynamic_pointer_cast<VulkanBuffer>(vertexBuffer);
         
         if (boundTexture && boundTexture->getWidth() > 0 && boundTexture->getHeight() > 0) {
-            std::cout << "Found a valid world texture of size " << boundTexture->getWidth() 
+            // std::cout << "Found a valid world texture of size " << boundTexture->getWidth() 
                       << "x" << boundTexture->getHeight() << std::endl;
             
             // Draw a gradient background first
@@ -903,7 +903,7 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
                 clearRect.rect.offset = {offsetX + displayWidth, offsetY};
                 vkCmdClearAttachments(m_commandBuffers[m_currentFrame], 1, &clearAttachment, 1, &clearRect);
                 
-                std::cout << "Rendered high-resolution voxel world with " << cellsX << "x" << cellsY << " cells" << std::endl;
+                // std::cout << "Rendered high-resolution voxel world with " << cellsX << "x" << cellsY << " cells" << std::endl;
             } else {
                 // If cells are too small, fall back to a colored rectangle
                 clearAttachment.clearValue.color = {{0.3f, 0.6f, 0.9f, 1.0f}}; // A nice blue
@@ -913,7 +913,7 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
                 
                 vkCmdClearAttachments(m_commandBuffers[m_currentFrame], 1, &clearAttachment, 1, &clearRect);
                 
-                std::cout << "Rendered world as a solid rectangle (cells too small)" << std::endl;
+                // std::cout << "Rendered world as a solid rectangle (cells too small)" << std::endl;
             }
         } 
         else if (worldTextureBuffer && worldTextureBuffer->getSize() > 0) {
@@ -935,7 +935,7 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
                                 static_cast<uint32_t>(indexCount), 
                                 1, 0, 0, 0);
                 
-                std::cout << "Rendering world as mesh with " << vertexCount << " vertices and " << indexCount << " indices" << std::endl;
+                // std::cout << "Rendering world as mesh with " << vertexCount << " vertices and " << indexCount << " indices" << std::endl;
             } else {
                 // Clear screen to black as a simple fallback
                 VkClearAttachment clearAttachment{};
@@ -951,7 +951,7 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
                 
                 vkCmdClearAttachments(m_commandBuffers[m_currentFrame], 1, &clearAttachment, 1, &clearRect);
                 
-                std::cout << "No mesh data available - drawing simple background" << std::endl;
+                // std::cout << "No mesh data available - drawing simple background" << std::endl;
             }
         } else {
             // If we can't find a world texture, fall back to blue rectangle in the center
@@ -970,7 +970,7 @@ void VulkanBackend::drawMesh(std::shared_ptr<Buffer> vertexBuffer, size_t vertex
             // This will create a blue rectangle in the middle of the screen
             vkCmdClearAttachments(m_commandBuffers[m_currentFrame], 1, &clearAttachment, 1, &clearRect);
             
-            std::cout << "Drew blue rectangle as fallback (no world texture)" << std::endl;
+            // std::cout << "Drew blue rectangle as fallback (no world texture)" << std::endl;
         }
     }
 }
@@ -1024,7 +1024,7 @@ void VulkanBackend::beginShadowPass() {
         bindRenderTarget(m_shadowMapTarget);
     }
     
-    std::cout << "Shadow pass begins with dedicated shadow map target" << std::endl;
+    // std::cout << "Shadow pass begins with dedicated shadow map target" << std::endl;
 }
 
 void VulkanBackend::beginMainPass() {
@@ -1044,7 +1044,7 @@ void VulkanBackend::beginMainPass() {
         bindRenderTarget(m_mainRenderTarget);
     }
     
-    std::cout << "Main scene pass begins with dedicated main render target" << std::endl;
+    // std::cout << "Main scene pass begins with dedicated main render target" << std::endl;
 }
 
 void VulkanBackend::beginPostProcessPass() {
@@ -1058,7 +1058,7 @@ void VulkanBackend::beginPostProcessPass() {
     // after sampling from the main scene and other effect passes
     bindDefaultRenderTarget();
     
-    std::cout << "Post-process pass begins with default render target" << std::endl;
+    // std::cout << "Post-process pass begins with default render target" << std::endl;
 }
 
 void* VulkanBackend::getNativeHandle() {
@@ -1248,7 +1248,7 @@ bool VulkanBackend::createSurface() {
             uint32_t flags = SDL_GetWindowFlags(w);
             if (flags & SDL_WINDOW_VULKAN) {
                 window = w;
-                std::cout << "Found Vulkan-enabled SDL window with ID: " << i << std::endl;
+                // std::cout << "Found Vulkan-enabled SDL window with ID: " << i << std::endl;
                 break;
             }
         }
@@ -1265,7 +1265,7 @@ bool VulkanBackend::createSurface() {
         return false;
     }
     
-    std::cout << "Successfully created Vulkan surface" << std::endl;
+    // std::cout << "Successfully created Vulkan surface" << std::endl;
     return true;
 }
 
@@ -1297,7 +1297,7 @@ bool VulkanBackend::pickPhysicalDevice() {
     // Print selected device name
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(m_physicalDevice, &deviceProperties);
-    std::cout << "Selected GPU: " << deviceProperties.deviceName << std::endl;
+    // std::cout << "Selected GPU: " << deviceProperties.deviceName << std::endl;
     
     return true;
 }
@@ -1699,7 +1699,7 @@ bool VulkanBackend::createRenderPass() {
 }
 
 bool VulkanBackend::createFramebuffers() {
-    std::cout << "DEBUG: Creating framebuffers for " << m_swapChainImageViews.size() << " swap chain images" << std::endl;
+    // std::cout << "DEBUG: Creating framebuffers for " << m_swapChainImageViews.size() << " swap chain images" << std::endl;
     
     if (m_defaultRenderPass == VK_NULL_HANDLE) {
         std::cerr << "ERROR: Trying to create framebuffers with null render pass" << std::endl;
@@ -1714,7 +1714,7 @@ bool VulkanBackend::createFramebuffers() {
             continue;
         }
         
-        std::cout << "DEBUG: Creating framebuffer for image view " << i << std::endl;
+        // std::cout << "DEBUG: Creating framebuffer for image view " << i << std::endl;
         
         // For proper rendering, we need both color and depth attachments
         // Create a depth image for each framebuffer
@@ -1808,10 +1808,10 @@ bool VulkanBackend::createFramebuffers() {
             return false;
         }
         
-        std::cout << "DEBUG: Created framebuffer " << m_swapChainFramebuffers[i] << " for image " << i << std::endl;
+        // std::cout << "DEBUG: Created framebuffer " << m_swapChainFramebuffers[i] << " for image " << i << std::endl;
     }
     
-    std::cout << "DEBUG: Successfully created " << m_swapChainFramebuffers.size() << " framebuffers" << std::endl;
+    // std::cout << "DEBUG: Successfully created " << m_swapChainFramebuffers.size() << " framebuffers" << std::endl;
     return true;
 }
 
@@ -2012,7 +2012,7 @@ bool VulkanBackend::createFullscreenQuad() {
 }
 
 void VulkanBackend::cleanupSwapChain() {
-    std::cout << "DEBUG: Cleaning up swapchain resources" << std::endl;
+    // std::cout << "DEBUG: Cleaning up swapchain resources" << std::endl;
     
     // Clean up framebuffers
     for (auto framebuffer : m_swapChainFramebuffers) {
@@ -2052,7 +2052,7 @@ void VulkanBackend::cleanupSwapChain() {
         m_swapChain = VK_NULL_HANDLE;
     }
     
-    std::cout << "DEBUG: Swapchain cleanup completed" << std::endl;
+    // std::cout << "DEBUG: Swapchain cleanup completed" << std::endl;
 }
 
 void VulkanBackend::recreateSwapChain() {
@@ -2158,7 +2158,7 @@ VulkanBuffer::VulkanBuffer(RenderBackend* backend, Buffer::Type type, size_t siz
         }
     }
     
-    std::cout << "Created VulkanBuffer of type " << static_cast<int>(type) << " with size " << size << " bytes" << std::endl;
+    // std::cout << "Created VulkanBuffer of type " << static_cast<int>(type) << " with size " << size << " bytes" << std::endl;
 }
 
 void VulkanBuffer::createAndCopyFromStagingBuffer(VulkanBackend* vulkanBackend, const void* data, size_t size) {
@@ -2225,7 +2225,7 @@ VulkanBuffer::~VulkanBuffer() {
         m_memory = VK_NULL_HANDLE;
     }
     
-    std::cout << "Destroyed VulkanBuffer of size " << getSize() << std::endl;
+    // std::cout << "Destroyed VulkanBuffer of size " << getSize() << std::endl;
 }
 
 // VulkanTexture implementation
@@ -2361,7 +2361,7 @@ VulkanTexture::VulkanTexture(RenderBackend* backend, int width, int height, bool
     // Bind memory to staging buffer
     vkBindBufferMemory(m_device, m_stagingBuffer, m_stagingMemory, 0);
     
-    std::cout << "Created VulkanTexture of size " << width << "x" << height << std::endl;
+    // std::cout << "Created VulkanTexture of size " << width << "x" << height << std::endl;
 }
 
 VulkanTexture::~VulkanTexture() {
@@ -2397,22 +2397,22 @@ void VulkanTexture::update(const void* data) {
         return;
     }
     
-    std::cout << "DEBUG: VulkanTexture::update - Texture size: " << m_width << "x" << m_height 
+    // std::cout << "DEBUG: VulkanTexture::update - Texture size: " << m_width << "x" << m_height 
               << " (hasAlpha: " << (m_hasAlpha ? "true" : "false") << ")" << std::endl;
     
     try {
         VulkanBackend* vulkanBackend = static_cast<VulkanBackend*>(m_backend);
         
         // Implementing a safer texture update mechanism
-        std::cout << "Updating texture " << m_width << "x" << m_height << std::endl;
+        // std::cout << "Updating texture " << m_width << "x" << m_height << std::endl;
         
         // Calculate data size based on texture dimensions
         VkDeviceSize imageSize = m_width * m_height * (m_hasAlpha ? 4 : 3);
-        std::cout << "DEBUG: Calculated image size: " << imageSize << " bytes" << std::endl;
+        // std::cout << "DEBUG: Calculated image size: " << imageSize << " bytes" << std::endl;
         
         // Create a staging buffer if not already present
         if (m_stagingBuffer == VK_NULL_HANDLE || m_stagingMemory == VK_NULL_HANDLE) {
-            std::cout << "DEBUG: Creating new staging buffer" << std::endl;
+            // std::cout << "DEBUG: Creating new staging buffer" << std::endl;
             
             VkBufferCreateInfo stagingBufferInfo = {};
             stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -2429,7 +2429,7 @@ void VulkanTexture::update(const void* data) {
             // Get staging buffer memory requirements
             VkMemoryRequirements stagingMemReq;
             vkGetBufferMemoryRequirements(m_device, m_stagingBuffer, &stagingMemReq);
-            std::cout << "DEBUG: Staging buffer requires " << stagingMemReq.size << " bytes of memory" << std::endl;
+            // std::cout << "DEBUG: Staging buffer requires " << stagingMemReq.size << " bytes of memory" << std::endl;
             
             // Allocate staging memory (host visible for CPU writing)
             VkMemoryAllocateInfo stagingAllocInfo = {};
@@ -2441,7 +2441,7 @@ void VulkanTexture::update(const void* data) {
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
             
             stagingAllocInfo.memoryTypeIndex = memoryTypeIndex;
-            std::cout << "DEBUG: Using memory type index: " << memoryTypeIndex << std::endl;
+            // std::cout << "DEBUG: Using memory type index: " << memoryTypeIndex << std::endl;
             
             VkResult allocResult = vkAllocateMemory(m_device, &stagingAllocInfo, nullptr, &m_stagingMemory);
             if (allocResult != VK_SUCCESS) {
@@ -2462,12 +2462,12 @@ void VulkanTexture::update(const void* data) {
                 return;
             }
             
-            std::cout << "DEBUG: Staging buffer created successfully" << std::endl;
+            // std::cout << "DEBUG: Staging buffer created successfully" << std::endl;
         }
         
         // Copy data to staging buffer
         void* mapped = nullptr;
-        std::cout << "DEBUG: Mapping staging buffer memory" << std::endl;
+        // std::cout << "DEBUG: Mapping staging buffer memory" << std::endl;
         VkResult mapResult = vkMapMemory(m_device, m_stagingMemory, 0, imageSize, 0, &mapped);
         if (mapResult != VK_SUCCESS) {
             std::cerr << "Failed to map staging buffer memory: " << mapResult << std::endl;
@@ -2481,7 +2481,7 @@ void VulkanTexture::update(const void* data) {
             return;
         }
         
-        std::cout << "DEBUG: Copying " << imageSize << " bytes to staging buffer" << std::endl;
+        // std::cout << "DEBUG: Copying " << imageSize << " bytes to staging buffer" << std::endl;
         // SAFETY CHECK: Only copy if we have valid pointers and a reasonable size
         if (mapped && data && imageSize > 0 && imageSize < 100 * 1024 * 1024) { // 100MB max
             // This memcpy is causing a segfault - the texture data from World is likely invalid
@@ -2493,7 +2493,7 @@ void VulkanTexture::update(const void* data) {
         }
         
         vkUnmapMemory(m_device, m_stagingMemory);
-        std::cout << "DEBUG: Data copied to staging buffer and unmapped" << std::endl;
+        // std::cout << "DEBUG: Data copied to staging buffer and unmapped" << std::endl;
         
         // Re-enabled texture upload code for proper rendering
         
@@ -2570,7 +2570,7 @@ void VulkanTexture::update(const void* data) {
         // End and submit the command buffer
         vulkanBackend->endSingleTimeCommands(commandBuffer);
         
-        std::cout << "Updated VulkanTexture of size " << m_width << "x" << m_height 
+        // std::cout << "Updated VulkanTexture of size " << m_width << "x" << m_height 
                   << " (format: " << (m_hasAlpha ? "RGBA" : "RGB") << ")" << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Exception in VulkanTexture::update: " << e.what() << std::endl;
@@ -3013,12 +3013,12 @@ VulkanShader::VulkanShader(RenderBackend* backend, const std::string& vertexSour
     m_defaultImageView = defaultImageView;
     m_defaultSampler = defaultSampler;
     
-    std::cout << "Created default 1x1 white texture for shader" << std::endl;
+    // std::cout << "Created default 1x1 white texture for shader" << std::endl;
     
     // Create the graphics pipeline
     createPipeline(vulkanBackend);
     
-    std::cout << "Created VulkanShader with vertex and fragment code" << std::endl;
+    // std::cout << "Created VulkanShader with vertex and fragment code" << std::endl;
 }
 
 // Helper method to create a shader module from GLSL source
@@ -3135,7 +3135,7 @@ VkShaderModule VulkanShader::createShaderModule(const std::string& code) {
 // Create the graphics pipeline - simplified for stability
 void VulkanShader::createPipeline(VulkanBackend* vulkanBackend) {
     // Skip pipeline creation to force fallback rendering
-    std::cout << "Using fallback rendering path - no pipeline will be created" << std::endl;
+    // std::cout << "Using fallback rendering path - no pipeline will be created" << std::endl;
     m_pipeline = VK_NULL_HANDLE;
     return;
     vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -3151,7 +3151,7 @@ void VulkanShader::createPipeline(VulkanBackend* vulkanBackend) {
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
     
     // Skip pipeline creation to use fallback rendering
-    std::cout << "Using fallback rendering path - no pipeline will be created" << std::endl;
+    // std::cout << "Using fallback rendering path - no pipeline will be created" << std::endl;
     m_pipeline = VK_NULL_HANDLE;
     return;
     
@@ -3283,9 +3283,9 @@ void VulkanShader::createPipeline(VulkanBackend* vulkanBackend) {
             
             // Create a dummy pipeline - we'll skip actual rendering
             m_pipeline = VK_NULL_HANDLE;
-            std::cout << "NOTE: Using null pipeline, rendering will be skipped" << std::endl;
+            // std::cout << "NOTE: Using null pipeline, rendering will be skipped" << std::endl;
         } else {
-            std::cout << "Pipeline created successfully" << std::endl;
+            // std::cout << "Pipeline created successfully" << std::endl;
         }
     } catch (const std::exception& e) {
         std::cerr << "Exception during pipeline creation: " << e.what() << std::endl;
@@ -3386,7 +3386,7 @@ void VulkanShader::updateTexture(std::shared_ptr<Texture> texture) {
     
     vkUpdateDescriptorSets(m_device, 1, &descriptorWrite, 0, nullptr);
     
-    std::cout << "Updated shader descriptor set with texture " << texture->getWidth() << "x" << texture->getHeight() << std::endl;
+    // std::cout << "Updated shader descriptor set with texture " << texture->getWidth() << "x" << texture->getHeight() << std::endl;
 }
 
 void VulkanShader::setUniform(const std::string& name, float value) {
@@ -3416,7 +3416,7 @@ void VulkanShader::setUniform(const std::string& name, float value) {
         );
     }
     
-    std::cout << "Setting float uniform " << name << " = " << value << std::endl;
+    // std::cout << "Setting float uniform " << name << " = " << value << std::endl;
 }
 
 void VulkanShader::setUniform(const std::string& name, int value) {
@@ -3428,7 +3428,7 @@ void VulkanShader::setUniform(const std::string& name, int value) {
     // For simplicity in the MVP, we'll just update the uniform buffer
     updateUniformBuffer();
     
-    std::cout << "Setting int uniform " << name << " = " << value << std::endl;
+    // std::cout << "Setting int uniform " << name << " = " << value << std::endl;
 }
 
 void VulkanShader::setUniform(const std::string& name, const std::vector<float>& values) {
@@ -3456,7 +3456,7 @@ void VulkanShader::setUniform(const std::string& name, const std::vector<float>&
         }
     }
     
-    std::cout << "Setting float array uniform " << name << " of size " << values.size() << std::endl;
+    // std::cout << "Setting float array uniform " << name << " of size " << values.size() << std::endl;
 }
 
 void VulkanShader::setUniform(const std::string& name, float x, float y) {
@@ -3477,7 +3477,7 @@ void VulkanShader::setUniform(const std::string& name, float x, float y) {
         values
     );
     
-    std::cout << "Setting vec2 uniform " << name << " = (" << x << ", " << y << ")" << std::endl;
+    // std::cout << "Setting vec2 uniform " << name << " = (" << x << ", " << y << ")" << std::endl;
 }
 
 void VulkanShader::setUniform(const std::string& name, float x, float y, float z) {
@@ -3518,7 +3518,7 @@ void VulkanShader::setUniform(const std::string& name, float x, float y, float z
         );
     }
     
-    std::cout << "Setting vec3 uniform " << name << " = (" << x << ", " << y << ", " << z << ")" << std::endl;
+    // std::cout << "Setting vec3 uniform " << name << " = (" << x << ", " << y << ", " << z << ")" << std::endl;
 }
 
 void VulkanShader::setUniform(const std::string& name, float x, float y, float z, float w) {
@@ -3567,7 +3567,7 @@ void VulkanShader::setUniform(const std::string& name, float x, float y, float z
         );
     }
     
-    std::cout << "Setting vec4 uniform " << name << " = (" << x << ", " << y << ", " << z << ", " << w << ")" << std::endl;
+    // std::cout << "Setting vec4 uniform " << name << " = (" << x << ", " << y << ", " << z << ", " << w << ")" << std::endl;
 }
 
 void VulkanShader::updateUniformBuffer() {
@@ -3828,7 +3828,7 @@ VulkanRenderTarget::VulkanRenderTarget(RenderBackend* backend, int width, int he
         return;
     }
     
-    std::cout << "Created VulkanRenderTarget of size " << width << "x" << height << std::endl;
+    // std::cout << "Created VulkanRenderTarget of size " << width << "x" << height << std::endl;
 }
 
 VulkanRenderTarget::~VulkanRenderTarget() {

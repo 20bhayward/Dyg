@@ -10,7 +10,7 @@ std::unique_ptr<RenderBackend> CreateRenderBackend(BackendType type, int screenW
     switch (type) {
         case BackendType::Vulkan:
             backend = std::make_unique<VulkanBackend>(screenWidth, screenHeight);
-            std::cout << "Created Vulkan rendering backend" << std::endl;
+            // std::cout << "Created Vulkan rendering backend" << std::endl;
             std::cerr << "Vulkan backend not available" << std::endl;
             break;
             

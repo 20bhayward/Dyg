@@ -47,7 +47,7 @@ int main() {
         return 1;
     }
     
-    std::cout << "Initializing with Vulkan backend" << std::endl;
+    // std::cout << "Initializing with Vulkan backend" << std::endl;
     
     // Create a window with Vulkan support
     SDL_Window* window = SDL_CreateWindow(
@@ -66,15 +66,15 @@ int main() {
     SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
     int actualWidth, actualHeight;
     SDL_Vulkan_GetDrawableSize(window, &actualWidth, &actualHeight); // IMPORTANT
-    std::cout << "Drawable size (after going fullscreen): "
-              << actualWidth << "x" << actualHeight << std::endl;
+    // std::cout << "Drawable size (after going fullscreen): "
+    //          << actualWidth << "x" << actualHeight << std::endl;
     
     // Create the world and generate terrain or simple test environment
     PixelPhys::World world(WORLD_WIDTH, WORLD_HEIGHT);
     
     if (TEST_MODE) {
         // Create a simple test environment instead of a full world
-        std::cout << "Creating test environment for physics testing..." << std::endl;
+        // std::cout << "Creating test environment for physics testing..." << std::endl;
         
         // Create a flat bottom platform across the world
         for (int x = 0; x < WORLD_WIDTH; x++) {
@@ -85,7 +85,7 @@ int main() {
     } else {
         // Generate regular terrain for normal mode
         unsigned int seed = static_cast<unsigned int>(std::time(nullptr));
-        std::cout << "Generating world with seed: " << seed << std::endl;
+        // std::cout << "Generating world with seed: " << seed << std::endl;
         world.generate(seed);
     }
     
@@ -108,7 +108,7 @@ int main() {
     
     // Initialize world player position to center camera view
     world.updatePlayerPosition(cameraX + actualWidth/2, cameraY + actualHeight/2);
-    std::cout << "Camera positioned at world center" << std::endl;
+    // std::cout << "Camera positioned at world center" << std::endl;
     
     // Create the renderer (Vulkan only)
     auto renderer = std::make_shared<PixelPhys::Renderer>(
@@ -172,51 +172,51 @@ int main() {
                     // Reset world with a new seed
                     unsigned int seed = static_cast<unsigned int>(std::time(nullptr));
                     world.generate(seed);
-                    std::cout << "World reset with seed: " << seed << std::endl;
+                    // std::cout << "World reset with seed: " << seed << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_F11) {
                     // Toggle fullscreen mode
                     Uint32 flags = SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP;
                     SDL_SetWindowFullscreen(window, flags ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
                     SDL_Vulkan_GetDrawableSize(window, &actualWidth, &actualHeight);
-                    std::cout << "Window resized to " << actualWidth << "x" << actualHeight << std::endl;
+                    // std::cout << "Window resized to " << actualWidth << "x" << actualHeight << std::endl;
                 }
                 // Simple camera movement with keyboard
                 else if (e.key.keysym.sym == SDLK_LEFT || e.key.keysym.sym == SDLK_a) {
                     cameraX -= CAMERA_SPEED;
                     // Clamp camera position to world bounds
                     cameraX = std::max(0, cameraX);
-                    std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
+                    // std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_RIGHT || e.key.keysym.sym == SDLK_d) {
                     cameraX += CAMERA_SPEED;
                     // Clamp camera position to world bounds
                     cameraX = std::min(WORLD_WIDTH - actualWidth, cameraX);
-                    std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
+                    // std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_UP || e.key.keysym.sym == SDLK_w) {
                     cameraY -= CAMERA_SPEED; // Up key moves camera up (decreases Y)
                     // Clamp camera position to world bounds
                     cameraY = std::max(0, cameraY);
-                    std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
+                    // std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_DOWN || e.key.keysym.sym == SDLK_s) {
                     cameraY += CAMERA_SPEED; // Down key moves camera down (increases Y)
                     // Allow scrolling to the very bottom of the world
                     cameraY = std::min(WORLD_HEIGHT - 50, cameraY);
-                    std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
+                    // std::cout << "Camera position: " << cameraX << "," << cameraY << std::endl;
                 }
                 // Reset camera position
                 else if (e.key.keysym.sym == SDLK_HOME) {
                     cameraX = 0; // Reset to origin
                     cameraY = 0;
-                    std::cout << "Camera reset to default position" << std::endl;
+                    // std::cout << "Camera reset to default position" << std::endl;
                 }
                 // Toggle between player mode and camera mode
                 else if (e.key.keysym.sym == SDLK_p) {
                     playerMode = !playerMode;
                     if (playerMode) {
-                        std::cout << "Switched to player mode (earthworm)" << std::endl;
+                        // std::cout << "Switched to player mode (earthworm)" << std::endl;
                         // Convert screen coordinates to world coordinates
                         const float pixelSize = 4.0f; // Must match the value in Renderer.cpp
                         
@@ -230,9 +230,9 @@ int main() {
                         character->draw();
                         
                         // Log character position
-                        std::cout << "Character spawned at world position: " << worldX << "," << worldY << std::endl;
+                        // std::cout << "Character spawned at world position: " << worldX << "," << worldY << std::endl;
                     } else {
-                        std::cout << "Switched to camera mode" << std::endl;
+                        // std::cout << "Switched to camera mode" << std::endl;
                         character->setActive(false);
                         character->clear();
                     }
@@ -241,46 +241,46 @@ int main() {
                 else if (e.key.keysym.sym == SDLK_EQUALS || e.key.keysym.sym == SDLK_PLUS || e.key.keysym.sym == SDLK_KP_PLUS) {
                     // Increase brush size (support both keyboard and numeric keypad plus)
                     placeBrushSize = std::min(20, placeBrushSize + 1);
-                    std::cout << "Brush size increased to: " << placeBrushSize << std::endl;
+                    // std::cout << "Brush size increased to: " << placeBrushSize << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_MINUS || e.key.keysym.sym == SDLK_KP_MINUS) {
                     // Decrease brush size (support both keyboard and numeric keypad minus)
                     placeBrushSize = std::max(1, placeBrushSize - 1);
-                    std::cout << "Brush size decreased to: " << placeBrushSize << std::endl;
+                    // std::cout << "Brush size decreased to: " << placeBrushSize << std::endl;
                 }
                 // Material selection hotkeys
                 else if (e.key.keysym.sym == SDLK_1) {
                     currentMaterial = PixelPhys::MaterialType::Sand;
-                    std::cout << "Selected Sand" << std::endl;
+                    // std::cout << "Selected Sand" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_2) {
                     currentMaterial = PixelPhys::MaterialType::Water;
-                    std::cout << "Selected Water" << std::endl;
+                    // std::cout << "Selected Water" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_3) {
                     currentMaterial = PixelPhys::MaterialType::Stone;
-                    std::cout << "Selected Stone" << std::endl;
+                    // std::cout << "Selected Stone" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_4) {
                     currentMaterial = PixelPhys::MaterialType::Gravel;
-                    std::cout << "Selected Gravel" << std::endl;
+                    // std::cout << "Selected Gravel" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_5) {
                     currentMaterial = PixelPhys::MaterialType::Oil;
-                    std::cout << "Selected Oil" << std::endl;
+                    // std::cout << "Selected Oil" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_6) {
                     currentMaterial = PixelPhys::MaterialType::Lava;
-                    std::cout << "Selected Lava" << std::endl;
+                    // std::cout << "Selected Lava" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_7) {
                     currentMaterial = PixelPhys::MaterialType::Fire;
-                    std::cout << "Selected Fire" << std::endl;
+                    // std::cout << "Selected Fire" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_0) {
                     // Eraser - set to Empty
                     currentMaterial = PixelPhys::MaterialType::Empty;
-                    std::cout << "Selected Eraser (Empty)" << std::endl;
+                    // std::cout << "Selected Eraser (Empty)" << std::endl;
                 }
                 // Add test keys for physics demonstrations
                 else if (e.key.keysym.sym == SDLK_t) {
@@ -294,7 +294,7 @@ int main() {
                             world.set(x, y, PixelPhys::MaterialType::Sand);
                         }
                     }
-                    std::cout << "Created test column of sand" << std::endl;
+                    // std::cout << "Created test column of sand" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_y) {
                     // Create a water pool to test liquid dispersal
@@ -307,7 +307,7 @@ int main() {
                             world.set(x, y, PixelPhys::MaterialType::Water);
                         }
                     }
-                    std::cout << "Created test water pool" << std::endl;
+                    // std::cout << "Created test water pool" << std::endl;
                 }
                 else if (e.key.keysym.sym == SDLK_u) {
                     // Add various materials for visual comparison
@@ -331,7 +331,7 @@ int main() {
                             world.set(x, y, PixelPhys::MaterialType::Dirt);
                         }
                     }
-                    std::cout << "Created material comparison test" << std::endl;
+                    // std::cout << "Created material comparison test" << std::endl;
                 }
             }
             else if (e.type == SDL_MOUSEWHEEL) {
@@ -375,7 +375,7 @@ int main() {
                         currentMaterial = static_cast<PixelPhys::MaterialType>(currentMaterialInt);
                     }
                     
-                    std::cout << "Current material: " << static_cast<int>(currentMaterial) << std::endl;
+                    // std::cout << "Current material: " << static_cast<int>(currentMaterial) << std::endl;
                 }
             }
             else if (e.type == SDL_MOUSEBUTTONUP) {
@@ -420,7 +420,7 @@ int main() {
             }
             else if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED) {
                 SDL_Vulkan_GetDrawableSize(window, &actualWidth, &actualHeight);
-                std::cout << "Window manually resized to " << actualWidth << "x" << actualHeight << std::endl;
+                // std::cout << "Window manually resized to " << actualWidth << "x" << actualHeight << std::endl;
             }
         }
         SDL_GetMouseState(&mouseX, &mouseY);
@@ -494,10 +494,10 @@ int main() {
             
             // Debug output - only show occasionally to avoid console spam
             if (frameCount % 60 == 0) {
-                std::cout << "Mouse at screen: " << mouseX << "," << mouseY 
-                          << " | World: " << worldX << "," << worldY 
-                          << " | Camera: " << cameraX << "," << cameraY 
-                          << " | Zoom: 4x | Brush size: " << placeBrushSize << std::endl;
+                // std::cout << "Mouse at screen: " << mouseX << "," << mouseY 
+               //            << " | World: " << worldX << "," << worldY 
+               //            << " | Camera: " << cameraX << "," << cameraY 
+              //             << " | Zoom: 4x | Brush size: " << placeBrushSize << std::endl;
             }
         }
         // Update the world physics - performance bottleneck
@@ -528,11 +528,11 @@ int main() {
     }
     
     // Save world state before exiting
-    std::cout << "Saving world state..." << std::endl;
+    // std::cout << "Saving world state..." << std::endl;
     world.save();
     
     // Clean up resources
-    std::cout << "Cleaning up resources" << std::endl;
+    // std::cout << "Cleaning up resources" << std::endl;
     renderer.reset();
     SDL_DestroyWindow(window);
     SDL_Quit();

@@ -1510,7 +1510,7 @@ bool Chunk::deserialize(std::istream& in) {
 
 World::World(int width, int height) 
     : m_width(width), m_height(height), m_chunkManager(Chunk::WIDTH) {
-    std::cout << "Creating world with chunk size: " << Chunk::WIDTH << "x" << Chunk::HEIGHT << std::endl;
+    // std::cout << "Creating world with chunk size: " << Chunk::WIDTH << "x" << Chunk::HEIGHT << std::endl;
     // Compute chunk dimensions
     m_chunksX = (width + Chunk::WIDTH - 1) / Chunk::WIDTH;
     m_chunksY = (height + Chunk::HEIGHT - 1) / Chunk::HEIGHT;
@@ -1534,8 +1534,8 @@ World::World(int width, int height)
     std::random_device rd;
     m_rng = std::mt19937(rd());
     
-    std::cout << "Created world with dimensions: " << width << "x" << height << std::endl;
-    std::cout << "Chunk grid size: " << m_chunksX << "x" << m_chunksY << std::endl;
+    // std::cout << "Created world with dimensions: " << width << "x" << height << std::endl;
+    // std::cout << "Chunk grid size: " << m_chunksX << "x" << m_chunksY << std::endl;
     
     // TEST: Add some blocks to each chunk for debugging the streaming system
     for (int y = 0; y < m_chunksY; ++y) {
@@ -1758,7 +1758,7 @@ void World::update() {
         for (const auto& coord : activeChunks) {
             Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
             if (chunk && chunk->getInactivityCounter() > 50) {
-                std::cout << "Setting chunk to dirty for being inactive for a while" << std::endl;
+                // std::cout << "Setting chunk to dirty for being inactive for a while" << std::endl;
                 chunk->setDirty(true);
             }
         }
@@ -2241,7 +2241,7 @@ void World::generate(unsigned int seed) {
     // Seed the RNG
     m_rng.seed(seed);
     
-    std::cout << "Generating world with seed: " << seed << std::endl;
+    // std::cout << "Generating world with seed: " << seed << std::endl;
     
     // World generation constants
     const int WORLD_WIDTH = m_width;
@@ -2672,33 +2672,33 @@ void World::generate(unsigned int seed) {
         }
     }
     
-    std::cout << "Enhanced terrain generation complete." << std::endl;
+    // std::cout << "Enhanced terrain generation complete." << std::endl;
     
     // Step 5: Generate ore deposits
     // Step 6: Generate caves
     if (renderStepByStep) {
         // Update pixel data after terrain generation but before caves
         // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
-        std::cout << "Terrain generated. Build and render to see the result before cave generation." << std::endl;
-        std::cout << "Press any key to continue with cave generation..." << std::endl;
+        // std::cout << "Terrain generated. Build and render to see the result before cave generation." << std::endl;
+        // std::cout << "Press any key to continue with cave generation..." << std::endl;
         // Here we'd pause in an interactive application
     }
     
     // ---- Cave Generation ----
     // Cave generation has been disabled for better performance.
-    std::cout << "Cave generation skipped." << std::endl;
+    // std::cout << "Cave generation skipped." << std::endl;
     
-    std::cout << "Cellular automata cave generation complete!" << std::endl;
+    // std::cout << "Cellular automata cave generation complete!" << std::endl;
 
     if (renderStepByStep) {
         // Update pixel data after cave generation
         // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
-        std::cout << "Caves generated. Build and render to see the final cave system." << std::endl;
-        std::cout << "Press any key to continue with ore generation..." << std::endl;
+        // std::cout << "Caves generated. Build and render to see the final cave system." << std::endl;
+        // std::cout << "Press any key to continue with ore generation..." << std::endl;
         // Here we'd pause in an interactive application
     }
     
-    std::cout << "Generating ore deposits..." << std::endl;
+    // std::cout << "Generating ore deposits..." << std::endl;
     
     // Create ore distribution based on biome types
     struct OrePlacement {
@@ -2738,7 +2738,7 @@ void World::generate(unsigned int seed) {
     };
     
     // For each ore type, generate multiple veins throughout the world
-    std::cout << "Generating ore veins..." << std::endl;
+    // std::cout << "Generating ore veins..." << std::endl;
     
     // Increased ore amount for better visibility
     int totalOreVeins = 3500; // Even more ore veins
@@ -2823,8 +2823,8 @@ void World::generate(unsigned int seed) {
                 float adjustedDensity = std::min(1.0f, ore.density * 1.8f); // Higher density
                 int adjustedRadius = ore.maxRadius * 3; // Triple the radius
                 
-                std::cout << "Generating " << static_cast<int>(ore.oreType) << " vein at " << x << "," << y 
-                         << " (size: " << veinSize << ", biome: " << static_cast<int>(localBiome) << ")" << std::endl;
+                // std::cout << "Generating " << static_cast<int>(ore.oreType) << " vein at " << x << "," << y 
+             //             << " (size: " << veinSize << ", biome: " << static_cast<int>(localBiome) << ")" << std::endl;
                 
                 generateOreVein(x, y, ore.oreType, veinSize, adjustedDensity, adjustedRadius, localBiome);
             }
@@ -2832,7 +2832,7 @@ void World::generate(unsigned int seed) {
     }
     
     // Generate additional small ore veins to fill in gaps
-    std::cout << "Generating small ore veins..." << std::endl;
+    // std::cout << "Generating small ore veins..." << std::endl;
     
     for (int i = 0; i < smallVeins; i++) {
         // Select a random ore type from our list
@@ -2906,12 +2906,12 @@ void World::generate(unsigned int seed) {
         }
     }
     
-    std::cout << "Ore generation complete." << std::endl;
+    // std::cout << "Ore generation complete." << std::endl;
     
     if (renderStepByStep) {
         // Update pixel data after ore generation
         // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
-        std::cout << "Ore deposits generated. Build and render to see the final world." << std::endl;
+        // std::cout << "Ore deposits generated. Build and render to see the final world." << std::endl;
     } else {
         // Update pixel data
         // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION

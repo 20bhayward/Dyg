@@ -1814,7 +1814,7 @@ bool Chunk::deserialize(std::istream& in) {
 
 World::World(int width, int height) 
     : m_width(width), m_height(height), m_chunkManager(Chunk::WIDTH) {
-    std::cout << "Creating world with chunk size: " << Chunk::WIDTH << "x" << Chunk::HEIGHT << std::endl;
+    // std::cout << "Creating world with chunk size: " << Chunk::WIDTH << "x" << Chunk::HEIGHT << std::endl;
     // Compute chunk dimensions
     m_chunksX = (width + Chunk::WIDTH - 1) / Chunk::WIDTH;
     m_chunksY = (height + Chunk::HEIGHT - 1) / Chunk::HEIGHT;
@@ -1838,8 +1838,8 @@ World::World(int width, int height)
     std::random_device rd;
     m_rng = std::mt19937(rd());
     
-    std::cout << "Created world with dimensions: " << width << "x" << height << std::endl;
-    std::cout << "Chunk grid size: " << m_chunksX << "x" << m_chunksY << std::endl;
+    // std::cout << "Created world with dimensions: " << width << "x" << height << std::endl;
+    // std::cout << "Chunk grid size: " << m_chunksX << "x" << m_chunksY << std::endl;
     
     // TEST: Add some blocks to each chunk for debugging the streaming system
     for (int y = 0; y < m_chunksY; ++y) {
@@ -2020,7 +2020,7 @@ void World::update() {
         for (const auto& coord : activeChunks) {
             Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
             if (chunk && chunk->getInactivityCounter() > 50) {
-                std::cout << "Setting chunk to dirty for being inactive for a while" << std::endl;
+                // std::cout << "Setting chunk to dirty for being inactive for a while" << std::endl;
                 chunk->setDirty(true);
             }
         }
@@ -2503,7 +2503,7 @@ void World::generate(unsigned int seed) {
     // Seed the RNG
     m_rng.seed(seed);
     
-    std::cout << "Generating world with seed: " << seed << std::endl;
+    // std::cout << "Generating world with seed: " << seed << std::endl;
     
     // World generation constants
     const int WORLD_WIDTH = m_width;
@@ -2934,20 +2934,20 @@ void World::generate(unsigned int seed) {
         }
     }
     
-    std::cout << "Enhanced terrain generation complete." << std::endl;
+    // std::cout << "Enhanced terrain generation complete." << std::endl;
     
     // Step 5: Generate ore deposits
     // Step 6: Generate caves
     if (renderStepByStep) {
         // Update pixel data after terrain generation but before caves
         // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
-        std::cout << "Terrain generated. Build and render to see the result before cave generation." << std::endl;
-        std::cout << "Press any key to continue with cave generation..." << std::endl;
+        // std::cout << "Terrain generated. Build and render to see the result before cave generation." << std::endl;
+        // std::cout << "Press any key to continue with cave generation..." << std::endl;
         // Here we'd pause in an interactive application
     }
     
     // ---- Cave Generation ----
-    std::cout << "Generating cave system with cellular automata..." << std::endl;
+    // std::cout << "Generating cave system with cellular automata..." << std::endl;
     
     // Define the cave depth zones - Keep caves deeper underground
     const int upperCaveDepthStart = WORLD_HEIGHT / 2;     // Upper caves start at 1/2 depth
@@ -2968,7 +2968,7 @@ void World::generate(unsigned int seed) {
     float midWallProb = 0.60f;   // More walls = more structured medium caves
     float deepWallProb = 0.55f;  // More walls = more defined large caves
     
-    std::cout << "Initializing cave grids..." << std::endl;
+    // std::cout << "Initializing cave grids..." << std::endl;
     
     // Initialize upper cave grid (weak CA - smaller, isolated caves)
     for (int y = 0; y < caveZoneHeight; ++y) {
@@ -3094,7 +3094,7 @@ void World::generate(unsigned int seed) {
         return count;
     };
     
-    std::cout << "Running weak cellular automata for upper caves..." << std::endl;
+    // std::cout << "Running weak cellular automata for upper caves..." << std::endl;
     
     // Run weak cellular automata for upper caves - conservative rules, fewer iterations
     int upperIterations = 3;
@@ -3116,7 +3116,7 @@ void World::generate(unsigned int seed) {
         upperCaveGrid.swap(newGrid);
     }
     
-    std::cout << "Running moderate cellular automata for mid caves..." << std::endl;
+    // std::cout << "Running moderate cellular automata for mid caves..." << std::endl;
     
     // Run moderate cellular automata for mid caves - standard rules
     int midIterations = 4;
@@ -3138,7 +3138,7 @@ void World::generate(unsigned int seed) {
         midCaveGrid.swap(newGrid);
     }
     
-    std::cout << "Running strong cellular automata for deep caves..." << std::endl;
+    // std::cout << "Running strong cellular automata for deep caves..." << std::endl;
     
     // Run strong cellular automata for deep caves - more iterations, moderate rules
     int deepIterations = 5;
@@ -3161,7 +3161,7 @@ void World::generate(unsigned int seed) {
     }
     
     // Additional smoothing pass
-    std::cout << "Running extra smoothing passes..." << std::endl;
+    // std::cout << "Running extra smoothing passes..." << std::endl;
     
     // Function for smoothing caves (removes isolated walls and fills small holes)
     auto smoothCaveGrid = [&countWallNeighbors](std::vector<std::vector<int>>& grid) {
@@ -3189,7 +3189,7 @@ void World::generate(unsigned int seed) {
     smoothCaveGrid(midCaveGrid);
     smoothCaveGrid(deepCaveGrid);
     
-    std::cout << "Applying cellular automata results to world..." << std::endl;
+    // std::cout << "Applying cellular automata results to world..." << std::endl;
     
     // Apply the cave grids to the actual world
     // Upper caves
@@ -3238,7 +3238,7 @@ void World::generate(unsigned int seed) {
     }
     
     // Create more natural connections between cave systems
-    std::cout << "Creating cave system connections..." << std::endl;
+    // std::cout << "Creating cave system connections..." << std::endl;
     
     // Use Perlin worms with variable thickness to connect between cave regions
     int numConnectors = 10 + (m_rng() % 6); // 10-15 connectors - more but more subtle
@@ -3383,7 +3383,7 @@ void World::generate(unsigned int seed) {
     }
     
     // Create horizontal connections within each layer
-    std::cout << "Enhancing cave network connectivity..." << std::endl;
+    // std::cout << "Enhancing cave network connectivity..." << std::endl;
     
     // For each layer, connect cave areas horizontally 
     for (int layer = 0; layer < 3; ++layer) {
@@ -3409,7 +3409,7 @@ void World::generate(unsigned int seed) {
     }
     
     // Optional: Create a few very rare surface entrances - EXTREMELY RARE
-    std::cout << "Creating rare surface entrances..." << std::endl;
+    // std::cout << "Creating rare surface entrances..." << std::endl;
     
     int numSurfaceEntrances = 1 + (m_rng() % 2); // 1-2 entrances only
     
@@ -3462,17 +3462,17 @@ void World::generate(unsigned int seed) {
         }
     }
     
-    std::cout << "Cellular automata cave generation complete!" << std::endl;
+    // std::cout << "Cellular automata cave generation complete!" << std::endl;
 
     if (renderStepByStep) {
         // Update pixel data after cave generation
         // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
-        std::cout << "Caves generated. Build and render to see the final cave system." << std::endl;
-        std::cout << "Press any key to continue with ore generation..." << std::endl;
+        // std::cout << "Caves generated. Build and render to see the final cave system." << std::endl;
+        // std::cout << "Press any key to continue with ore generation..." << std::endl;
         // Here we'd pause in an interactive application
     }
     
-    std::cout << "Generating ore deposits..." << std::endl;
+    // std::cout << "Generating ore deposits..." << std::endl;
     
     // Create ore distribution based on biome types
     struct OrePlacement {
@@ -3512,7 +3512,7 @@ void World::generate(unsigned int seed) {
     };
     
     // For each ore type, generate multiple veins throughout the world
-    std::cout << "Generating ore veins..." << std::endl;
+    // std::cout << "Generating ore veins..." << std::endl;
     
     // Increased ore amount for better visibility
     int totalOreVeins = 3500; // Even more ore veins
@@ -3597,7 +3597,7 @@ void World::generate(unsigned int seed) {
                 float adjustedDensity = std::min(1.0f, ore.density * 1.8f); // Higher density
                 int adjustedRadius = ore.maxRadius * 3; // Triple the radius
                 
-                std::cout << "Generating " << static_cast<int>(ore.oreType) << " vein at " << x << "," << y 
+                // std::cout << "Generating " << static_cast<int>(ore.oreType) << " vein at " << x << "," << y 
                          << " (size: " << veinSize << ", biome: " << static_cast<int>(localBiome) << ")" << std::endl;
                 
                 generateOreVein(x, y, ore.oreType, veinSize, adjustedDensity, adjustedRadius, localBiome);
@@ -3606,7 +3606,7 @@ void World::generate(unsigned int seed) {
     }
     
     // Generate additional small ore veins to fill in gaps
-    std::cout << "Generating small ore veins..." << std::endl;
+    // std::cout << "Generating small ore veins..." << std::endl;
     
     for (int i = 0; i < smallVeins; i++) {
         // Select a random ore type from our list
@@ -3680,12 +3680,12 @@ void World::generate(unsigned int seed) {
         }
     }
     
-    std::cout << "Ore generation complete." << std::endl;
+    // std::cout << "Ore generation complete." << std::endl;
     
     if (renderStepByStep) {
         // Update pixel data after ore generation
         // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
-        std::cout << "Ore deposits generated. Build and render to see the final world." << std::endl;
+        // std::cout << "Ore deposits generated. Build and render to see the final world." << std::endl;
     } else {
         // Update pixel data
         // updatePixelData(); // TEMP DISABLED FOR STREAMING SYSTEM MIGRATION
