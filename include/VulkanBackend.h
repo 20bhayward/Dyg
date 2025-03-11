@@ -204,7 +204,7 @@ public:
     void beginMainPass() override;
     void beginPostProcessPass() override;
     
-    void* getNativeHandle() override;
+    void* getNativeHandle(int handleType = 0) override;
     BackendType getType() const override { return BackendType::Vulkan; }
     
     bool supportsFeature(const std::string& featureName) const override;
@@ -214,9 +214,17 @@ public:
     VkDevice getDevice() const { return m_device; }
     VkPhysicalDevice getPhysicalDevice() const { return m_physicalDevice; }
     VkQueue getGraphicsQueue() const { return m_graphicsQueue; }
+    uint32_t getGraphicsQueueFamily() const;
     VkCommandPool getCommandPool() const { return m_commandPool; }
     VkRenderPass getDefaultRenderPass() const { return m_defaultRenderPass; }
     VkExtent2D getSwapChainExtent() const { return m_swapChainExtent; }
+    VkInstance getInstance() const { return m_instance; }
+    VkDescriptorPool getDescriptorPool() const;
+    uint32_t getSwapchainImageCount() const { return static_cast<uint32_t>(m_swapChainImages.size()); }
+    
+    // ImGui integration methods - disabled since editor tool was removed
+    //VkRenderPass createImGuiRenderPass();
+    //bool uploadImGuiFonts();
     
     // Access to command buffers and current frame for shader uniform updates
     VkCommandBuffer getCurrentCommandBuffer() const { return m_commandBuffers[m_currentFrame]; }
@@ -309,7 +317,7 @@ private:
     std::vector<const char*> getRequiredExtensions(bool enableValidationLayers);
     bool checkDeviceExtensionSupport(VkPhysicalDevice device);
     bool isDeviceSuitable(VkPhysicalDevice device);
-    VulkanQueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+    VulkanQueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) const;
     VulkanSwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);

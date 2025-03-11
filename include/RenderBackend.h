@@ -80,7 +80,7 @@ public:
     virtual void beginPostProcessPass() = 0;
     
     // Backend-specific operations
-    virtual void* getNativeHandle() = 0;
+    virtual void* getNativeHandle(int handleType = 0) = 0;
     virtual BackendType getType() const = 0;
     
     // Helper functions

@@ -148,11 +148,15 @@ private:
 class ChunkManager {
 public:
     ChunkManager(int chunkSize = 512);
-    ~ChunkManager() = default;
+    ~ChunkManager();
     
     // Core chunk operations
     Chunk* getChunk(int chunkX, int chunkY, bool loadIfNeeded = true);
     void updateActiveChunks(int centerX, int centerY);
+    void update();
+    
+    // Save all modified chunks
+    void saveAllModifiedChunks();
     
     // Visibility checker
     bool isChunkVisible(int chunkX, int chunkY, int cameraX, int cameraY, int screenWidth, int screenHeight) const;
@@ -160,15 +164,35 @@ public:
     // Get active chunks for rendering
     const std::vector<ChunkCoord>& getActiveChunks() const { return m_activeChunks; }
     
-    // Chunk status
+    // Chunk file operations
+    bool saveChunk(const ChunkCoord& coord);
+    std::unique_ptr<Chunk> loadChunk(const ChunkCoord& coord);
     bool isChunkLoaded(const ChunkCoord& coord) const;
+    
+    // Check if chunk exists on disk
+    bool chunkExistsOnDisk(const ChunkCoord& coord) const;
+    
+    // Get path for chunk file
+    std::string getChunkFilePath(const ChunkCoord& coord) const;
     
     // Convert world to chunk coordinates
     void worldToChunkCoords(int worldX, int worldY, int& chunkX, int& chunkY, int& localX, int& localY) const;
     
 private:
-    // Map of loaded chunks - initially all chunks are loaded
+    // Map of loaded chunks
     std::unordered_map<ChunkCoord, std::unique_ptr<Chunk>, ChunkCoordHash> m_loadedChunks;
+    
+    // Set of modified chunks that need saving
+    std::unordered_set<ChunkCoord, ChunkCoordHash> m_dirtyChunks;
+    
+    // Recently unloaded chunks for caching (to avoid excessive file I/O)
+    struct CachedChunk {
+        std::unique_ptr<Chunk> chunk;
+        int frameUnloaded;
+    };
+    std::unordered_map<ChunkCoord, CachedChunk, ChunkCoordHash> m_chunkCache;
+    int m_currentFrame = 0;
+    const int CACHE_TTL = 600; // Cache chunks for 10 seconds (assuming 60 FPS)
     
     // Currently active chunk coordinates
     std::vector<ChunkCoord> m_activeChunks;
@@ -178,6 +202,9 @@ private:
     
     // Size of chunks in world units
     const int m_chunkSize;
+    
+    // Base folder for chunk storage
+    std::string m_chunkStoragePath;
     
     // Calculate distance between chunk and player
     float calculateChunkDistance(const ChunkCoord& coord, int centerX, int centerY) const;
@@ -232,6 +259,11 @@ public:
     // Get the list of active chunks for rendering
     const std::vector<ChunkCoord>& getActiveChunks() const {
         return m_chunkManager.getActiveChunks();
+    }
+    
+    // Save all modified chunks to disk
+    void save() {
+        m_chunkManager.saveAllModifiedChunks();
     }
     
     // Get a chunk at specific chunk coordinates

@@ -63,8 +63,11 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     int endX = std::min(worldWidth, cameraX + visibleWorldWidth);
     int endY = std::min(worldHeight, cameraY + visibleWorldHeight);
     
-    std::cout << "Rendering world from (" << startX << "," << startY 
-              << ") to (" << endX << "," << endY << ")" << std::endl;
+    static int frameCount = 0;
+    if (frameCount++ % 60 == 0) {
+        std::cout << "Rendering world from (" << startX << "," << startY 
+                  << ") to (" << endX << "," << endY << ")" << std::endl;
+    }
               
     // First try to use chunks for rendering (much faster)
     // Update active chunks based on camera position
@@ -78,7 +81,9 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     int chunkPixelHeight = world.getChunkHeight();
     
     // Try to render the active chunks first (much more efficient)
-    std::cout << "Rendering " << activeChunks.size() << " active chunks" << std::endl;
+    if (frameCount % 60 == 0) {
+        std::cout << "Rendering " << activeChunks.size() << " active chunks" << std::endl;
+    }
     bool renderedChunks = false;
     
     if (activeChunks.size() > 0) {
@@ -149,7 +154,9 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     
     // Fallback to direct rendering if no chunks were rendered
     if (!renderedChunks) {
-        std::cout << "Falling back to direct pixel rendering" << std::endl;
+        if (frameCount % 60 == 0) {
+            std::cout << "Falling back to direct pixel rendering" << std::endl;
+        }
         // Direct rendering from the world as a fallback
         for (int y = startY; y < endY; y += 1) {
             for (int x = startX; x < endX; x += 1) {

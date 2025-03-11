@@ -1,4 +1,6 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/PixelPhys2D.dir/src/Character.cpp.o"
+  "CMakeFiles/PixelPhys2D.dir/src/Character.cpp.o.d"
   "CMakeFiles/PixelPhys2D.dir/src/ChunkManager.cpp.o"
   "CMakeFiles/PixelPhys2D.dir/src/ChunkManager.cpp.o.d"
   "CMakeFiles/PixelPhys2D.dir/src/RenderBackend.cpp.o"

@@ -40,6 +40,7 @@ find_package(Vulkan REQUIRED)
 option(USE_VULKAN "Use Vulkan rendering backend" ON)
 option(SIMPLIFIED_SKY "Use simplified sky rendering" ON)
 option(USE_OPENVDB "Use OpenVDB for volumetric lighting" OFF)
+option(BUILD_TOOLS "Build editor and other tools" ON)
 
 # Vulkan configuration
 if(USE_VULKAN)
@@ -67,6 +68,7 @@ set(SOURCES
     src/VulkanBackend.cpp
     src/RenderBackend.cpp
     src/ChunkManager.cpp
+    src/Character.cpp
 )
 
 # Create executable
@@ -115,4 +117,39 @@ elseif(APPLE)
     find_library(IOKIT IOKit)
     find_library(COREVIDEO CoreVideo)
     target_link_libraries(PixelPhys2D ${COCOA} ${IOKIT} ${COREVIDEO})
+endif()
+
+# Build tools
+if(BUILD_TOOLS)
+    message(STATUS "Building editor and other tools")
+    
+    # Download third-party dependencies if needed
+    include(FetchContent)
+    
+    # ImGui
+    if(NOT EXISTS ${CMAKE_SOURCE_DIR}/tools/libs/imgui)
+        message(STATUS "Downloading ImGui...")
+        FetchContent_Declare(
+            imgui
+            GIT_REPOSITORY https://github.com/ocornut/imgui.git
+            GIT_TAG v1.90.5
+            SOURCE_DIR ${CMAKE_SOURCE_DIR}/tools/libs/imgui
+        )
+        FetchContent_MakeAvailable(imgui)
+    endif()
+    
+    # We no longer need FastNoise2 since we're using the actual world generation
+    
+    # nlohmann/json
+    if(NOT EXISTS ${CMAKE_SOURCE_DIR}/tools/libs/json)
+        message(STATUS "Downloading nlohmann/json...")
+        FetchContent_Declare(
+            nlohmannjson
+            GIT_REPOSITORY https://github.com/nlohmann/json.git
+            GIT_TAG v3.11.3
+            SOURCE_DIR ${CMAKE_SOURCE_DIR}/tools/libs/json
+        )
+        FetchContent_MakeAvailable(nlohmannjson)
+    endif()
+    
 endif()

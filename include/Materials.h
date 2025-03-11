@@ -39,6 +39,13 @@ enum class MaterialType : uint8_t {
     QuartzOre,       // Common crystalline material in various biomes
     UraniumOre,      // Rare radioactive material found in deepest layers
     
+    // Organic/biological materials
+    WormSkin,        // Outer skin of worm, reddish-brown and soft
+    WormArmor,       // Armored scales of desert worm, tan/amber
+    WormHead,        // Head of the worm, stronger than the body
+    WormBlood,       // Blood of the worm, darker red liquid that flows
+    WormMouth,       // Mouth of the worm, destructive to terrain
+    
     COUNT            // Keep this last to track count of materials
 };
 
@@ -102,7 +109,14 @@ constexpr std::array<MaterialProperties, static_cast<std::size_t>(MaterialType::
     /* RubyOre */             {true,  false, false, false, false, false,   200, 30,  60,  40,  15,  20,    100,   0},
     /* SulfurOre */           {true,  false, false, false, true,  false,   230, 220, 40,  35,  35,  15,    90,    0},
     /* QuartzOre */           {true,  false, false, false, false, false,   235, 235, 235, 20,  20,  25,    100,   0},
-    /* UraniumOre */          {true,  false, false, false, false, false,   80,  170, 80,  30,  40,  20,    100,   0}
+    /* UraniumOre */          {true,  false, false, false, false, false,   80,  170, 80,  30,  40,  20,    100,   0},
+    
+    // Worm/organic material properties
+    /* WormSkin */            {true,  false, false, false, true,  false,    40, 35,  30,  10,  10,  10,    40,    0}, // Black body
+    /* WormArmor */           {true,  false, false, false, false, false,    55, 50,  45,  10,  10,   8,    80,    0}, // Dark armor
+    /* WormHead */            {true,  false, false, false, false, false,    80, 70,  60,  15,  10,   8,    95,    0}, // Brown head
+    /* WormBlood */           {false, true,  false, false, false, false,   150, 10,  10,  10,   5,   5,     0,     3}, // Red blood
+    /* WormMouth */           {true,  false, false, false, false, false,   180, 30,  20,  15,   8,   5,    90,    0}  // Reddish mouth
 }};
 
 } // namespace PixelPhys

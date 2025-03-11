@@ -129,6 +129,30 @@ PixelPhys2D/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/PixelPhys2D.dir/build.make CMakeFiles/PixelPhys2D.dir/build
 .PHONY : PixelPhys2D/fast
 
+src/Character.o: src/Character.cpp.o
+.PHONY : src/Character.o
+
+# target to build an object file
+src/Character.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/PixelPhys2D.dir/build.make CMakeFiles/PixelPhys2D.dir/src/Character.cpp.o
+.PHONY : src/Character.cpp.o
+
+src/Character.i: src/Character.cpp.i
+.PHONY : src/Character.i
+
+# target to preprocess a source file
+src/Character.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/PixelPhys2D.dir/build.make CMakeFiles/PixelPhys2D.dir/src/Character.cpp.i
+.PHONY : src/Character.cpp.i
+
+src/Character.s: src/Character.cpp.s
+.PHONY : src/Character.s
+
+# target to generate assembly for a file
+src/Character.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/PixelPhys2D.dir/build.make CMakeFiles/PixelPhys2D.dir/src/Character.cpp.s
+.PHONY : src/Character.cpp.s
+
 src/ChunkManager.o: src/ChunkManager.cpp.o
 .PHONY : src/ChunkManager.o
 
@@ -282,6 +306,9 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... PixelPhys2D"
+	@echo "... src/Character.o"
+	@echo "... src/Character.i"
+	@echo "... src/Character.s"
 	@echo "... src/ChunkManager.o"
 	@echo "... src/ChunkManager.i"
 	@echo "... src/ChunkManager.s"

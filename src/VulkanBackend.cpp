@@ -416,13 +416,11 @@ void VulkanBackend::endFrame() {
         }
         
         // End command buffer
-        VULKAN_DEBUG("Ending command buffer recording");
         VkResult endResult = vkEndCommandBuffer(m_commandBuffers[m_currentFrame]);
         if (endResult != VK_SUCCESS) {
             std::cerr << "Failed to record command buffer! Error: " << endResult << std::endl;
             return;
         }
-        VULKAN_DEBUG("Command buffer recording ended successfully");
         
         // Validate all required handles
         if (m_device == VK_NULL_HANDLE || 
@@ -436,7 +434,6 @@ void VulkanBackend::endFrame() {
         }
         
         // Submit command buffer
-        VULKAN_DEBUG_VERBOSE("Setting up submit info");
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         
@@ -453,13 +450,11 @@ void VulkanBackend::endFrame() {
         submitInfo.signalSemaphoreCount = 1;
         submitInfo.pSignalSemaphores = signalSemaphores;
         
-        VULKAN_DEBUG("Submitting command buffer to graphics queue");
         VkResult submitResult = vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_inFlightFences[m_currentFrame]);
         if (submitResult != VK_SUCCESS) {
             std::cerr << "Failed to submit draw command buffer! Error: " << submitResult << std::endl;
             return;
         }
-        VULKAN_DEBUG("Command buffer submitted successfully");
         
         // Prepare presentation info
         VULKAN_DEBUG_VERBOSE("Setting up present info");
@@ -493,7 +488,6 @@ void VulkanBackend::endFrame() {
     
     // Update frame counter
     m_currentFrame = (m_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-    std::cout << " to " << m_currentFrame << std::endl;
 }
 
 std::shared_ptr<Buffer> VulkanBackend::createVertexBuffer(size_t size, const void* data) {
@@ -1083,9 +1077,15 @@ void VulkanBackend::drawFullscreenQuad() {
 
 // Simple rectangle drawing function for visualizing world pixels
 void VulkanBackend::drawRectangle(float x, float y, float width, float height, float r, float g, float b) {
+    // Only check render pass state once per frame
+    static bool warningShown = false;
+    
     // Make sure we're in a render pass
     if (!m_renderPassInProgress || m_commandBuffers[m_currentFrame] == VK_NULL_HANDLE) {
-        std::cerr << "Cannot draw rectangle - not in a render pass" << std::endl;
+        if (!warningShown) {
+            std::cerr << "Cannot draw rectangle - not in a render pass" << std::endl;
+            warningShown = true;
+        }
         return;
     }
     
@@ -1300,8 +1300,12 @@ void VulkanBackend::beginPostProcessPass() {
     std::cout << "Post-process pass begins with default render target" << std::endl;
 }
 
-void* VulkanBackend::getNativeHandle() {
-    return static_cast<void*>(&m_device);
+void* VulkanBackend::getNativeHandle(int handleType) {
+    switch (handleType) {
+        case 0:
+        default:
+            return static_cast<void*>(&m_device);
+    }
 }
 
 bool VulkanBackend::supportsFeature(const std::string& featureName) const {
@@ -1573,7 +1577,7 @@ bool VulkanBackend::isDeviceSuitable(VkPhysicalDevice device) {
            deviceFeatures.samplerAnisotropy;
 }
 
-VulkanQueueFamilyIndices VulkanBackend::findQueueFamilies(VkPhysicalDevice device) {
+VulkanQueueFamilyIndices VulkanBackend::findQueueFamilies(VkPhysicalDevice device) const {
     VulkanQueueFamilyIndices indices;
     
     // Get queue family properties
@@ -4154,5 +4158,130 @@ VulkanRenderTarget::~VulkanRenderTarget() {
         vkFreeMemory(m_device, m_depthMemory, nullptr);
     }
 }
+
+// ImGui integration methods
+uint32_t VulkanBackend::getGraphicsQueueFamily() const {
+    VulkanQueueFamilyIndices indices = findQueueFamilies(m_physicalDevice);
+    return indices.graphicsFamily.value();
+}
+
+VkDescriptorPool VulkanBackend::getDescriptorPool() const {
+    // Create a dedicated descriptor pool for ImGui if needed
+    static VkDescriptorPool imguiPool = VK_NULL_HANDLE;
+    
+    if (imguiPool == VK_NULL_HANDLE && m_device != VK_NULL_HANDLE) {
+        VkDescriptorPoolSize pool_sizes[] = {
+            { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+        };
+        
+        VkDescriptorPoolCreateInfo pool_info = {};
+        pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool_info.maxSets = 1000;
+        pool_info.poolSizeCount = std::size(pool_sizes);
+        pool_info.pPoolSizes = pool_sizes;
+        
+        VkResult result = vkCreateDescriptorPool(m_device, &pool_info, nullptr, &imguiPool);
+        if (result != VK_SUCCESS) {
+            std::cerr << "Failed to create ImGui descriptor pool" << std::endl;
+            return VK_NULL_HANDLE;
+        }
+        
+        std::cout << "Created dedicated descriptor pool for ImGui" << std::endl;
+    }
+    
+    return imguiPool;
+}
+
+// ImGui integration removed since editor tool was removed
+/*
+VkRenderPass VulkanBackend::createImGuiRenderPass() {
+    // Create a dedicated render pass for ImGui
+    VkRenderPass imguiRenderPass = VK_NULL_HANDLE;
+    
+    // Attachment description for color (same as the swapchain format)
+    VkAttachmentDescription attachment = {};
+    attachment.format = m_swapChainImageFormat;
+    attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;  // Load existing content
+    attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    
+    // Subpass dependency to ensure proper synchronization
+    VkSubpassDependency dependency = {};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    
+    // Attachment reference for color
+    VkAttachmentReference colorAttachmentRef = {};
+    colorAttachmentRef.attachment = 0;
+    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    
+    // Subpass definition
+    VkSubpassDescription subpass = {};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorAttachmentRef;
+    
+    // Create the render pass
+    VkRenderPassCreateInfo renderPassInfo = {};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &attachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
+    
+    VkResult result = vkCreateRenderPass(m_device, &renderPassInfo, nullptr, &imguiRenderPass);
+    if (result != VK_SUCCESS) {
+        std::cerr << "Failed to create ImGui render pass" << std::endl;
+        return VK_NULL_HANDLE;
+    }
+    
+    std::cout << "Created dedicated render pass for ImGui" << std::endl;
+    return imguiRenderPass;
+}
+*/
+
+/*
+bool VulkanBackend::uploadImGuiFonts() {
+    // Create a command buffer for font upload
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+    
+    // Let ImGui implementation create and upload fonts
+    if (!ImGui_ImplVulkan_CreateFontsTexture(commandBuffer)) {
+        std::cerr << "Failed to create ImGui fonts texture" << std::endl;
+        vkEndCommandBuffer(commandBuffer);  // Removed extra parameter
+        return false;
+    }
+    
+    // Submit and wait for completion
+    endSingleTimeCommands(commandBuffer);
+    
+    // Cleanup font data
+    ImGui_ImplVulkan_DestroyFontUploadObjects();
+    
+    std::cout << "Uploaded ImGui fonts texture" << std::endl;
+    return true;
+}
+*/
 
 } // namespace PixelPhys

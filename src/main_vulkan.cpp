@@ -11,6 +11,7 @@
 #include "../include/World.h"
 #include "../include/Renderer.h"
 #include "../include/VulkanBackend.h"
+#include "../include/Character.h"
 
 const int WINDOW_WIDTH  = 800;
 const int WINDOW_HEIGHT = 600;
@@ -34,6 +35,9 @@ const float basePixelSize = 1.0f;  // Base pixel size for world rendering (small
 bool middleMouseDown = false;
 int mouseX = 0, mouseY = 0;
 int prevMouseX = 0, prevMouseY = 0;
+
+// Character mode parameters
+bool playerMode = false;  // Toggle between camera mode and player mode
 
 int main() {
     // Initialize SDL with video support
@@ -84,6 +88,11 @@ int main() {
         std::cout << "Generating world with seed: " << seed << std::endl;
         world.generate(seed);
     }
+    
+    // Create the character (earthworm) positioned at the center of the world
+    // Character will be activated when player presses 'p'
+    std::unique_ptr<PixelPhys::Character> character = 
+        std::make_unique<PixelPhys::Character>(world, WORLD_WIDTH / 2, DEFAULT_VIEW_HEIGHT);
     
     SDL_Delay(200);  // Give the world time to set up
     
@@ -202,6 +211,31 @@ int main() {
                     cameraX = 0; // Reset to origin
                     cameraY = 0;
                     std::cout << "Camera reset to default position" << std::endl;
+                }
+                // Toggle between player mode and camera mode
+                else if (e.key.keysym.sym == SDLK_p) {
+                    playerMode = !playerMode;
+                    if (playerMode) {
+                        std::cout << "Switched to player mode (earthworm)" << std::endl;
+                        // Convert screen coordinates to world coordinates
+                        const float pixelSize = 4.0f; // Must match the value in Renderer.cpp
+                        
+                        // Calculate position at center of screen in world coordinates
+                        int worldX = cameraX + static_cast<int>(actualWidth / (2 * pixelSize));
+                        int worldY = cameraY + static_cast<int>(actualHeight / (2 * pixelSize));
+                        
+                        // Initialize character at screen center and set it active
+                        character = std::make_unique<PixelPhys::Character>(world, worldX, worldY);
+                        character->setActive(true);
+                        character->draw();
+                        
+                        // Log character position
+                        std::cout << "Character spawned at world position: " << worldX << "," << worldY << std::endl;
+                    } else {
+                        std::cout << "Switched to camera mode" << std::endl;
+                        character->setActive(false);
+                        character->clear();
+                    }
                 }
                 // Brush size controls
                 else if (e.key.keysym.sym == SDLK_EQUALS || e.key.keysym.sym == SDLK_PLUS || e.key.keysym.sym == SDLK_KP_PLUS) {
@@ -390,26 +424,69 @@ int main() {
             }
         }
         SDL_GetMouseState(&mouseX, &mouseY);
-        // Handle material placement with left mouse button
-        if (leftMouseDown) {
-            // Map screen coordinates to world coordinates
-            // The renderer uses a 4x zoom (pixelSize = 4.0f), so we need to divide by 4
-            const float pixelSize = 4.0f; // Must match the value in Renderer.cpp
-            int worldX = cameraX + static_cast<int>(mouseX / pixelSize);
-            int worldY = cameraY + static_cast<int>(mouseY / pixelSize);
+        
+        // Convert mouse screen coordinates to world coordinates
+        const float pixelSize = 4.0f; // Must match the value in Renderer.cpp
+        int worldX = cameraX + static_cast<int>(mouseX / pixelSize);
+        int worldY = cameraY + static_cast<int>(mouseY / pixelSize);
+        
+        // Handle player movement if in player mode
+        if (playerMode && character) {
+            // Update character position based on mouse position
+            character->updatePosition(worldX, worldY);
             
-            // Place material in a circular brush pattern
-            for (int dy = -placeBrushSize / 2; dy <= placeBrushSize / 2; dy++) {
-                for (int dx = -placeBrushSize / 2; dx <= placeBrushSize / 2; dx++) {
-                    // Check if point is within brush radius for circular brush shape
-                    if (dx*dx + dy*dy <= (placeBrushSize/2)*(placeBrushSize/2)) {
-                        // Calculate world coordinates with brush offset
-                        int placeX = worldX + dx;
-                        int placeY = worldY + dy;
-                        
-                        // Ensure we're within world bounds
-                        if (placeX >= 0 && placeX < WORLD_WIDTH && placeY >= 0 && placeY < WORLD_HEIGHT) {
-                            world.set(placeX, placeY, currentMaterial);
+            // Get character position
+            int charX = character->getX();
+            int charY = character->getY();
+            
+            // Calculate target camera position (centered on character)
+            int targetCameraX = charX - static_cast<int>(actualWidth / (2 * pixelSize));
+            int targetCameraY = charY - static_cast<int>(actualHeight / (2 * pixelSize));
+            
+            // Clamp target camera position to world bounds
+            targetCameraX = std::max(0, targetCameraX);
+            targetCameraX = std::min(WORLD_WIDTH - actualWidth, targetCameraX);
+            targetCameraY = std::max(0, targetCameraY);
+            targetCameraY = std::min(WORLD_HEIGHT - 50, targetCameraY);
+            
+            // Smooth camera movement using interpolation
+            // Calculate the interpolation factor - smaller for smoother movement
+            const float smoothFactor = 0.1f; 
+            
+            // Interpolate between current and target camera positions
+            cameraX = cameraX + static_cast<int>((targetCameraX - cameraX) * smoothFactor);
+            cameraY = cameraY + static_cast<int>((targetCameraY - cameraY) * smoothFactor);
+            
+            // Update world player position for chunk streaming (use character position, not camera)
+            world.updatePlayerPosition(charX, charY);
+        }
+        else {
+            // In camera mode, use the center of the screen as the focus point for chunk streaming
+            int centerX = cameraX + static_cast<int>(actualWidth / (2 * pixelSize));
+            int centerY = cameraY + static_cast<int>(actualHeight / (2 * pixelSize));
+            
+            // Update chunks based on screen center position, but do it less frequently
+            // to reduce file I/O overhead (only update every 5 frames)
+            static int updateCounter = 0;
+            if (updateCounter++ % 5 == 0) {
+                world.updatePlayerPosition(centerX, centerY);
+            }
+            
+            // Handle material placement in camera mode
+            if (leftMouseDown) {
+                // Place material in a circular brush pattern
+                for (int dy = -placeBrushSize / 2; dy <= placeBrushSize / 2; dy++) {
+                    for (int dx = -placeBrushSize / 2; dx <= placeBrushSize / 2; dx++) {
+                        // Check if point is within brush radius for circular brush shape
+                        if (dx*dx + dy*dy <= (placeBrushSize/2)*(placeBrushSize/2)) {
+                            // Calculate world coordinates with brush offset
+                            int placeX = worldX + dx;
+                            int placeY = worldY + dy;
+                            
+                            // Ensure we're within world bounds
+                            if (placeX >= 0 && placeX < WORLD_WIDTH && placeY >= 0 && placeY < WORLD_HEIGHT) {
+                                world.set(placeX, placeY, currentMaterial);
+                            }
                         }
                     }
                 }
@@ -423,6 +500,7 @@ int main() {
                           << " | Zoom: 4x | Brush size: " << placeBrushSize << std::endl;
             }
         }
+        // Update the world physics - performance bottleneck
         world.update();
         
         // Render the world using our renderer with camera position
@@ -448,6 +526,10 @@ int main() {
             SDL_Delay(FRAME_DELAY - frameTime);
         }
     }
+    
+    // Save world state before exiting
+    std::cout << "Saving world state..." << std::endl;
+    world.save();
     
     // Clean up resources
     std::cout << "Cleaning up resources" << std::endl;

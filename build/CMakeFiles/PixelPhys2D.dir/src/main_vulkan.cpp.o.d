@@ -372,4 +372,5 @@ CMakeFiles/PixelPhys2D.dir/src/main_vulkan.cpp.o: \
  /home/bhayward/Dyg/src/../include/Renderer.h \
  /home/bhayward/Dyg/src/../include/RenderBackend.h \
  /home/bhayward/Dyg/src/../include/RenderResources.h \
- /home/bhayward/Dyg/src/../include/VulkanBackend.h
+ /home/bhayward/Dyg/src/../include/VulkanBackend.h \
+ /home/bhayward/Dyg/src/../include/Character.h
