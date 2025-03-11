@@ -196,6 +196,15 @@ public:
     void drawMaterialRectangle(float x, float y, float width, float height, 
                               PixelPhys::MaterialType materialType);
     
+    // Batched pixel rendering system for high performance
+    void beginPixelBatch(float pixelSize);
+    void addPixelToBatch(float x, float y, float r, float g, float b);
+    void drawPixelBatch();
+    void endPixelBatch();
+    
+    // Internal batched rendering helper
+    void drawBatchInternal(size_t instanceCount);
+    
     void setViewport(int x, int y, int width, int height) override;
     void setClearColor(float r, float g, float b, float a) override;
     void clear() override;
@@ -290,6 +299,31 @@ private:
     uint32_t m_currentImageIndex;
     VkDebugUtilsMessengerEXT m_debugMessenger;
     bool m_renderPassInProgress;
+    
+    // Batched rendering resources
+    struct PixelInstance {
+        float posX, posY;  // Position
+        float r, g, b;     // Color
+    };
+    
+    std::vector<PixelInstance> m_pixelBatch;
+    float m_batchPixelSize;
+    VkBuffer m_instanceBuffer;
+    VkDeviceMemory m_instanceBufferMemory;
+    size_t m_maxInstanceCount;
+    std::shared_ptr<Buffer> m_batchVertexBuffer;
+    std::shared_ptr<Buffer> m_batchIndexBuffer;
+    bool m_isBatchActive;
+    
+    // Specialized pipeline for batch rendering
+    VkPipeline m_batchPipeline = VK_NULL_HANDLE;
+    VkPipelineLayout m_batchPipelineLayout = VK_NULL_HANDLE;
+    
+    // Helper method to create the batch rendering pipeline
+    void createBatchPipeline();
+    
+    // Helper to create shader module from GLSL source code
+    VkShaderModule createShaderModule(const std::string& code);
     
     // Constants
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;

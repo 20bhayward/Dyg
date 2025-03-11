@@ -110,6 +110,19 @@ void ChunkManager::updateActiveChunks(int centerX, int centerY) {
     // No need to sort, our pattern ensures the closest chunks are loaded
     // and we've already limited to exactly MAX_LOADED_CHUNKS
     
+    // Strictly enforce MAX_LOADED_CHUNKS limit by sorting and limiting desired chunks
+    // Sort chunks by distance from player for proper prioritization
+    std::sort(desiredChunks.begin(), desiredChunks.end(),
+            [this, centerX, centerY](const ChunkCoord& a, const ChunkCoord& b) {
+                return calculateChunkDistance(a, centerX, centerY) < 
+                       calculateChunkDistance(b, centerX, centerY);
+            });
+    
+    // Strictly enforce the limit
+    if (desiredChunks.size() > MAX_LOADED_CHUNKS) {
+        desiredChunks.resize(MAX_LOADED_CHUNKS);
+    }
+    
     // Find chunks that are no longer in the active set and need to be unloaded
     std::vector<ChunkCoord> chunksToUnload;
     for (const auto& pair : m_loadedChunks) {
@@ -149,14 +162,14 @@ void ChunkManager::updateActiveChunks(int centerX, int centerY) {
     static std::vector<ChunkCoord> lastActiveChunks;
     if (lastActiveChunks != m_activeChunks) {
         lastActiveChunks = m_activeChunks;
-        // Output only occasionally to reduce console spam
+        // Output active chunks for debugging
         static int debugCounter = 0;
         if (debugCounter++ % 60 == 0) {
-            // std::cout << "Active chunks: ";
+            std::cout << "ChunkManager active chunks: " << m_activeChunks.size() << " - ";
             for (const auto& coord : m_activeChunks) {
-                // std::cout << "(" << coord.x << "," << coord.y << ") ";
+                std::cout << "(" << coord.x << "," << coord.y << ") ";
             }
-            // std::cout << std::endl;
+            std::cout << std::endl;
         }
     }
 }

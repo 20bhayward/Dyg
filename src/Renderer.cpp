@@ -50,8 +50,8 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     int worldWidth = world.getWidth();
     int worldHeight = world.getHeight();
     
-    // Force a 4x zoom by using a pixel size of 4.0 (doubled from 2.0)
-    const float pixelSize = 4.0f;  // Each world pixel is 4 screen pixels - effectively zoomed in more
+    // Match the pixel size from main_vulkan.cpp
+    const float pixelSize = 1.0f;  // Each world pixel is 1.0 screen pixels - MUST MATCH PIXEL_SIZE in main_vulkan.cpp
     
     // Calculate how much world space we can display with 2x pixels
     int visibleWorldWidth = m_screenWidth / pixelSize;
@@ -65,13 +65,18 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     
     static int frameCount = 0;
     if (frameCount++ % 60 == 0) {
-        // std::cout << "Rendering world from (" << startX << "," << startY 
-           //        << ") to (" << endX << "," << endY << ")" << std::endl;
+        std::cout << "FPS: " << frameCount << std::endl;
     }
               
     // First try to use chunks for rendering (much faster)
-    // Update active chunks based on camera position
-    const_cast<World&>(world).updatePlayerPosition(cameraX + m_screenWidth/2, cameraY + m_screenHeight/2);
+    // Center the player position exactly in the middle of the screen for proper chunk loading
+    const_cast<World&>(world).updatePlayerPosition(cameraX + visibleWorldWidth/2, cameraY + visibleWorldHeight/2);
+    
+    // Only output active chunks occasionally to reduce spam
+    static int chunkDebugCounter = 0;
+    if (chunkDebugCounter++ % 60 == 0) {
+        std::cout << "Renderer - Active chunks: " << world.getActiveChunks().size() << std::endl;
+    }
     
     // Get the active chunks list
     const auto& activeChunks = world.getActiveChunks();
@@ -80,38 +85,49 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     int chunkPixelWidth = world.getChunkWidth();
     int chunkPixelHeight = world.getChunkHeight();
     
-    // Try to render the active chunks first (much more efficient)
-    if (frameCount % 60 == 0) {
-        // std::cout << "Rendering " << activeChunks.size() << " active chunks" << std::endl;
-    }
-    bool renderedChunks = false;
+    // Try to render the active chunks first
+    bool renderedAnything = false;
+    
+    // Count of draw calls
+    int drawCalls = 0;
+    const int MAX_DRAW_CALLS = 100000; // Much higher limit to render everything
     
     if (activeChunks.size() > 0) {
-        renderedChunks = true;
-        for (const auto& chunkCoord : activeChunks) {
-            // Calculate world position of this chunk
+        // Render ALL active chunks for proper streaming
+        int chunksToRender = static_cast<int>(activeChunks.size());
+        
+        for (int i = 0; i < chunksToRender; i++) {
+            const auto& chunkCoord = activeChunks[i];
             int chunkWorldX = chunkCoord.x * chunkPixelWidth;
             int chunkWorldY = chunkCoord.y * chunkPixelHeight;
             
-            // Check if chunk is visible in viewport
-            if (chunkWorldX + chunkPixelWidth < cameraX || chunkWorldX >= cameraX + m_screenWidth ||
-                chunkWorldY + chunkPixelHeight < cameraY || chunkWorldY >= cameraY + m_screenHeight) {
-                continue;  // Skip if not visible
+            // Skip if not visible
+            if (chunkWorldX + chunkPixelWidth < cameraX || chunkWorldX >= cameraX + m_screenWidth/pixelSize ||
+                chunkWorldY + chunkPixelHeight < cameraY || chunkWorldY >= cameraY + m_screenHeight/pixelSize) {
+                continue;  
             }
             
-            // Get chunk from ChunkManager
+            // Get the chunk
             Chunk* chunk = const_cast<World&>(world).getChunkByCoords(chunkCoord.x, chunkCoord.y);
             if (!chunk) continue;
             
-            // Calculate visible area of this chunk
-            int startCX = std::max(0, cameraX - chunkWorldX);
-            int startCY = std::max(0, cameraY - chunkWorldY);
-            int endCX = std::min(chunkPixelWidth, cameraX + m_screenWidth - chunkWorldX);
-            int endCY = std::min(chunkPixelHeight, cameraY + m_screenHeight - chunkWorldY);
+            // Draw chunk boundary
+            float chunkScreenX = (chunkWorldX - cameraX) * pixelSize;
+            float chunkScreenY = (chunkWorldY - cameraY) * pixelSize;
+            float chunkScreenWidth = chunkPixelWidth * pixelSize;
+            float chunkScreenHeight = chunkPixelHeight * pixelSize;
             
-            // Render visible pixels in this chunk
-            for (int cy = startCY; cy < endCY; cy += 1) {
-                for (int cx = startCX; cx < endCX; cx += 1) {
+            // Don't draw chunk outlines to keep the display clean
+            // Just increase counter to maintain the same flow
+            drawCalls++;
+            
+            if (drawCalls >= MAX_DRAW_CALLS) break;
+            
+            // Draw some content from the chunk - use a grid for efficiency
+            int step = 4; // Sample every 4th pixel for better performance with the higher draw call limit
+            
+            for (int cy = 0; cy < chunkPixelHeight; cy += step) {
+                for (int cx = 0; cx < chunkPixelWidth; cx += step) {
                     // Get material directly from the chunk
                     MaterialType material = chunk->get(cx, cy);
                     if (material == MaterialType::Empty) continue;
@@ -120,95 +136,58 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
                     int wx = chunkWorldX + cx;
                     int wy = chunkWorldY + cy;
                     
-                    // Determine color based on material type using MATERIAL_PROPERTIES
+                    // Determine color based on material type
                     float r = 0.0f, g = 0.0f, b = 0.0f;
                     
-                    // Get material color with position-based variations
+                    // Get material color
                     getMaterialColor(material, r, g, b, wx, wy);
                     
-                    // Calculate screen position with zoom
+                    // Calculate screen position 
                     float screenX = (wx - cameraX) * pixelSize;
                     float screenY = (wy - cameraY) * pixelSize;
                     
-                    // Draw rectangles with the zoomed size - now 1x1 world pixels
+                    // Draw pixel as rectangle
                     vulkanBackend->drawRectangle(
-                        screenX, 
-                        screenY,
-                        pixelSize, pixelSize,  // Scale with pixel size (1x1 pixels)
+                        screenX, screenY,
+                        pixelSize * step, pixelSize * step,
                         r, g, b
                     );
+                    
+                    drawCalls++;
+                    renderedAnything = true;
+                    
+                    if (drawCalls >= MAX_DRAW_CALLS) break;
                 }
+                if (drawCalls >= MAX_DRAW_CALLS) break;
             }
             
-            // Draw chunk boundary for debugging
-            float chunkScreenX = (chunkWorldX - cameraX) * pixelSize;
-            float chunkScreenY = (chunkWorldY - cameraY) * pixelSize;
-            
-            vulkanBackend->drawRectangle(
-                chunkScreenX, chunkScreenY,
-                chunkPixelWidth * pixelSize, pixelSize,  // Scale top border
-                0.5f, 0.0f, 0.0f
-            );
+            if (drawCalls >= MAX_DRAW_CALLS) break;
         }
-    }
+    } 
     
-    // Fallback to direct rendering if no chunks were rendered
-    if (!renderedChunks) {
-        if (frameCount % 60 == 0) {
-            // std::cout << "Falling back to direct pixel rendering" << std::endl;
-        }
-        // Direct rendering from the world as a fallback
-        for (int y = startY; y < endY; y += 1) {
-            for (int x = startX; x < endX; x += 1) {
-                // Get material directly from the world
-                MaterialType material = world.get(x, y);
-                if (material == MaterialType::Empty) continue;
+    // Draw test pattern if needed
+    if (!renderedAnything) {
+        // Draw a simple test pattern
+        for (int y = 0; y < 20 && drawCalls < MAX_DRAW_CALLS; y++) {
+            for (int x = 0; x < 20 && drawCalls < MAX_DRAW_CALLS; x++) {
+                float r = (float)x / 20.0f;
+                float g = (float)y / 20.0f;
+                float b = 0.5f;
                 
-                // Determine color based on material type using MATERIAL_PROPERTIES
-                float r = 0.0f, g = 0.0f, b = 0.0f;
-                
-                // Get material color with position-based variations
-                getMaterialColor(material, r, g, b, x, y);
-                
-                // Calculate screen position with zoom
-                float screenX = (x - cameraX) * pixelSize;
-                float screenY = (y - cameraY) * pixelSize;
-                
-                // Draw rectangles with the zoomed size - now 1x1 world pixels
                 vulkanBackend->drawRectangle(
-                    screenX, 
-                    screenY,
-                    pixelSize, pixelSize,  // Scale with pixel size (1x1 pixels)
+                    x * 20.0f, y * 20.0f,
+                    16.0f, 16.0f,
                     r, g, b
                 );
+                
+                drawCalls++;
             }
         }
     }
     
-    // Add a grid overlay aligned with chunk boundaries
-    
-    // Calculate the offset for the first visible chunk grid line
-    int firstVisibleChunkX = (cameraX / chunkPixelWidth) * chunkPixelWidth;
-    int firstVisibleChunkY = (cameraY / chunkPixelHeight) * chunkPixelHeight;
-    
-    // Draw vertical grid lines aligned with chunk boundaries
-    for (int x = firstVisibleChunkX; x < cameraX + visibleWorldWidth; x += chunkPixelWidth) {
-        float screenX = (x - cameraX) * pixelSize;
-        vulkanBackend->drawRectangle(
-            screenX, 0,
-            pixelSize, m_screenHeight,  // Scale grid line width
-            0.5f, 0.5f, 0.5f
-        );
-    }
-    
-    // Draw horizontal grid lines aligned with chunk boundaries
-    for (int y = firstVisibleChunkY; y < cameraY + visibleWorldHeight; y += chunkPixelHeight) {
-        float screenY = (y - cameraY) * pixelSize;
-        vulkanBackend->drawRectangle(
-            0, screenY,
-            m_screenWidth, pixelSize,  // Scale grid line height
-            0.5f, 0.5f, 0.5f
-        );
+    // Print debug info
+    if (frameCount % 60 == 0) {
+        std::cout << "Draw calls: " << drawCalls << std::endl;
     }
     
     // End rendering

@@ -89,11 +89,18 @@ VulkanBackend::VulkanBackend(int screenWidth, int screenHeight)
       m_defaultRenderPass(VK_NULL_HANDLE),
       m_commandPool(VK_NULL_HANDLE),
       m_currentFrame(0),
-      m_renderPassInProgress(false) {
+      m_renderPassInProgress(false),
+      m_instanceBuffer(VK_NULL_HANDLE),
+      m_instanceBufferMemory(VK_NULL_HANDLE),
+      m_maxInstanceCount(100000),
+      m_isBatchActive(false) {
     
     m_clearColor = {0.0f, 0.0f, 0.0f, 1.0f};
     m_viewport = {{0, 0}, {static_cast<uint32_t>(screenWidth), static_cast<uint32_t>(screenHeight)}};
     m_debugMessenger = VK_NULL_HANDLE;
+    
+    // Reserve space for pixel batch
+    m_pixelBatch.reserve(m_maxInstanceCount);
     
     // std::cout << "Created Vulkan backend" << std::endl;
 }
@@ -193,6 +200,36 @@ void VulkanBackend::cleanup() {
     // Only call vkDeviceWaitIdle if we have a valid device
     if (m_device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(m_device);
+        
+        // Cleanup batched rendering resources
+        if (m_instanceBuffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(m_device, m_instanceBuffer, nullptr);
+            m_instanceBuffer = VK_NULL_HANDLE;
+        }
+        
+        if (m_instanceBufferMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(m_device, m_instanceBufferMemory, nullptr);
+            m_instanceBufferMemory = VK_NULL_HANDLE;
+        }
+        
+        // Clean up specialized pipeline resources
+        if (m_batchPipeline != VK_NULL_HANDLE) {
+            vkDestroyPipeline(m_device, m_batchPipeline, nullptr);
+            m_batchPipeline = VK_NULL_HANDLE;
+        }
+        
+        if (m_batchPipelineLayout != VK_NULL_HANDLE) {
+            vkDestroyPipelineLayout(m_device, m_batchPipelineLayout, nullptr);
+            m_batchPipelineLayout = VK_NULL_HANDLE;
+        }
+        
+        // Clear batch data
+        m_pixelBatch.clear();
+        m_isBatchActive = false;
+        
+        // Smart pointers will be cleaned up automatically
+        m_batchVertexBuffer.reset();
+        m_batchIndexBuffer.reset();
         
         // Cleanup fullscreen quad
         m_fullscreenQuadVertexBuffer.reset();
@@ -1073,6 +1110,326 @@ void VulkanBackend::drawFullscreenQuad() {
     if (m_fullscreenQuadVertexBuffer && m_fullscreenQuadIndexBuffer) {
         drawMesh(m_fullscreenQuadVertexBuffer, 4, m_fullscreenQuadIndexBuffer, 6);
     }
+}
+
+// Batched rendering implementation (simplified)
+// Vertex shader for batched rendering
+static const std::string batchVertexShaderCode = R"(
+#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+// Vertex attributes for quad
+layout(location = 0) in vec3 inPosition;
+layout(location = 1) in vec2 inTexCoord;
+
+// Instance attributes for pixels
+layout(location = 2) in vec2 inInstancePos;
+layout(location = 3) in vec3 inInstanceColor;
+
+// Push constants - more efficient than uniforms for small data
+layout(push_constant) scalar block {
+    float pixelSize;
+} pushConstants;
+
+// Output to fragment shader
+layout(location = 0) out vec3 fragColor;
+
+void main() {
+    // Calculate position using the quad's vertices transformed by instance data
+    vec2 worldPos = inInstancePos + (vec2(inPosition.x, inPosition.y) * pushConstants.pixelSize);
+    
+    // Assuming normalized device coordinates (-1 to 1)
+    vec2 ndcPos = (worldPos / vec2(800, 600)) * 2.0 - 1.0;
+    // Y is flipped in Vulkan compared to OpenGL
+    gl_Position = vec4(ndcPos.x, -ndcPos.y, 0.0, 1.0);
+    
+    // Pass instance color to fragment shader
+    fragColor = inInstanceColor;
+}
+)";
+
+// Fragment shader for batched rendering
+static const std::string batchFragmentShaderCode = R"(
+#version 450
+#extension GL_ARB_separate_shader_objects : enable
+
+layout(location = 0) in vec3 fragColor;
+layout(location = 0) out vec4 outColor;
+
+void main() {
+    outColor = vec4(fragColor, 1.0);
+}
+)";
+
+void VulkanBackend::beginPixelBatch(float pixelSize) {
+    if (m_batchPipeline == VK_NULL_HANDLE) {
+        createBatchPipeline();
+    }
+
+    // Initialize batch state
+    m_pixelBatch.clear();
+    m_batchPixelSize = pixelSize;
+    m_isBatchActive = true;
+}
+
+void VulkanBackend::addPixelToBatch(float x, float y, float r, float g, float b) {
+    // Add the pixel to the batch
+    if (m_pixelBatch.size() < m_maxInstanceCount) {
+        PixelInstance pixel;
+        pixel.posX = x;
+        pixel.posY = y;
+        pixel.r = r;
+        pixel.g = g;
+        pixel.b = b;
+        
+        m_pixelBatch.push_back(pixel);
+    }
+}
+
+void VulkanBackend::createBatchPipeline() {
+    try {
+        // Create shader modules
+        VkShaderModule vertShaderModule = createShaderModule(batchVertexShaderCode);
+        if (vertShaderModule == VK_NULL_HANDLE) {
+            std::cerr << "Failed to create vertex shader module" << std::endl;
+            return;
+        }
+        
+        VkShaderModule fragShaderModule = createShaderModule(batchFragmentShaderCode);
+        if (fragShaderModule == VK_NULL_HANDLE) {
+            vkDestroyShaderModule(m_device, vertShaderModule, nullptr);
+            std::cerr << "Failed to create fragment shader module" << std::endl;
+            return;
+        }
+        
+        // Setup shader stages
+        VkPipelineShaderStageCreateInfo shaderStages[2] = {};
+        
+        shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        shaderStages[0].module = vertShaderModule;
+        shaderStages[0].pName = "main";
+        
+        shaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        shaderStages[1].module = fragShaderModule;
+        shaderStages[1].pName = "main";
+        
+        // Set up vertex input binding and attribute descriptions
+        std::array<VkVertexInputBindingDescription, 2> bindingDescriptions = {};
+        // Vertex binding
+        bindingDescriptions[0].binding = 0;
+        bindingDescriptions[0].stride = sizeof(float) * 5; // pos (3) + tex (2)
+        bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        // Instance binding
+        bindingDescriptions[1].binding = 1;
+        bindingDescriptions[1].stride = sizeof(PixelInstance);
+        bindingDescriptions[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+        
+        // Attribute descriptions for vertex and instance data
+        std::array<VkVertexInputAttributeDescription, 4> attributeDescriptions = {};
+        // Vertex position
+        attributeDescriptions[0].binding = 0;
+        attributeDescriptions[0].location = 0;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[0].offset = 0;
+        // Texture coordinates
+        attributeDescriptions[1].binding = 0;
+        attributeDescriptions[1].location = 1;
+        attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[1].offset = sizeof(float) * 3;
+        // Instance position
+        attributeDescriptions[2].binding = 1;
+        attributeDescriptions[2].location = 2;
+        attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[2].offset = offsetof(PixelInstance, posX);
+        // Instance color
+        attributeDescriptions[3].binding = 1;
+        attributeDescriptions[3].location = 3;
+        attributeDescriptions[3].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[3].offset = offsetof(PixelInstance, r);
+        
+        // Vertex input state
+        VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
+        vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
+        vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
+        vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+        vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+        
+        // Input assembly state
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
+        inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        inputAssembly.primitiveRestartEnable = VK_FALSE;
+        
+        // Viewport state
+        VkViewport viewport = {};
+        viewport.x = 0.0f;
+        viewport.y = 0.0f;
+        viewport.width = static_cast<float>(m_swapChainExtent.width);
+        viewport.height = static_cast<float>(m_swapChainExtent.height);
+        viewport.minDepth = 0.0f;
+        viewport.maxDepth = 1.0f;
+        
+        VkRect2D scissor = {};
+        scissor.offset = {0, 0};
+        scissor.extent = m_swapChainExtent;
+        
+        VkPipelineViewportStateCreateInfo viewportState = {};
+        viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewportState.viewportCount = 1;
+        viewportState.pViewports = &viewport;
+        viewportState.scissorCount = 1;
+        viewportState.pScissors = &scissor;
+        
+        // Rasterization state
+        VkPipelineRasterizationStateCreateInfo rasterizer = {};
+        rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterizer.depthClampEnable = VK_FALSE;
+        rasterizer.rasterizerDiscardEnable = VK_FALSE;
+        rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+        rasterizer.lineWidth = 1.0f;
+        rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+        rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+        rasterizer.depthBiasEnable = VK_FALSE;
+        
+        // Multisample state
+        VkPipelineMultisampleStateCreateInfo multisampling = {};
+        multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisampling.sampleShadingEnable = VK_FALSE;
+        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        
+        // Color blend state
+        VkPipelineColorBlendAttachmentState colorBlendAttachment = {};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+        
+        VkPipelineColorBlendStateCreateInfo colorBlending = {};
+        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        colorBlending.logicOpEnable = VK_FALSE;
+        colorBlending.attachmentCount = 1;
+        colorBlending.pAttachments = &colorBlendAttachment;
+        
+        // Push constant range for pixel size
+        VkPushConstantRange pushConstantRange = {};
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        pushConstantRange.offset = 0;
+        pushConstantRange.size = sizeof(float);
+        
+        // Pipeline layout
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.pushConstantRangeCount = 1;
+        pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+        
+        VkResult result = vkCreatePipelineLayout(m_device, &pipelineLayoutInfo, nullptr, &m_batchPipelineLayout);
+        if (result != VK_SUCCESS) {
+            std::cerr << "Failed to create pipeline layout: " << result << std::endl;
+            vkDestroyShaderModule(m_device, fragShaderModule, nullptr);
+            vkDestroyShaderModule(m_device, vertShaderModule, nullptr);
+            return;
+        }
+        
+        // Create the graphics pipeline
+        VkGraphicsPipelineCreateInfo pipelineInfo = {};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineInfo.stageCount = 2;
+        pipelineInfo.pStages = shaderStages;
+        pipelineInfo.pVertexInputState = &vertexInputInfo;
+        pipelineInfo.pInputAssemblyState = &inputAssembly;
+        pipelineInfo.pViewportState = &viewportState;
+        pipelineInfo.pRasterizationState = &rasterizer;
+        pipelineInfo.pMultisampleState = &multisampling;
+        pipelineInfo.pColorBlendState = &colorBlending;
+        pipelineInfo.layout = m_batchPipelineLayout;
+        pipelineInfo.renderPass = m_defaultRenderPass;
+        pipelineInfo.subpass = 0;
+        
+        result = vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_batchPipeline);
+        if (result != VK_SUCCESS) {
+            std::cerr << "Failed to create graphics pipeline: " << result << std::endl;
+            vkDestroyPipelineLayout(m_device, m_batchPipelineLayout, nullptr);
+            vkDestroyShaderModule(m_device, fragShaderModule, nullptr);
+            vkDestroyShaderModule(m_device, vertShaderModule, nullptr);
+            return;
+        }
+        
+        // Cleanup shader modules
+        vkDestroyShaderModule(m_device, fragShaderModule, nullptr);
+        vkDestroyShaderModule(m_device, vertShaderModule, nullptr);
+        
+        std::cout << "Batch pipeline created successfully" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Exception creating batch pipeline: " << e.what() << std::endl;
+    }
+}
+
+void VulkanBackend::drawPixelBatch() {
+    if (m_pixelBatch.empty()) {
+        std::cout << "No pixels in batch to draw" << std::endl;
+        return;
+    }
+    
+    if (m_batchPipeline == VK_NULL_HANDLE) {
+        std::cout << "Batch pipeline not initialized, creating now" << std::endl;
+        createBatchPipeline();
+        if (m_batchPipeline == VK_NULL_HANDLE) {
+            std::cerr << "Failed to create batch pipeline, skipping batch draw" << std::endl;
+            return;
+        }
+    }
+    
+    try {
+        // For now, use the standard drawRectangle for each pixel in batch
+        // This is a fallback until our instanced rendering is working
+        for (const auto& pixel : m_pixelBatch) {
+            drawRectangle(
+                pixel.posX, pixel.posY,
+                m_batchPixelSize, m_batchPixelSize,
+                pixel.r, pixel.g, pixel.b
+            );
+        }
+        
+        // Report batch size
+        std::cout << "Rendered " << m_pixelBatch.size() << " pixels in batch (using fallback)" << std::endl;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Exception in drawPixelBatch: " << e.what() << std::endl;
+    }
+}
+
+void VulkanBackend::endPixelBatch() {
+    m_isBatchActive = false;
+}
+
+VkShaderModule VulkanBackend::createShaderModule(const std::string& code) {
+    // We need to ensure alignment for uint32_t
+    std::vector<char> alignedCode(code.begin(), code.end());
+    
+    // Ensure size is a multiple of 4 for uint32_t alignment
+    while (alignedCode.size() % 4 != 0) {
+        alignedCode.push_back('\0');
+    }
+    
+    VkShaderModuleCreateInfo createInfo = {};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = alignedCode.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t*>(alignedCode.data());
+    
+    VkShaderModule shaderModule;
+    if (vkCreateShaderModule(m_device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        std::cerr << "Failed to create shader module!" << std::endl;
+        return VK_NULL_HANDLE;
+    }
+    
+    return shaderModule;
 }
 
 // Simple rectangle drawing function for visualizing world pixels
@@ -2229,6 +2586,8 @@ bool VulkanBackend::createSyncObjects() {
     return true;
 }
 
+// Define our offset and description directly in the pipeline creation method
+
 bool VulkanBackend::createFullscreenQuad() {
     // Define vertices for a fullscreen quad
     const float vertices[] = {
@@ -2249,6 +2608,21 @@ bool VulkanBackend::createFullscreenQuad() {
     
     // Create index buffer
     m_fullscreenQuadIndexBuffer = createIndexBuffer(sizeof(indices), indices);
+    
+    // For batch rendering, we'll just reuse the fullscreen quad buffers for simplicity
+    m_batchVertexBuffer = m_fullscreenQuadVertexBuffer;
+    m_batchIndexBuffer = m_fullscreenQuadIndexBuffer;
+    
+    // Initialize batched rendering state with a small test size
+    m_pixelBatch.reserve(2500);   // Pre-allocate for 2,500 pixels
+    m_maxInstanceCount = 2500;    // Limit to a reasonable batch size for testing
+    m_isBatchActive = false;
+    
+    // Create instance buffer with proper size
+    VkDeviceSize bufferSize = sizeof(PixelInstance) * m_maxInstanceCount;
+    createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, 
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                m_instanceBuffer, m_instanceBufferMemory);
     
     return true;
 }

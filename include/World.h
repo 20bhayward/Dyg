@@ -198,7 +198,7 @@ private:
     std::vector<ChunkCoord> m_activeChunks;
     
     // Maximum number of chunks to keep loaded - matches Noita's approach in GDC talk
-    const int MAX_LOADED_CHUNKS = 12; // Exactly 12 chunks as specified
+    const int MAX_LOADED_CHUNKS = 12; // Exactly 12 chunks as specified in the streaming design
     
     // Size of chunks in world units
     const int m_chunkSize;

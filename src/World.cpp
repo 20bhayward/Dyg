@@ -1745,50 +1745,74 @@ bool Chunk::isNotIsolatedLiquid(const std::vector<MaterialType>& grid, int x, in
 }
 
 void World::update() {
-    // Handle special edge-case cleanup for powder materials that may have gotten stuck
-    // This periodic cleanup ensures nothing gets left behind
+    // Performance optimization - skip updates every other frame
+    static bool skipFrame = false;
+    skipFrame = !skipFrame;
+    if (skipFrame) {
+        return; // Skip this frame completely for performance
+    }
+    
+    // Handle special edge-case cleanup less frequently
     static int cleanupCounter = 0;
     cleanupCounter++;
     
-    // Every 30 frames, do a full check for stuck powders at chunk boundaries
-    if (cleanupCounter >= 30) {
+    // Less frequent cleanup (every 60 frames now)
+    if (cleanupCounter >= 60) {
         cleanupCounter = 0;
         // Only clean up active chunks to avoid wasting resources
         const auto& activeChunks = m_chunkManager.getActiveChunks();
         for (const auto& coord : activeChunks) {
             Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
             if (chunk && chunk->getInactivityCounter() > 50) {
-                // std::cout << "Setting chunk to dirty for being inactive for a while" << std::endl;
                 chunk->setDirty(true);
             }
         }
     }
     
-    // At the start of the frame, transfer shouldUpdateNextFrame flags to dirty flags
-    // Only for active chunks to avoid processing every chunk in the world
+    // Get active chunks just once to avoid repeated calls
     const auto& activeChunks = m_chunkManager.getActiveChunks();
-    for (const auto& coord : activeChunks) {
-        Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
-        if (chunk && chunk->shouldUpdateNextFrame()) {
-            chunk->setDirty(true); // Set chunk to update this frame
-            chunk->setShouldUpdateNextFrame(false); // Reset flag for next frame
-        }
-    }
     
-    // First, mark all active chunks as dirty to ensure they're processed
-    for (const auto& coord : activeChunks) {
-        Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
-        if (chunk) {
-            chunk->setDirty(true); // Force update for active chunks
-        }
-    }
+    // Process more chunks for better world update
+    const int MAX_CHUNKS_TO_PROCESS = 12;
+    int chunksProcessed = 0;
     
-    // Then properly update each chunk with physics from its neighbors
+    // Process most important chunks first - those with pending updates
     for (const auto& coord : activeChunks) {
         Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
         if (!chunk) continue;
         
-        // Get neighboring chunks from ChunkManager
+        // Only process chunks that need updates
+        if (chunk->shouldUpdateNextFrame()) {
+            chunk->setDirty(true);
+            chunk->setShouldUpdateNextFrame(false);
+            
+            // Get neighboring chunks
+            ChunkCoord belowCoord = {coord.x, coord.y + 1};
+            ChunkCoord leftCoord = {coord.x - 1, coord.y};
+            ChunkCoord rightCoord = {coord.x + 1, coord.y};
+            
+            Chunk* chunkBelow = m_chunkManager.getChunk(belowCoord.x, belowCoord.y, false);
+            Chunk* chunkLeft = m_chunkManager.getChunk(leftCoord.x, leftCoord.y, false);
+            Chunk* chunkRight = m_chunkManager.getChunk(rightCoord.x, rightCoord.y, false);
+            
+            // Update this chunk
+            chunk->update(chunkBelow, chunkLeft, chunkRight);
+            chunksProcessed++;
+            
+            if (chunksProcessed >= MAX_CHUNKS_TO_PROCESS) {
+                return; // Early exit after processing max chunks
+            }
+        }
+    }
+    
+    // If we still have capacity, process a few more chunks
+    for (const auto& coord : activeChunks) {
+        if (chunksProcessed >= MAX_CHUNKS_TO_PROCESS) break;
+        
+        Chunk* chunk = m_chunkManager.getChunk(coord.x, coord.y, false);
+        if (!chunk || !chunk->isDirty()) continue;
+        
+        // Get neighboring chunks
         ChunkCoord belowCoord = {coord.x, coord.y + 1};
         ChunkCoord leftCoord = {coord.x - 1, coord.y};
         ChunkCoord rightCoord = {coord.x + 1, coord.y};
@@ -1797,8 +1821,9 @@ void World::update() {
         Chunk* chunkLeft = m_chunkManager.getChunk(leftCoord.x, leftCoord.y, false);
         Chunk* chunkRight = m_chunkManager.getChunk(rightCoord.x, rightCoord.y, false);
         
-        // Update this chunk with its neighbors from the ChunkManager
+        // Update this chunk
         chunk->update(chunkBelow, chunkLeft, chunkRight);
+        chunksProcessed++;
     }
     
     // Special check for powders and liquids at chunk boundaries to prevent stuck particles

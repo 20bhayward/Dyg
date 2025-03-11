@@ -18,9 +18,9 @@ const int WINDOW_HEIGHT = 600;
 // Test mode with smaller world for physics testing
 const bool TEST_MODE = false;
 
-// World dimensions - use smaller world in test mode
+// World dimensions - use smaller world in test mode, deeper world for better exploration
 const int WORLD_WIDTH   = TEST_MODE ? 800 : 6000;  // Much smaller for test mode
-const int WORLD_HEIGHT  = TEST_MODE ? 600 : 1800;  // Much smaller for test mode
+const int WORLD_HEIGHT  = TEST_MODE ? 600 : 6000;  // Much deeper world for exploration with chunk streaming
 const int TARGET_FPS    = 60;  // Higher FPS for smoother simulation
 const int FRAME_DELAY   = 1000 / TARGET_FPS;
 
@@ -29,7 +29,7 @@ int cameraX = 0;         // Camera position X
 int cameraY = 0;         // Camera position Y
 const int CAMERA_SPEED = 20;   // Camera movement speed (adjust for zoom level)
 const int DEFAULT_VIEW_HEIGHT = 450; // Default height to position camera at start
-const float basePixelSize = 1.0f;  // Base pixel size for world rendering (smaller for more detail)
+const float PIXEL_SIZE = 1.0f;  // Global pixel size for world rendering - original size
 
 // Mouse parameters
 bool middleMouseDown = false;
@@ -96,9 +96,9 @@ int main() {
     
     SDL_Delay(200);  // Give the world time to set up
     
-    // Just set camera to a simple position - no fancy positioning
-    cameraX = 1024;
-    cameraY = 1024;
+    // Start camera in the upper part of the world for better exploration
+    cameraX = WORLD_WIDTH / 2 - actualWidth / (2 * PIXEL_SIZE);  // Center camera horizontally
+    cameraY = DEFAULT_VIEW_HEIGHT - actualHeight / (2 * PIXEL_SIZE);  // Position at the default view height
     
     // Ensure camera is properly clamped to world bounds
     cameraX = std::max(0, cameraX);
@@ -106,8 +106,8 @@ int main() {
     cameraY = std::max(0, cameraY);
     cameraY = std::min(WORLD_HEIGHT - 50, cameraY);
     
-    // Initialize world player position to center camera view
-    world.updatePlayerPosition(cameraX + actualWidth/2, cameraY + actualHeight/2);
+    // Initialize world player position to center camera view - adjust for pixel size
+    world.updatePlayerPosition(cameraX + actualWidth/PIXEL_SIZE/2, cameraY + actualHeight/PIXEL_SIZE/2);
     // std::cout << "Camera positioned at world center" << std::endl;
     
     // Create the renderer (Vulkan only)
@@ -346,8 +346,8 @@ int main() {
                     cameraY = std::min(WORLD_HEIGHT - 50, cameraY);
                 }
                 
-                // Update player position for appropriate chunk loading
-                world.updatePlayerPosition(cameraX + actualWidth/2, cameraY + actualHeight/2);
+                // Update player position for appropriate chunk loading - adjust for pixel size
+                world.updatePlayerPosition(cameraX + actualWidth/PIXEL_SIZE/2, cameraY + actualHeight/PIXEL_SIZE/2);
             }
             else if (e.type == SDL_MOUSEBUTTONDOWN) {
                 if (e.button.button == SDL_BUTTON_MIDDLE) {
@@ -410,8 +410,8 @@ int main() {
                     cameraX = std::min(cameraX, WORLD_WIDTH - actualWidth);
                     cameraY = std::min(cameraY, WORLD_HEIGHT - 50);
                     
-                    // Update active chunks based on new camera position (streaming system)
-                    world.updatePlayerPosition(cameraX + actualWidth/2, cameraY + actualHeight/2);
+                    // Update active chunks based on new camera position (streaming system) - adjust for pixel size
+                    world.updatePlayerPosition(cameraX + actualWidth/PIXEL_SIZE/2, cameraY + actualHeight/PIXEL_SIZE/2);
                     
                     // Update previous mouse position
                     prevMouseX = mouseX;
@@ -426,9 +426,9 @@ int main() {
         SDL_GetMouseState(&mouseX, &mouseY);
         
         // Convert mouse screen coordinates to world coordinates
-        const float pixelSize = 4.0f; // Must match the value in Renderer.cpp
-        int worldX = cameraX + static_cast<int>(mouseX / pixelSize);
-        int worldY = cameraY + static_cast<int>(mouseY / pixelSize);
+        // Use global pixel size for consistency
+        int worldX = cameraX + static_cast<int>(mouseX / PIXEL_SIZE);
+        int worldY = cameraY + static_cast<int>(mouseY / PIXEL_SIZE);
         
         // Handle player movement if in player mode
         if (playerMode && character) {
@@ -440,8 +440,8 @@ int main() {
             int charY = character->getY();
             
             // Calculate target camera position (centered on character)
-            int targetCameraX = charX - static_cast<int>(actualWidth / (2 * pixelSize));
-            int targetCameraY = charY - static_cast<int>(actualHeight / (2 * pixelSize));
+            int targetCameraX = charX - static_cast<int>(actualWidth / (2 * PIXEL_SIZE));
+            int targetCameraY = charY - static_cast<int>(actualHeight / (2 * PIXEL_SIZE));
             
             // Clamp target camera position to world bounds
             targetCameraX = std::max(0, targetCameraX);
@@ -462,8 +462,8 @@ int main() {
         }
         else {
             // In camera mode, use the center of the screen as the focus point for chunk streaming
-            int centerX = cameraX + static_cast<int>(actualWidth / (2 * pixelSize));
-            int centerY = cameraY + static_cast<int>(actualHeight / (2 * pixelSize));
+            int centerX = cameraX + static_cast<int>(actualWidth / (2 * PIXEL_SIZE));
+            int centerY = cameraY + static_cast<int>(actualHeight / (2 * PIXEL_SIZE));
             
             // Update chunks based on screen center position, but do it less frequently
             // to reduce file I/O overhead (only update every 5 frames)
