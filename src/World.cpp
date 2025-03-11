@@ -1631,6 +1631,11 @@ void World::set(int x, int y, MaterialType material) {
         oldChunk->set(localX, localY, material);
     }
     
+    // Track this processing chunk as dirty for optimized updates
+    int processingChunkX = x / PROCESSING_CHUNK_SIZE;
+    int processingChunkY = y / PROCESSING_CHUNK_SIZE;
+    m_dirtyChunks.push_back(std::make_pair(processingChunkX, processingChunkY));
+    
     // Update pixel data
     int idx = y * m_width + x;
     int pixelIdx = idx * 4;
@@ -1750,6 +1755,32 @@ void World::update() {
     skipFrame = !skipFrame;
     if (skipFrame) {
         return; // Skip this frame completely for performance
+    }
+    
+    // Process dirty chunks from player interactions first, but directly mark the chunks as dirty
+    if (!m_dirtyChunks.empty()) {
+        // Remove duplicates to avoid processing the same chunk multiple times
+        std::sort(m_dirtyChunks.begin(), m_dirtyChunks.end());
+        auto last = std::unique(m_dirtyChunks.begin(), m_dirtyChunks.end());
+        std::vector<std::pair<int, int>> uniqueDirtyChunks(m_dirtyChunks.begin(), last);
+        m_dirtyChunks.clear();
+        
+        // Process each dirty processing chunk by marking actual chunks dirty
+        for (const auto& processingChunk : uniqueDirtyChunks) {
+            int startX = processingChunk.first * PROCESSING_CHUNK_SIZE;
+            int startY = processingChunk.second * PROCESSING_CHUNK_SIZE;
+            
+            // Find the storage chunk that contains this processing chunk
+            int chunkX = startX / Chunk::WIDTH;
+            int chunkY = startY / Chunk::HEIGHT;
+            
+            // Mark the actual chunk as dirty so it will be updated
+            Chunk* chunk = m_chunkManager.getChunk(chunkX, chunkY, false);
+            if (chunk) {
+                chunk->setDirty(true);
+                chunk->setShouldUpdateNextFrame(true);
+            }
+        }
     }
     
     // Handle special edge-case cleanup less frequently

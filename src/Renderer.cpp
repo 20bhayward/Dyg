@@ -51,7 +51,7 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     int worldHeight = world.getHeight();
     
     // Match the pixel size from main_vulkan.cpp
-    const float pixelSize = 1.0f;  // Each world pixel is 1.0 screen pixels - MUST MATCH PIXEL_SIZE in main_vulkan.cpp
+    const float pixelSize = 2.0f;  // Each world pixel is 2.0 screen pixels - MUST MATCH PIXEL_SIZE in main_vulkan.cpp
     
     // Calculate how much world space we can display with 2x pixels
     int visibleWorldWidth = m_screenWidth / pixelSize;
@@ -90,7 +90,7 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
     
     // Count of draw calls
     int drawCalls = 0;
-    const int MAX_DRAW_CALLS = 100000; // Much higher limit to render everything
+    const int MAX_DRAW_CALLS = 150000; // Very high limit to ensure proper rendering quality
     
     if (activeChunks.size() > 0) {
         // Render ALL active chunks for proper streaming
@@ -123,8 +123,8 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
             
             if (drawCalls >= MAX_DRAW_CALLS) break;
             
-            // Draw some content from the chunk - use a grid for efficiency
-            int step = 4; // Sample every 4th pixel for better performance with the higher draw call limit
+            // Use a step size of 1 to ensure all pixels are rendered clearly
+            int step = 1; // Sample every single pixel for perfect visual quality
             
             for (int cy = 0; cy < chunkPixelHeight; cy += step) {
                 for (int cx = 0; cx < chunkPixelWidth; cx += step) {
@@ -146,7 +146,7 @@ void Renderer::render(const World& world, int cameraX, int cameraY) {
                     float screenX = (wx - cameraX) * pixelSize;
                     float screenY = (wy - cameraY) * pixelSize;
                     
-                    // Draw pixel as rectangle
+                    // Draw pixel as rectangle with larger size for efficiency
                     vulkanBackend->drawRectangle(
                         screenX, screenY,
                         pixelSize * step, pixelSize * step,

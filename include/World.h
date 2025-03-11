@@ -307,6 +307,10 @@ private:
     // Legacy vector of chunks (will be phased out)
     std::vector<std::unique_ptr<Chunk>> m_chunks;
     
+    // Optimization: Track dirty chunks for more efficient updates
+    const int PROCESSING_CHUNK_SIZE = 64; // Pixels per processing chunk (smaller than storage chunks)
+    std::vector<std::pair<int, int>> m_dirtyChunks; // Processing chunks that need updates
+    
     // For rendering: RGBA pixel data for the entire world
     std::vector<uint8_t> m_pixelData;
     

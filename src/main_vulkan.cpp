@@ -29,7 +29,7 @@ int cameraX = 0;         // Camera position X
 int cameraY = 0;         // Camera position Y
 const int CAMERA_SPEED = 20;   // Camera movement speed (adjust for zoom level)
 const int DEFAULT_VIEW_HEIGHT = 450; // Default height to position camera at start
-const float PIXEL_SIZE = 1.0f;  // Global pixel size for world rendering - original size
+const float PIXEL_SIZE = 2.0f;  // Global pixel size for world rendering - doubled for better visibility
 
 // Mouse parameters
 bool middleMouseDown = false;
